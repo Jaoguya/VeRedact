@@ -1,3 +1,1 @@
 # VeRedact
-
-Kuykuy
