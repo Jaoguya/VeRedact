@@ -33,8 +33,13 @@ the security of the threshold variant is not claimed by this implementation.
 Parameters (n, k, mbar, sigma_R, sigma_g, s, beta) come from config — they must be vetted with a lattice
 estimator before security claims are made (config marks them [CONFIRM]).
 """
+import dataclasses
 import hashlib
+import json
+import os
+import shutil
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -124,10 +129,17 @@ class TrapdoorShare:
     S: np.ndarray  # mbar x nk share of R over F_P (int64)
 
 
+_DKG_STREAM = 0x444B47  # "DKG": DKG draws from its own stream, so a cache hit never shifts self.rng
+_DKG_CACHE_VERSION = "dkg-v1"  # bump when dkeygen's output for a given seed changes
+_dkg_memo: dict = {}  # in-process: the most recent committee key only (shares are 134 MB each at n = 256)
+
+
 class SISChameleonHash:
-    def __init__(self, params: SISParams, seed: int | None = None):
+    def __init__(self, params: SISParams, seed: int | None = None, cache_dir: Path | None = None):
         self.p = params
+        self.seed = seed
         self.rng = np.random.default_rng(seed)
+        self.cache_dir = cache_dir
 
     # ---- centralized key generation (single trapdoor holder baselines) --------------------------
     def keygen(self):
@@ -182,19 +194,59 @@ class SISChameleonHash:
 
     # ---- distributed key generation / resharing -------------------------------------------------------
     def dkeygen(self, n_members: int, t: int):
+        """Dealerless DKG, run once per committee (seed, n, t, params) and cached: a committee runs DKG once
+        per epoch, and setup is never timed. Draws come from a stream derived from (seed, n, t), so cached
+        and uncached runs are identical and the adaptation randomness (self.rng) is unaffected."""
+        if self.seed is None:
+            return self._dkeygen(self.rng, n_members, t)
+        key = hashlib.sha256(json.dumps([_DKG_CACHE_VERSION, self.seed, n_members, t,
+                                         dataclasses.astuple(self.p)]).encode()).hexdigest()[:24]
+        if key in _dkg_memo:
+            return _dkg_memo[key]
+        d = self.cache_dir / key if self.cache_dir else None
+        if d is not None and (d / "done").exists():
+            pk = PublicKey(self.p, np.load(d / "Abar.npy"), np.load(d / "A2.npy"))
+            shares = {x: TrapdoorShare(x, np.load(d / f"S{x}.npy")) for x in range(1, n_members + 1)}
+        else:
+            pk, shares = self._dkeygen(np.random.default_rng([self.seed, _DKG_STREAM, n_members, t]), n_members, t)
+            if d is not None:
+                tmp = d.with_name(d.name + f".tmp{os.getpid()}")
+                tmp.mkdir(parents=True, exist_ok=True)
+                np.save(tmp / "Abar.npy", pk.Abar)
+                np.save(tmp / "A2.npy", pk.A2)
+                for x, sh in shares.items():
+                    np.save(tmp / f"S{x}.npy", sh.S)
+                (tmp / "done").write_text(json.dumps({"seed": self.seed, "n": n_members, "t": t}))
+                shutil.rmtree(d, ignore_errors=True)
+                tmp.rename(d)
+        for a in (pk.Abar, pk.A2, *(sh.S for sh in shares.values())):
+            a.flags.writeable = False  # shared across setups in this process: must never be mutated
+        _dkg_memo.clear()
+        _dkg_memo[key] = (pk, shares)
+        return pk, shares
+
+    def _dkeygen(self, rng, n_members: int, t: int):
         """Dealerless: A = [Abar | G - sum_i Abar R_i]; each R_i Shamir-shared t-of-n over F_P."""
         p = self.p
-        Abar = self.rng.integers(0, p.q, (p.n, p.mbar), dtype=np.int64)
+        shape = (p.mbar, p.n * p.k)
+        Abar = rng.integers(0, p.q, (p.n, p.mbar), dtype=np.int64)
         G = np.kron(np.eye(p.n, dtype=np.int64), (1 << np.arange(p.k, dtype=np.int64)))
         width = p.sigma_R * np.sqrt(2 * np.pi) / np.sqrt(n_members)  # sum of n contributions has width sigma_R
         A2 = G.copy()
-        shares = {k: np.zeros((p.mbar, p.n * p.k), dtype=np.int64) for k in range(1, n_members + 1)}
+        Abar_f = Abar.astype(np.float64)
+        # Shamir is linear: sum_i Share_i(x) = Poly(sum_i coeffs_i)(x). Summing the members' coefficients and
+        # evaluating once per x gives the same shares with n*t instead of n^2*t full-matrix operations.
+        coef = [np.zeros(shape, dtype=np.int64) for _ in range(t)]
         for _ in range(n_members):
-            R_i = _round_gauss(self.rng, width, (p.mbar, p.n * p.k))
-            A2 = (A2 - Abar @ R_i) % p.q  # C_i publishes Abar R_i
-            for k, sh in self._shamir(R_i, n_members, t).items():
-                shares[k] = (shares[k] + sh) % SHAMIR_P
-        return PublicKey(p, Abar, A2), {k: TrapdoorShare(k, v) for k, v in shares.items()}
+            R_i = _round_gauss(rng, width, shape)
+            A2 = (A2 - _exact_matmul(Abar, Abar_f, R_i, p.q)) % p.q  # C_i publishes Abar R_i
+            np.add(coef[0], R_i % SHAMIR_P, out=coef[0])
+            np.remainder(coef[0], SHAMIR_P, out=coef[0])
+            for j in range(1, t):  # C_i's random Shamir coefficients (same draws, same order as per-member sharing)
+                np.add(coef[j], rng.integers(0, SHAMIR_P, shape, dtype=np.int64), out=coef[j])
+                np.remainder(coef[j], SHAMIR_P, out=coef[j])
+        shares = {x: TrapdoorShare(x, _horner_mod(coef, x)) for x in range(1, n_members + 1)}
+        return PublicKey(p, Abar, A2), shares
 
     def _shamir(self, secret, n_members, t):
         coeffs = [secret % SHAMIR_P] + [self.rng.integers(0, SHAMIR_P, secret.shape, dtype=np.int64)
@@ -248,6 +300,23 @@ def _mulmod(a: np.ndarray, b: int) -> np.ndarray:
 def _matvec_mod(S: np.ndarray, z: np.ndarray) -> np.ndarray:
     """S z mod P: |S| < 2^31, |z_j| small, M_cols <= 2^16  ->  |sum| < 2^31 * 2^7 * 2^16 = 2^54."""
     return (S @ z.astype(np.int64)) % SHAMIR_P
+
+
+def _exact_matmul(A: np.ndarray, A_f: np.ndarray, R: np.ndarray, q: int) -> np.ndarray:
+    """A R over Z via float64 BLAS when every partial sum is an integer below 2^53 (then exact); else int64."""
+    if A.shape[1] * (q - 1) * int(np.abs(R).max()) < (1 << 53):
+        return np.rint(A_f @ R.astype(np.float64)).astype(np.int64)
+    return A @ R
+
+
+def _horner_mod(coef: list, x: int) -> np.ndarray:
+    """sum_j coef[j] x^j mod P for a small x: acc < P and x < 2^7, so acc*x + c < 2^39 fits int64."""
+    acc = np.zeros_like(coef[0])
+    for c in reversed(coef):
+        np.multiply(acc, x, out=acc)
+        np.add(acc, c, out=acc)
+        np.remainder(acc, SHAMIR_P, out=acc)
+    return acc
 
 
 def lagrange_at_zero(ids: list[int]) -> dict[int, int]:

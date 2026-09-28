@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from . import hashing
 from .pqch_sis import SISChameleonHash, default_params
 from .pqsig import load_pqsig
+from ..config import REPO_ROOT
 from .pqzk_stark import PolicySTARK, ZKParams
 
 
@@ -21,7 +22,8 @@ class Crypto:
         self.sig = load_pqsig()
         ch = sec["pqch"]
         self.ch = SISChameleonHash(default_params(n=ch["n"], k=ch["k"], sigma_R=ch["sigma_R"],
-                                                  sigma_g=ch["sigma_g"]), seed=cfg["meta"]["seed"])
+                                                  sigma_g=ch["sigma_g"]), seed=cfg["meta"]["seed"],
+                                   cache_dir=REPO_ROOT / "benchmark" / ".cache" / "pqch_dkg")
         z = sec["pqzk"]
         self.zk = PolicySTARK(ZKParams(z["queries"], z["blowup"], z["grinding_bits"], z["registry_depth"]),
                               requesters, cfg["meta"]["seed"])

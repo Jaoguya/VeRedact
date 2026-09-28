@@ -2,6 +2,7 @@
 import copy
 import os
 
+import numpy as np
 import pytest
 
 from veredact_bench.config import CONFIG_DIR, load
@@ -81,3 +82,20 @@ def test_validator_rejects_weakened_baseline(tmp_path):
                                "rsa_bits = 1024"))
     err, _ = validate(bad)
     assert any("S34.rsa_bits" in e for e in err)
+
+
+def test_dkg_cache_is_transparent(tmp_path):
+    from veredact_bench.crypto import pqch_sis
+    params = default_params(32, 8, 1.0, 3.0)  # small lattice: the property, not the size, is under test
+    fresh = SISChameleonHash(params, seed=5, cache_dir=tmp_path)
+    pk1, sh1 = fresh.dkeygen(7, 5)
+    r_after_fresh = fresh.sample_r()
+    pqch_sis._dkg_memo.clear()  # force the disk path
+    cached = SISChameleonHash(params, seed=5, cache_dir=tmp_path)
+    pk2, sh2 = cached.dkeygen(7, 5)
+    assert np.array_equal(pk1.A2, pk2.A2) and all(np.array_equal(sh1[x].S, sh2[x].S) for x in sh1)
+    assert np.array_equal(r_after_fresh, cached.sample_r())  # a cache hit does not shift the adaptation RNG
+    assert not sh2[1].S.flags.writeable
+    h = cached.hash(pk2, b"m", r_after_fresh)
+    pert, z = cached.begin_adapt(pk2, b"m", r_after_fresh, b"m'")
+    assert cached.verify(pk2, h, b"m'", cached.combine(pert, z, [cached.part_adapt(sh2[k], z) for k in (2, 3, 5, 6, 7)]))

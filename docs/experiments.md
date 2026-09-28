@@ -80,6 +80,12 @@ Outputs: `results/<exp>/<run_id>/rows.csv` + `manifest.json`; figures `plot/exp{
 
 ## 4. Known measurement limits
 
+- **Committee key reuse.** The SIS-PQCH DKG (untimed setup, 5 s at n = 4, ~5 min at n = 32 with 134 MB
+  shares) runs once per (seed, n, t, lattice parameters) and is cached in `benchmark/.cache/pqch_dkg/`
+  (gitignored), as a committee runs DKG once per epoch. All points and repetitions of a run therefore share
+  one committee key per committee size; adaptation cost does not depend on the key's values. DKG draws from
+  its own random stream, so a cache hit changes no other randomness.
+
 - **GIL.** VPS workers are Python threads. ML-DSA (liboqs, ctypes) and the STARK (Rust, `allow_threads`)
   release the GIL; Python glue does not. Exp. 1 throughput is therefore a property of this implementation
   on the stated host, recorded as such — not of the protocol in the abstract.

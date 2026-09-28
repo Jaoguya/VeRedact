@@ -14,3 +14,4 @@ deploy/besu/.network/
 # Rust build output
 benchmark/pqzk_stark/target/
 *.egg-info/
+benchmark/.cache/
