@@ -1,0 +1,6 @@
+numpy>=2.0
+pqcrypto>=1.0
+cryptography>=42
+matplotlib>=3.8
+pytest>=8
+# optional: liboqs-python (paper backend), web3 + py-solc-x (Besu gas replay)
