@@ -1,0 +1,196 @@
+# Global scheme registry: one entry per scheme that appears in the VeRedact-PQ manuscript evaluation.
+# Single source of truth for: manuscript reference, paper metadata, where its converted text lives,
+# which experiments use it, and the workflow the benchmark re-implements (read by benchmark/veredact_bench).
+#
+# Scheme ids:  S<n> = a paper we hold (PDF + full text in Scheme/), numbered in manuscript-ref order.
+#              B-refNN = a baseline used in experiments whose PDF is NOT in Scheme/ yet.
+#
+# Workflow fields (one row of manuscript Table IV / Table V):
+#   validate  : "sig" | "policy+sig"
+#   authorize : "none" | "threshold_sign" | "policy" | "dch_approve" | "maabe_threshold"
+#   adapt     : "central" | "threshold"
+#   audit     : "" (none) | "threshold_sigs" | "sig_hash" | "vds_per_record" | "light"
+#   onchain   : "hash" | "hash+sig"
+# grounded   : "pdf" (checked against the paper) | "table-iv" (manuscript Table IV row only; TODO-VERIFY)
+
+[meta]
+manuscript = "overleaf/VeRedact.tex"
+bibliography_updated = "2026-09-29"
+
+# ------------------------------------------------------------------------------------------------ ours
+[schemes.veredact]
+label = "VeRedact-PQ"
+ref = 0
+experiments = [1, 2, 3, 4, 5]
+variants = ["Per-Request", "Fixed-Batch", "No-BIMC", "Re-ZK", "Per-Record Evidence"]
+
+# -------------------------------------------------------------------------------- papers in Scheme/
+[schemes.S1]
+key = "li2025_dch"
+label = "Li et al. [1] (Improved DCH)"
+ref = 1
+authors = "C. Li, Q. Shen, Z. Wu"
+title = "Redactable Blockchain From Decentralized Chameleon Hash Functions, Revisited"
+venue = "IEEE Trans. Computers 74(6), 2025"
+doi = "10.1109/TC.2025.3544878"
+folder = "Scheme/S1_ref01_Li2025_ImprovedDCH"
+fulltext = "S1_fulltext.md"
+summary = "S1_summary.md"
+experiments = [2]
+grounded = "pdf"
+classical_sig = true
+validate = "sig"
+authorize = "dch_approve"
+adapt = "threshold"
+audit = ""
+onchain = "hash"
+note = "t full nodes approve by checking signatures of tx and tx', then run DCH.Collision shares. Duplicate bibitem: ref30 is the same paper."
+
+[schemes.S2]
+key = "eaq_vrbc2025"
+label = "EAQ-VRBC [13]"
+ref = 13
+authors = "X. Zhang, Z. Cai, K. Chen, G. Ha, C. Jia"
+title = "Efficient Auditing and Querying in Verifiable Redactable Blockchain: A Lightweight VDS Protocol with Integrity Verification"
+venue = "IEEE TrustCom 2025"
+doi = "10.1109/Trustcom66490.2025.00062"
+folder = "Scheme/S2_ref13_Zhang2025_EAQ-VRBC"
+fulltext = "S2_fulltext.md"
+summary = "S2_summary.md"
+experiments = [3, 4]
+grounded = "pdf"
+classical_sig = true
+validate = "sig"
+authorize = "none"
+adapt = "central"
+audit = "vds_per_record"
+onchain = "hash"
+note = "Manuscript calls it 'VRBC'; per-record identity-based tags + RSA-accumulator non-membership; trusted SM redacts."
+
+[schemes.S3]
+key = "liu2026_etch"
+label = "Liu et al. [27] (ETCH)"
+ref = 27
+authors = "Z. Liu, B. Zhou, Y. Zhao"
+title = "Enhancing Redactable Blockchain With Robust and Efficient Threshold Redaction"
+venue = "IEEE TDSC 23(2), 2026"
+doi = "10.1109/TDSC.2025.3634512"
+folder = "Scheme/S3_ref27_Liu2026_ETCH"
+fulltext = "S3_fulltext.md"
+summary = "S3_summary.md"
+experiments = [1, 2, 5]
+grounded = "pdf"
+classical_sig = true
+validate = "sig"
+authorize = "threshold_sign"
+adapt = "threshold"
+audit = "threshold_sigs"
+onchain = "hash"
+note = "t-of-n Adapt per redaction (CA aggregation); initiator signs the chameleon hash; Merkle leaf hash = ETCH."
+
+[schemes.S4]
+key = "xue2025_rebs"
+label = "J. Xue et al. [34] (REBS)"
+ref = 34
+authors = "J. Xue, L. Liu, F. Li, X. Jing, W. Zhang, X. Zhang, Y. Zhou"
+title = "Attribute-Based Policy-Hiding Redactable Blockchain With Authorizable Verification for Energy Internet"
+venue = "IEEE IoT Journal 12(15), 2025"
+doi = "10.1109/JIOT.2025.3569699"
+folder = "Scheme/S4_ref34_Xue2025_REBS"
+fulltext = "S4_fulltext.md"
+summary = "S4_summary.md"
+experiments = []
+grounded = "pdf"
+classical_sig = true
+validate = "policy+sig"
+authorize = "policy"
+adapt = "central"
+audit = ""
+onchain = "hash"
+note = "Related work / Table I only; not a baseline in the current evaluation. Has no audit mechanism."
+
+# ---------------------------------------------------- experiment baselines without a PDF in Scheme/
+[schemes.B-ref14]
+key = "huang2021"
+label = "Huang et al. [14]"
+ref = 14
+title = "Scalable and redactable blockchain with update and anonymity"
+venue = "Information Sciences 546, 2021"
+doi = "10.1016/j.ins.2020.07.016"
+experiments = [1, 5]
+grounded = "table-iv"
+classical_sig = true
+validate = "sig"
+authorize = "none"
+adapt = "central"
+audit = ""
+onchain = "hash"
+note = "Single trapdoor holder. PDF missing."
+
+[schemes.B-ref15]
+key = "dong2024"
+label = "Dong et al. [15]"
+ref = 15
+title = "Redactable consortium blockchain with access control: Leveraging chameleon hash and multi-authority attribute-based encryption"
+venue = "High-Confidence Computing 4(1), 2024"
+doi = "10.1016/j.hcc.2023.100168"
+experiments = [2]
+grounded = "table-iv"
+classical_sig = true
+validate = "sig"
+authorize = "maabe_threshold"
+adapt = "central"
+audit = ""
+onchain = "hash"
+note = "Authorization cost TODO-VERIFY. PDF missing."
+
+[schemes.B-ref17]
+key = "wang2024"
+label = "Wang et al. [17]"
+ref = 17
+title = "A Redactable Blockchain Scheme Supporting Quantum-Resistance and Trapdoor Updates"
+venue = "Applied Sciences 14(2), 2024"
+doi = "10.3390/app14020832"
+experiments = [1, 5]
+grounded = "table-iv"
+classical_sig = false
+validate = "sig"
+authorize = "none"
+adapt = "central"
+audit = ""
+onchain = "hash"
+note = "Already post-quantum. PDF missing."
+
+[schemes.B-ref20]
+key = "miao2026"
+label = "Miao et al. [20]"
+ref = 20
+title = "A Verifiable and Redactable Blockchain with Lightweight Storage and Permission Supervision"
+venue = "Information 17(2), 2026"
+doi = "10.3390/info17020176"
+experiments = [3, 4]
+grounded = "table-iv"
+classical_sig = true
+validate = "sig"
+authorize = "none"
+adapt = "central"
+audit = "light"
+onchain = "hash"
+note = "Audit model TODO-VERIFY. PDF missing."
+
+[schemes.B-ref33]
+key = "xue2026_mainaux"
+label = "Xue et al. [33]"
+ref = 33
+title = "A Controllable, Publicly Auditable, and Redactable Blockchain With a Main-Auxiliary Architecture"
+venue = "IEEE TDSC 23(2), 2026"
+doi = "10.1109/TDSC.2025.3620854"
+experiments = [1, 3, 4, 5]
+grounded = "table-iv"
+classical_sig = true
+validate = "policy+sig"
+authorize = "policy"
+adapt = "central"
+audit = "sig_hash"
+onchain = "hash+sig"
+note = "PDF missing (not to be confused with S4 = J. Xue [34])."

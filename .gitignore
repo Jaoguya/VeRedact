@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+# benchmark outputs are regenerated; keep the folders
+results/*
+!results/.keep-results
+plot/*
+!plot/.keep-plot

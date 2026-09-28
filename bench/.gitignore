@@ -1,6 +1,0 @@
-.venv/
-results/
-figures/
-__pycache__/
-*.pyc
-.pytest_cache/
