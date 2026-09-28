@@ -43,7 +43,7 @@ VeRedact configs: (i) λ 50–1000 req/s · (ii) locality k 1–32 · (iii) comm
 | Jia DCH | ✗ | ✗ | ✓ | ✗ | Collision per party vs. t = 5…45 (flat, 0.23–14 ms by curve); one redaction per block only |
 | Improved DCH | ✗ | ✗ | ✓ | ✗ | Same as above |
 | ETCH | ✗ | ✗ | ✓ | ✗ | **End-to-end redaction < 0.38 s** at 33 redactors, RTT 300 ms (Fig. 6); Adapt vs. t = 3…33 |
-| EAQ-VRBC / VRBC | ✗ | ✗ | ✗ | △ | Redact compute vs. #tx/block (2–16 ms); single trusted SM, no committee |
+| EAQ-VRBC / VRBC | ✗ | ✗ | ✗ | ✗ | Redact compute vs. #tx per block 50–500 (EAQ/AMVA17 ~2–4.5 ms, VRBC ~12–16 ms); single trusted SM, no committee |
 | REBS | ✗ | ✗ | ✗ | ✗ | ChCld (Adapt) cost vs. #attributes only |
 
 - **Action:** re-implement ETCH / DCH / REBS redaction paths on the Besu testbed to get λ-sweep numbers; none can be taken from the papers.
@@ -57,7 +57,7 @@ VeRedact stages: admission/SA-RLI lookup · requester signature · policy valida
 |:---|:---:|:---:|:---:|:---:|:---:|:---|
 | Jia DCH | ✓ (tx sigs checked) | ✗ | ✗ | ✓ (t-of-n approval + shares) | ✗ | Collision share cost vs. t |
 | Improved DCH | — | ✗ | ✗ | ✓ | ✗ | Collision share cost vs. t |
-| ETCH | ✓ (DS on hash) | ✗ | ✗ | ✓ (t-of-n, CA aggregation) | ✗ | Adapt vs. t; KeyUpt |
+| ETCH | △ (initiator's DS on the chameleon hash, checked at tx verification; no signed redaction request) | ✗ | ✗ | ✓ (t-of-n, CA aggregation) | ✗ | Adapt vs. t; KeyUpt |
 | EAQ-VRBC / VRBC | ✗ | ✗ | ✗ | ✗ (trusted SM) | ✗ | — |
 | REBS | ✓ ($Sig_{AMC}$ pairing check) | **✓** (LSSS policy + attribute keys) | ✗ | △ (multi-authority AVNs, not signing) | ✗ | AttrKeyGen / ChCld / Delegate vs. #attributes |
 
@@ -79,6 +79,7 @@ VeRedact metrics: RAI insertion · epoch checkpoint · query resolution · evide
 | REBS | ✗ | ✗ | ✗ | ✗ | — |
 
 - **Direct match:** EAQ-VRBC's "#challenged blocks 50–500" ≈ VeRedact's $\lvert\mathcal{R}_{Q_j}\rvert$ 1–500.
+- **Index-size proxy:** EAQ-VRBC/VRBC query cost vs. queried block index 100–51,100 is the closest counterpart to VeRedact's RAI size sweep ($10^3$–$10^6$); EAQ-VRBC query gen stays flat (~1.2–2 ms), VRBC grows 28→158 ms.
 - **Query types:** EAQ-VRBC/VRBC support only integrity + freshness-style queries; authorization/policy/scope queries are VeRedact-only.
 
 ### Exp 4 — Verification Time
@@ -96,6 +97,7 @@ VeRedact: normal vs. deep audit; result size 1–500; distinct batches 1–100; 
 
 - **All schemes** can join the "single redaction verification" comparison.
 - **Only EAQ-VRBC / VRBC** can be compared on result-size sweeps.
+- **Shared-evidence analogue:** EAQ-VRBC aggregates non-membership witnesses and batch-verifies them (Alg. 2–3), comparable in spirit to VeRedact verifying shared ABRRR evidence once per batch ($\lvert\Omega^B_{Q_j}\rvert$ sweep).
 
 ### Exp 5 — Blockchain Gas Consumption
 
