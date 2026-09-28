@@ -1,6 +1,6 @@
 ---
 name: veredact
-description: Repository conventions for the VeRedact-PQ paper project — where every file lands (scheme PDFs, converted full texts, summaries, manuscript, benchmark code, results, plots, configs), how files are named so nothing collides, and the workflows for adding a scheme, syncing the manuscript .md from the .tex, and running the benchmark. Use whenever adding, converting, moving, or generating files in this repo.
+description: Repository conventions for the VeRedact-PQ paper project — where every file lands (scheme PDFs, converted full texts, summaries, manuscript, harness code, baseline implementations, results, plots, configs), how files are named so nothing collides, the evaluation rules (real execution, no hardcoded values, one config), and the workflows for adding a scheme or baseline, syncing the manuscript .md from the .tex, and running experiments. Use whenever adding, converting, moving, or generating files in this repo.
 ---
 
 # VeRedact repository skill
@@ -10,46 +10,71 @@ description: Repository conventions for the VeRedact-PQ paper project — where 
 ```
 VeRedact/
 ├── README.md                     the ONLY README in the repo
+├── TASK.md                       status, open decisions, what blocks the full run
+├── Makefile                      venv build-zk test fidelity-check smoke pilot experiments exp1..5 plots
 ├── .claude/skills/veredact/SKILL.md   this file (the only SKILL.md)
 ├── config/
-│   ├── schemes.toml              global registry: one [schemes.<id>] per scheme
-│   └── benchmark.toml            all benchmark parameters (Table VII + sweeps + [TBD] values)
+│   ├── smoke.toml pilot.toml experiment.toml   ALL experiment parameters; identical keys; markers
+│   ├── schemes.toml              scheme metadata + [schemes.S<ref>.reproduction] (paper's own figures)
+│   └── aws.toml                  server, Besu image/key, S3, idle shutdown (no credentials)
 ├── overleaf/
 │   ├── VeRedact.tex              manuscript source (edited in Overleaf)
 │   └── VeRedact.md               generated from the .tex — never hand-edit
 ├── Scheme/
-│   └── S<n>_ref<NN>_<Author><Year>_<Short>/   one folder per paper we hold
+│   └── S<ref>_<Author><Year>_<Short>/   one folder per paper we hold
 │       ├── <original paper title>.pdf
-│       ├── S<n>_fulltext.md              marker full text (LaTeX math/tables)
-│       ├── S<n>_fulltext_pdftotext.md    plain-text fallback
-│       ├── S<n>_summary.md               structured summary
-│       └── S<n>_figures/                 figures extracted from the PDF
-├── benchmark/                    evaluation harness (Python package veredact_bench, tests, contracts, scripts)
-├── results/                      benchmark CSV output (+ exp5_chainlog.json)
-├── plot/                         figures rendered from results/ (names match \includegraphics in the .tex)
+│       ├── S<ref>_fulltext.md              marker full text (LaTeX math/tables)
+│       ├── S<ref>_fulltext_pdftotext.md    plain-text fallback
+│       ├── S<ref>_summary.md               structured summary
+│       └── S<ref>_figures/                 figures extracted from the PDF
+├── benchmark/
+│   ├── veredact_bench/           scheme.py (contract) registry.py dataset.py anchor.py results.py
+│   │   ├── crypto/ ds/ protocol/ VeRedact-PQ (ML-DSA-65, SIS-PQCH, STARK wrapper; Merkle/indexes; Phases 1-6)
+│   │   └── experiments/          exp1..exp5 runners + common.py
+│   ├── pqzk_stark/               Rust crate (winterfell) -> Python module vrpq_stark
+│   ├── contracts/                VeRedactRegistry.sol + BaselineRedactionLog
+│   └── tests/                    test_core.py, test_fidelity.py
+├── experiment/
+│   ├── scheme_common.py
+│   └── S<ref>_<Short>/           s<ref>_scheme.py s<ref>_baseline.py s<ref>_run.py s<ref>_test.py
+├── deploy/
+│   ├── aws/                      provision_ec2.sh launch_run.sh fetch_results.sh teardown_ec2.sh aws_config.py
+│   ├── server/                   bootstrap_server.sh idle_watchdog.sh
+│   ├── besu/                     start/stop_besu_network.sh (QBFT validators + tc netem)
+│   └── experiments/              run_experiments.sh <tier> [exps]
+├── results/                      <exp>/<run_id>/{rows.csv,manifest.json}; S<ref>_*.csv (paper runners)
+├── plot/                         figures (names match \includegraphics in the .tex)
 ├── tools/                        conversion scripts (pdf->md, tex->md, marker, tidy)
-└── docs/                         project documentation (benchmark.md, capability-matrix.md)
+└── docs/                         experiments.md, baselines/S<ref>-<short>.md, paper-conformance.md, aws-runbook.md
 ```
 
 ## 2. Where each file lands
 
 | File | Destination | Name |
 |:--|:--|:--|
-| New scheme / baseline paper PDF | `Scheme/S<n>_ref<NN>_<Author><Year>_<Short>/` | keep the original PDF file name |
-| Its marker full text | same folder | `S<n>_fulltext.md` |
-| Its pdftotext fallback | same folder | `S<n>_fulltext_pdftotext.md` |
-| Its structured summary | same folder | `S<n>_summary.md` |
-| Its extracted figures | `…/S<n>_figures/` | `S<n>_page_<p>_<Kind>_<k>.jpeg` |
-| Its metadata + workflow | `config/schemes.toml` | new `[schemes.S<n>]` table |
+| New scheme / baseline paper PDF | `Scheme/S<ref>_<Author><Year>_<Short>/` | keep the original PDF file name |
+| Its marker full text | same folder | `S<ref>_fulltext.md` |
+| Its pdftotext fallback | same folder | `S<ref>_fulltext_pdftotext.md` |
+| Its structured summary | same folder | `S<ref>_summary.md` |
+| Its extracted figures | `…/S<ref>_figures/` | `S<ref>_page_<p>_<Kind>_<k>.jpeg` |
+| Its metadata + own-evaluation parameters | `config/schemes.toml` | `[schemes.S<ref>]` + `[schemes.S<ref>.reproduction]` |
+| Its implementation | `experiment/S<ref>_<Short>/` | `s<ref>_scheme.py` (construction), `s<ref>_baseline.py` (Scheme adapter), `s<ref>_run.py` (paper's figures), `s<ref>_test.py` |
+| Its comparison parameters | `config/{smoke,pilot,experiment}.toml` | `[baselines.S<ref>]`, every value with a marker |
+| Its boundaries / deviations / fidelity checklist | `docs/baselines/` | `S<ref>-<short>.md` |
 | Manuscript source | `overleaf/VeRedact.tex` | — |
 | Manuscript Markdown | `overleaf/VeRedact.md` | generated by `tools/tex2md.py` |
 | Manuscript figures (system model, Merkle, etc.) | `overleaf/` next to the .tex | names used in `\includegraphics` |
-| Benchmark parameter change | `config/benchmark.toml` | never hard-code in Python |
-| Benchmark code | `benchmark/veredact_bench/<area>/` | `crypto/`, `ds/`, `protocol/`, `baselines/` |
-| Tests | `benchmark/tests/` | `test_<topic>.py` |
+| Experiment parameter change | all three `config/<tier>.toml` (identical keys) | marker + rationale; never a literal or `cfg.get(k, default)` in code |
+| Harness code | `benchmark/veredact_bench/<area>/` | `crypto/`, `ds/`, `protocol/`, `experiments/` |
+| Tests | `benchmark/tests/` | `test_<topic>.py`; fidelity (negative) tests in `test_fidelity.py` |
 | Solidity contracts | `benchmark/contracts/` | `<Name>.sol` |
-| One-off benchmark scripts (Besu, deployment) | `benchmark/scripts/` | verb-first, e.g. `measure_gas_besu.py` |
-| Experiment CSV / JSON output | `results/` | `exp<k>_<what>.csv` (written by the harness) |
+| Cloud provisioning (AWS CLI) | `deploy/aws/` | verb-first, `*_ec2.sh` |
+| Server setup | `deploy/server/` | `bootstrap_server.sh` |
+| Blockchain network scripts | `deploy/besu/` | `start_/stop_besu_network.sh` |
+| Experiment start script | `deploy/experiments/run_experiments.sh` | one script, tier + experiments as arguments |
+| Server / network settings | `config/aws.toml` | never put credentials in the repo |
+| Generated deploy state | `deploy/aws/.instance`, `deploy/besu/.network/` | gitignored |
+| Experiment output | `results/<exp>/<run_id>/` | `rows.csv` + `manifest.json` (written by `RunWriter`) |
 | Experiment figures | `plot/` | `exp<k>_<what>.png` = the .tex figure name |
 | Conversion / maintenance scripts | `tools/` | verb or pipeline name, e.g. `tex2md.py` |
 | Documentation | `docs/` | `<topic>.md` — never `README.md` |
@@ -57,13 +82,12 @@ VeRedact/
 
 Placement rules:
 - **No colliding names.** Exactly one `README.md` (root) and one `SKILL.md` (here). Per-scheme files carry
-  the `S<n>_` prefix so no two files in the repo share a name.
-- **Scheme numbering follows manuscript reference order**: S1 = [1], S2 = [13], S3 = [27], S4 = [34]. A
-  new paper gets the next free `S<n>` and a folder named with its ref number (`ref05`, `ref17`, …). If the
-  bibliography is renumbered, rename the folders and update `config/schemes.toml`.
-- A baseline used in experiments whose PDF we do **not** hold is registered as `[schemes.B-ref<NN>]` with
-  `grounded = "table-iv"`. When its PDF arrives, convert it (§3.1) and rename the entry to `S<n>`
-  (keep its `key`, set `folder`, `fulltext`, `summary`, `grounded = "pdf"`).
+  the `S<ref>_` prefix so no two files in the repo share a name.
+- **Scheme id = manuscript reference number**: S1 = [1], S13 = [13], S27 = [27], S34 = [34]. A new paper
+  for `\bibitem{ref17}` becomes `S17` in folder `Scheme/S17_<Author><Year>_<Short>/`. If the bibliography
+  is renumbered, rename the folder, its `S<ref>_` file prefixes and figure names, and the
+  `config/schemes.toml` entry.
+- Only papers we hold are baselines. A baseline is never modelled from a table row: no PDF, no baseline.
 - Don't keep duplicate PDFs: before adding one, compare `shasum -a 256` with the PDFs already in `Scheme/`.
 - Generated files (`overleaf/VeRedact.md`, `results/*`, `plot/*`) are outputs — regenerate, don't hand-edit.
 
@@ -72,37 +96,54 @@ Placement rules:
 ### 3.1 Add a scheme paper
 1. Check it isn't already present (hash compare) and find its `\bibitem{refNN}` in `overleaf/VeRedact.tex`.
 2. Convert (LaTeX math and tables; ~25–30 min per 10 pages):
-   `tools/marker_convert.sh <paper.pdf> Scheme/S<n>_ref<NN>_<Author><Year>_<Short> S<n>`
+   `tools/marker_convert.sh <paper.pdf> Scheme/S<ref>_<Author><Year>_<Short> S<ref>`
    Fast fallback without math: `python3 tools/pdf2md_pdftotext.py <pdf_dir> <out_dir>`.
 3. Audit the output: every section present, word count close to the pdftotext version, and every
    algorithm/table checked against the PDF. Marker's model sometimes garbles algorithms and tables;
    re-type those from the page image and add a note `> … transcribed by hand from the PDF (page p)`.
-4. Write `S<n>_summary.md`: metadata table, abstract, problem, contributions, system/threat model,
+4. Write `S<ref>_summary.md`: metadata table, abstract, problem, contributions, system/threat model,
    construction, security, evaluation setup + result tables, limitations relative to VeRedact-PQ.
-5. Add `[schemes.S<n>]` to `config/schemes.toml` (ref, bibliographic fields, folder, files,
-   `experiments`, workflow fields, `grounded = "pdf"`, note).
-6. Update `docs/capability-matrix.md`.
+5. Add `[schemes.S<ref>]` to `config/schemes.toml` (ref, bibliographic fields, folder, files,
+   `experiments`, `implementation`, `boundaries`).
+
+### 3.1b Make it a baseline (same method as the conference artefact ZK-Redact)
+1. `experiment/S<ref>_<Short>/s<ref>_scheme.py`: the paper's construction at its own instantiation; every
+   deviation named in the module docstring.
+2. `s<ref>_baseline.py`: a `Scheme` subclass. Implement only what the paper defines; anything else raises
+   `NotSupported`. `capabilities()` must be true to the code; `auth_cost()` counts what authorize does.
+3. Register it in `benchmark/veredact_bench/registry.py` and in the `systems` lists of the experiments it
+   enters (all three config tiers); parameters in `[baselines.S<ref>]` at 128-bit classical security.
+4. `s<ref>_run.py` reproduces the paper's own figures from `[schemes.S<ref>.reproduction]`.
+5. Tests: `s<ref>_test.py` (construction) + a case in `benchmark/tests/test_fidelity.py`.
+6. `docs/baselines/S<ref>-<short>.md`: role per experiment, boundaries, deviations with bias direction,
+   not implemented, fidelity checklist. Update `docs/paper-conformance.md` if Table I disagrees.
 
 ### 3.2 Sync the manuscript Markdown
 `python3 tools/tex2md.py overleaf/VeRedact.tex overleaf/VeRedact.md`
 Revision colours: `\textcolor{purple}` / `{\color{purple}…}` = superseded (dropped);
 blue / red = current (kept, colour removed). Equations are renumbered after dropping purple ones.
 
-### 3.3 Run the benchmark
+### 3.3 Run the experiments
 ```
-cd benchmark
-python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest -q
-.venv/bin/python -m veredact_bench all --quick     # smoke run -> ../results/
-.venv/bin/python -m veredact_bench exp1 exp2       # full runs
-.venv/bin/python -m veredact_bench.plot            # ../results/*.csv -> ../plot/*.png
+make venv build-zk test                    # once: Python 3.12 venv, Rust STARK module, tests
+make smoke                                 # all experiments, config/smoke.toml
+make exp2 CONFIG=config/pilot.toml         # one experiment, any tier (gated by validate-config)
+make capabilities plots paper-runs
 ```
-Details, stand-ins and modelling limits: `docs/benchmark.md`.
+Rules, boundaries and limits: `docs/experiments.md`. Never run the experiment tier locally: it requires
+Besu and the liboqs backend.
+
+### 3.4 Run on AWS
+`deploy/aws/provision_ec2.sh` → `deploy/aws/launch_run.sh <smoke|pilot|experiment> [exps]` (detached,
+idle watchdog) → `deploy/aws/fetch_results.sh` → `deploy/aws/teardown_ec2.sh`. Every step costs money:
+confirm with the user first.
+Credentials come from the AWS CLI profile in `config/aws.toml`; full runbook: `docs/aws-runbook.md`.
 
 ## 4. Environment notes
 - marker lives in `~/.venvs/marker` (Python 3.12). It is locally patched so that HTML blocks with
   unclosed tags (e.g. a missing `</table>` after an algorithm) no longer swallow the rest of the paper;
   originals are kept as `*.orig` in `marker/schema/blocks/`. Balanced mode needs `brew install llama.cpp`.
-- ML-DSA-65 comes from the `pqcrypto` wheel; the paper's liboqs backend is used automatically when
-  `liboqs-python` is installed (`VRPQ_SIG_BACKEND=oqs`).
+- ML-DSA-65: liboqs on the server (required by the experiment tier); `pqcrypto` fallback on the laptop
+  (~8.7 ms per sign — smoke numbers are plumbing checks only).
+- The STARK module needs Rust (`brew install rust` / rustup) and `make build-zk`.
 - The repo is public on GitHub and the scheme PDFs/full texts are IEEE-licensed to Thammasat University.

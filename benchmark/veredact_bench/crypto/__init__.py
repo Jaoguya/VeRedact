@@ -1,30 +1,33 @@
-"""Crypto facade: one object bundling the primitives, with per-operation counters and timers.
+"""Crypto facade for VeRedact-PQ: real primitives only, with per-operation counters and timers.
 
-Counter names follow the cost-analysis notation (Table III/IV of the paper):
-  T_S, T_V (PQ sign/verify) · T_Sc, T_Vc (classical) · T_ZP, T_ZV (PQZK) · T_CH (PQCH hash)
-  T_PA, T_CB (PQCH partial adapt / combine) · T_AD (centralized adapt) · T_H · T_PRF · T_Pol
+Counter names follow the manuscript's cost notation (Table III):
+  T_S, T_V (ML-DSA-65 sign/verify) · T_ZP, T_ZV (STARK prove/verify) · T_CH (PQCH hash)
+  T_PA, T_CB (PQCH partial adaptation / combination) · T_H (SHA3-256) · T_PRF (HMAC-SHA3-256)
+The counts let every measured number be reconciled against the analytical Table IV.
 """
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 
 from . import hashing
-from .pqch import LinearThresholdCH
-from .pqsig import Ed25519, load_pqsig
-from .pqzk import SimulatedSTARK, burn
+from .pqch_sis import SISChameleonHash, default_params
+from .pqsig import load_pqsig
+from .pqzk_stark import PolicySTARK, ZKParams
 
 
 class Crypto:
-    def __init__(self, sig_backend=None, zk=None, ch_dim=256, classical_sigs=False, policy_ms=4.0):
-        self.sig = Ed25519() if classical_sigs else load_pqsig(sig_backend)
-        self.pq = not classical_sigs
-        self.zk = zk or SimulatedSTARK()
-        self.ch = LinearThresholdCH(dim=ch_dim)
-        self.policy_ms = policy_ms  # T_Pol stand-in (policy-based CH authorization, e.g. ABE decryption)
+    def __init__(self, cfg: dict, requesters: int):
+        sec = cfg["security"]
+        self.sig = load_pqsig()
+        ch = sec["pqch"]
+        self.ch = SISChameleonHash(default_params(n=ch["n"], k=ch["k"], sigma_R=ch["sigma_R"],
+                                                  sigma_g=ch["sigma_g"]), seed=cfg["meta"]["seed"])
+        z = sec["pqzk"]
+        self.zk = PolicySTARK(ZKParams(z["queries"], z["blowup"], z["grinding_bits"], z["registry_depth"]),
+                              requesters, cfg["meta"]["seed"])
         self.counts: Counter = Counter()
         self.time_s: defaultdict = defaultdict(float)
 
-    # ---- accounting ------------------------------------------------------
     @contextmanager
     def _op(self, name):
         t = time.perf_counter()
@@ -41,7 +44,7 @@ class Crypto:
     def snapshot(self):
         return dict(self.counts), {k: v * 1000 for k, v in self.time_s.items()}
 
-    # ---- hashing / PRF ---------------------------------------------------
+    # ---- hashing / PRF ---------------------------------------------------------------------------
     def H(self, *p):
         self.counts["T_H"] += 1
         return hashing.H(*p)
@@ -62,48 +65,47 @@ class Crypto:
         self.counts["T_PRF"] += 1
         return hashing.PRF(key, *p)
 
-    # ---- signatures ------------------------------------------------------
+    # ---- ML-DSA-65 -------------------------------------------------------------------------------
     def keygen(self):
         return self.sig.keygen()
 
     def sign(self, sk, msg):
-        with self._op("T_S" if self.pq else "T_Sc"):
+        with self._op("T_S"):
             return self.sig.sign(sk, msg)
 
     def verify(self, pk, msg, sig):
-        with self._op("T_V" if self.pq else "T_Vc"):
+        with self._op("T_V"):
             return self.sig.verify(pk, msg, sig)
 
-    # ---- PQZK ------------------------------------------------------------
-    def zk_prove(self, params, x, w, relation):
+    # ---- STARK -------------------------------------------------------------------------------------
+    def zk_prove(self, requester, x, secret_override=None):
         with self._op("T_ZP"):
-            return self.zk.prove(params, x, w, relation)
+            return self.zk.prove(requester, x, secret_override)
 
-    def zk_verify(self, params, x, proof):
+    def zk_verify(self, requester, x, proof):
         with self._op("T_ZV"):
-            return self.zk.verify(params, x, proof)
+            return self.zk.verify(requester, x, proof)
 
-    # ---- PQCH ------------------------------------------------------------
+    # ---- PQCH (SIS / MP12, distributed) -------------------------------------------------------------
     def ch_hash(self, pk, msg, r):
         with self._op("T_CH"):
             return self.ch.hash(pk, msg, r)
 
-    def ch_part_adapt(self, td, msg, r, msg_new, ctx=b""):
+    def ch_verify(self, pk, ch, msg, r):
+        with self._op("T_CH"):
+            return self.ch.verify(pk, ch, msg, r)
+
+    def ch_begin_adapt(self, pk, msg, r, msg_new):
+        with self._op("T_CB_prep"):  # combiner-side perturbation + SampleG (reported with T_CB)
+            return self.ch.begin_adapt(pk, msg, r, msg_new)
+
+    def ch_part_adapt(self, share, z):
         with self._op("T_PA"):
-            return self.ch.part_adapt(td, msg, r, msg_new, ctx)
+            return self.ch.part_adapt(share, z)
 
-    def ch_combine(self, shares, r):
+    def ch_combine(self, pert, z, deltas):
         with self._op("T_CB"):
-            return self.ch.combine(shares, r)
-
-    def ch_adapt(self, T, msg, r, msg_new):
-        with self._op("T_AD"):
-            return self.ch.adapt(T, msg, r, msg_new)
-
-    # ---- policy-based authorization stand-in (baselines' T_Pol) -----------
-    def policy_auth(self):
-        with self._op("T_Pol"):
-            burn(self.policy_ms)
+            return self.ch.combine(pert, z, deltas)
 
 
 __all__ = ["Crypto", "hashing"]

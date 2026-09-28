@@ -2,7 +2,6 @@
 import hashlib
 import hmac
 
-DIGEST_SIZE = 32  # |h| in bytes
 
 
 def _enc(parts):

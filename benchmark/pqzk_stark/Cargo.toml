@@ -1,0 +1,19 @@
+[package]
+name = "vrpq_stark"
+version = "0.1.0"
+edition = "2021"
+description = "Transparent STARK (winterfell) for the VeRedact-PQ PQZK policy relation, exposed to Python"
+license = "MIT"
+
+[lib]
+name = "vrpq_stark"
+crate-type = ["cdylib"]
+
+[dependencies]
+winterfell = { version = "0.13", features = ["concurrent"] }
+winter-utils = { version = "0.13", package = "winter-utils" }
+pyo3 = { version = "0.25", features = ["extension-module", "abi3-py312"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

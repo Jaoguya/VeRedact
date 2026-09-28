@@ -1,6 +1,10 @@
 numpy>=2.0
-pqcrypto>=1.0
+pqcrypto>=1.0                 # ML-DSA-65 fallback backend (laptop); the experiment tier requires liboqs
 cryptography>=42
+gmpy2>=2.2                    # S1/S13/S34 RSA arithmetic (accumulators, CHET)
+coincurve>=21                 # S1/S27 secp256k1
+py_arkworks_bls12381>=0.5     # S1/S34 BLS12-381 pairings
 matplotlib>=3.8
 pytest>=8
-# optional: liboqs-python (paper backend), web3 + py-solc-x (Besu gas replay)
+maturin>=1.8                  # builds benchmark/pqzk_stark (vrpq_stark module): see Makefile build-zk
+# server extras (bootstrap_server.sh): liboqs-python (ML-DSA-65, the paper's library), web3 + py-solc-x (Besu)

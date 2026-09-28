@@ -1,0 +1,39 @@
+"""Exp. 4 — verification time, auditor side (manuscript Fig. 6), with fault injection.
+
+History as in Exp. 3 (VeRedact-PQ submitted in batches of veredact.fixed_batch). Per n_Q, level and
+injected fraction f: a seeded f * n_Q of the returned records are tampered (modified content,
+substituted evidence, stale version — cycled), the auditor verifies, and every record's decision is
+written. f = 0 (no injection) is always run: it is the clean verification time.
+Levels: VeRedact-PQ distinguishes normal/deep; a baseline whose audit has one level runs it for both and
+the row says so (level_supported = 0). S13 decides for the whole query (one bad record rejects all):
+that shows up here as false rejections, which is the protocol's real behaviour.
+"""
+import random
+
+from ..scheme import AuditQuery
+from .exp3 import histories, query_rows
+
+KINDS = ("modified", "substituted", "stale")
+
+
+def run(cfg, out):
+    x = cfg["experiments"]["exp4"]
+    for key, rpb, s, counts, ds in histories(cfg, "exp4", [cfg["veredact"]["fixed_batch"]]):
+        def specs(s, n):
+            for level in x["levels"]:
+                for f in [0.0, *x["inject_fractions"]]:
+                    rng = random.Random(cfg["meta"]["seed"] + n)
+                    idx = rng.sample(range(n), round(f * n))
+                    tamper = {i: KINDS[j % len(KINDS)] for j, i in enumerate(sorted(idx))}
+                    yield dict(query=AuditQuery(n, deep=level == "deep", tamper=tamper), level=level, f=f)
+
+        for base, spec, rep, res in query_rows(cfg, out, "exp4", key, rpb, s, counts, ds, x["n_Q"], specs):
+            t = spec["query"].tamper
+            acc = res.accepted
+            out.row(**base, status="ok", rep=rep, level=spec["level"], level_supported=int(key.startswith("veredact")),
+                    inject_fraction=spec["f"], injected=len(t), verify_ms=res.verify_ms, retrieval_ms=res.retrieval_ms,
+                    detected=sum(1 for i in t if not acc.get(i, False)),
+                    false_rejections=sum(1 for i, ok in acc.items() if not ok and i not in t),
+                    semantics=res.semantics)
+        print(f"  {key:28s} history={counts}", flush=True)
+        s.teardown()

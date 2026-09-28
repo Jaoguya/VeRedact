@@ -1,4 +1,4 @@
-"""PQSIG (ML-DSA-65, FIPS 204) plus a classical Ed25519 scheme for the 'original classical instantiation' runs (Exp. 4).
+"""PQSIG: ML-DSA-65 (FIPS 204). Baselines use their own papers' signatures (ECDSA secp256k1 in experiment/S*).
 
 Backends, selected by VRPQ_SIG_BACKEND (default: auto):
   pqcrypto  - ML-DSA-65 via the `pqcrypto` wheel (works out of the box)
@@ -100,37 +100,6 @@ class SimulatedSig(SignatureScheme):
     def verify(self, pk, msg, sig):
         sk = self._registry.get(pk)
         return sk is not None and hmac.compare_digest(sig[:32], hmac.new(sk, msg, hashlib.sha3_256).digest())
-
-
-class Ed25519(SignatureScheme):
-    """Classical signature used for the baselines' original instantiations (|sigma^c| = 64 B)."""
-
-    name = "Ed25519"
-    sig_size = 64
-
-    def __init__(self):
-        from cryptography.hazmat.primitives import serialization
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-
-        self._ed, self._ser = ed25519, serialization
-
-    def keygen(self):
-        sk = self._ed.Ed25519PrivateKey.generate()
-        raw = self._ser.Encoding.Raw
-        return KeyPair(
-            sk.public_key().public_bytes(raw, self._ser.PublicFormat.Raw),
-            sk.private_bytes(raw, self._ser.PrivateFormat.Raw, self._ser.NoEncryption()),
-        )
-
-    def sign(self, sk, msg):
-        return self._ed.Ed25519PrivateKey.from_private_bytes(sk).sign(msg)
-
-    def verify(self, pk, msg, sig):
-        try:
-            self._ed.Ed25519PublicKey.from_public_bytes(pk).verify(sig, msg)
-            return True
-        except Exception:
-            return False
 
 
 def load_pqsig(backend: str | None = None) -> SignatureScheme:

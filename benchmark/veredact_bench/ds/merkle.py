@@ -109,17 +109,3 @@ def verify_multiproof(root: bytes, leaves: dict[int, bytes], proof: dict, depth:
             ops += 1
         level = nxt
     return level.get(0) == root, ops
-
-
-def proof_size(proof) -> int:
-    return 32 * (len(proof) if not isinstance(proof, dict) else len(proof))
-
-
-@dataclass
-class MultiProof:
-    siblings: dict
-    depth: int
-
-    @property
-    def nbytes(self) -> int:
-        return 32 * len(self.siblings)

@@ -6,7 +6,7 @@ Cuckoo filter CF_s (same screening semantics: negatives authoritative only when 
 """
 from dataclasses import dataclass, field
 
-from ..crypto.hashing import H, H1, H2, HA, to_int
+from ..crypto.hashing import H, H1, HA, to_int
 from .merkle import MerkleTree
 
 
@@ -43,21 +43,17 @@ class Shard:
 class ShardedIndex:
     """Generic sharded authenticated index; `shard_fn` maps a token to its shard id."""
 
-    def __init__(self, S: int, shard_hash, buckets: int = 1024):
+    def __init__(self, S: int, shard_hash):
         self.S = S
-        self.B = buckets
         self.shard_hash = shard_hash
         self.shards = [Shard() for _ in range(S)]
-        self.filters = [set() for _ in range(S)]  # stand-in for Cuckoo filters CF_s
+        self.filters = [set() for _ in range(S)]  # exact membership sets in place of Cuckoo filters CF_s (docs/paper-conformance.md §3)
         self.snapshot = 0
         self.global_tree: MerkleTree | None = None
         self._dirty: set[int] = set()
 
     def sid(self, token: bytes) -> int:
         return to_int(self.shard_hash(token)) % self.S
-
-    def bid(self, token: bytes) -> int:
-        return to_int(H2(token)) % self.B
 
     def put(self, token: bytes, entry: bytes):
         s = self.sid(token)

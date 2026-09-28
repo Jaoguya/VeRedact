@@ -50,6 +50,7 @@ class Request:  # R_i plus requester-side material sent alongside
     sigma_R: bytes = b""
     x: bytes = b""
     proof: bytes = b""
+    v_b: int = -1  # batch version the requester proved against (public, read from the checkpoint A_b)
     tamper: str = ""  # workload fault injection: "", "sig", "zk", "policy", "stale", "replay", "absent"
     aux: dict = field(default_factory=dict)  # scheme-specific requester-side material
 

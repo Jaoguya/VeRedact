@@ -1,0 +1,194 @@
+# =============================================================================
+# VeRedact-PQ — shared experiment configuration (PILOT tier: resolve saturation points and measure variance to set repetitions)
+# =============================================================================
+#
+# THE ONLY SOURCE OF PARAMETERS. VeRedact-PQ and all four re-implemented baselines (S1 [1], S13 [13],
+# S27 [27], S34 [34]) read from this file. A numeric literal in code is a defect.
+#
+# Rules (see docs/experiments.md §0):
+#   1. Real execution only. No simulated timings, no analytical cost models, no extrapolation.
+#   2. No hardcoded values. Everything here, nothing in code.
+#   3. No magic numbers. Every value carries its rationale in a comment.
+#   4. One dataset, one request trace, one config, for all five systems.
+#   5. Reproducible. Same config + same seed -> same results; every run records both.
+#
+# MARKERS
+#   [DERIVED]  follows necessarily from a stated fact or constraint
+#   [METHOD]   follows from a stated measurement methodology
+#   [PROPOSED] defensible engineering choice with the reasoning given; change it, keep a rationale
+#   [MEASURED] an OUTPUT recorded after building/piloting, not chosen by hand
+#   [CONFIRM]  depends on intent this file cannot settle:   grep -n CONFIRM config/experiment.toml
+#
+# Tiers with identical keys: config/smoke.toml (seconds, laptop) -> config/pilot.toml (resolve sweep
+# bounds, measure variance) -> this file (paper numbers). `make validate-config CONFIG=...` gates all.
+# =============================================================================
+
+[meta]
+config_version = "1.0.0"
+tier = "pilot"
+# [METHOD] Drives dataset generation, request-trace order, committee selection, audit challenges and
+# fault injection. Vary only ACROSS repetitions, never between systems within one comparison.
+seed = 20260929
+# [CONFIRM] Repetitions per configuration point. The manuscript states "30 runs, 95% CI" (Table VII).
+# That is the digit; the derivation must come from the pilot: set this from the coefficient of
+# variation the pilot measures for the NOISIEST system (VeRedact-PQ's CPU-bound path), so the CI
+# half-width is small against the effects being compared. validate-config warns below 10.
+repetitions = 5
+
+[security]
+# [DERIVED] Manuscript Sec. Experimental Setup: "All primitives are selected for NIST post-quantum
+# security level 3" -> ML-DSA-65 (FIPS 204). Every primitive below is checked against this level.
+nist_level = 3
+signature = "ML-DSA-65"
+hash = "SHA3-256"              # [DERIVED] manuscript: H, H1, H2, H_A = domain-separated SHA3-256
+prf = "HMAC-SHA3-256"          # [DERIVED] manuscript
+prf_key_bits = 256             # [DERIVED] Phase 1: K_idx, K_A in {0,1}^{2 lambda}, lambda = 128
+
+[security.pqch]
+# [CONFIRM] SIS chameleon hash with MP12 gadget trapdoor (benchmark/veredact_bench/crypto/pqch_sis.py).
+# The manuscript leaves the construction as "[TBD: confirm construction]". n and k MUST be checked
+# with a lattice estimator for level 3 before any security claim; the values here size the cost.
+n = 256                        # [CONFIRM] SIS rows
+k = 16                         # [CONFIRM] q = 2^16
+sigma_R = 1.0                  # [PROPOSED] trapdoor width: ternary-like R, MP12 s1(R) ~ sigma (sqrt(mbar)+sqrt(nk))
+sigma_g = 3.0                  # [PROPOSED] gadget sampling width >= omega(sqrt(log n)) (MP12 §4)
+
+[security.pqzk]
+# [DERIVED] Manuscript: "transparent hash-based STARK proof system" (Phase 1 Step 6: trapdoor-free
+# setup). Implemented with winterfell 0.13 (benchmark/pqzk_stark), SHA3-256 commitments, f128 field
+# with quadratic extension.
+queries = 42                   # [PROPOSED] 42 queries x log2(blowup 8) = 126 bits query security +
+blowup = 8                     #            16 bits grinding ~ 128-bit conjectured soundness (ethSTARK)
+grinding_bits = 16
+registry_depth = 15            # [DERIVED] (depth + 1) must be a power of two (AIR trace length); 2^15
+                               # = 32,768 credential slots >= dataset.requesters
+
+[environment]
+# [PROPOSED] AWS EC2 host, one instance for the whole comparison (machine-to-machine variance must not be
+# confounded with run-to-run variance). Sized by CPU budget: 7 Besu validators (~1 vCPU each under load)
+# + load generator leave >= 8 vCPUs for the system under test at vps_workers = 8.
+instance_type = "c7i.4xlarge"
+vcpus = 16
+region = "ap-southeast-1"
+
+[ledger]
+# [METHOD] "real" = Hyperledger Besu QBFT (manuscript Sec. Experimental Setup). "in_process" = in-memory
+# ledger for smoke runs only; its LedgerTime is NOT consensus cost and validate-config errors on it in
+# the experiment tier.
+backend = "besu"
+validators = 7                 # [CONFIRM] manuscript: "[TBD]-validator Hyperledger Besu network"; one per org
+block_period_s = 2             # [PROPOSED] Besu QBFT default blockperiodseconds
+netem_delay_ms = 10            # [CONFIRM] manuscript: "[TBD] ms using Linux tc netem"
+rpc_url = "http://127.0.0.1:8545"
+
+[dataset]
+# [METHOD] One seeded corpus, materialised by every system into its own native form before timing.
+base_transactions = 20000     # [DERIVED] manuscript Table VII: ledger size 10^5
+payload_min_bytes = 256        # [DERIVED] manuscript: payloads 256 B to 4 KB
+payload_max_bytes = 4096
+leaves_per_batch = 256         # [DERIVED] manuscript Table VII: N = [256]
+requesters = 100               # [PROPOSED] registered requesters (<= 2^registry_depth)
+policies = 10                  # [PROPOSED] redaction policies
+organisations = 7              # [DERIVED] = ledger.validators (one validator per organisation)
+
+[workload]
+total_requests = 2000         # [METHOD] >= 100 samples in the top percentile at p99
+target_distribution = "zipf"   # [DERIVED] manuscript: Zipf targets over transaction batches
+zipf_s = 0.8                   # [DERIVED] manuscript Table VII default s = [0.8]
+arrival = "poisson"            # [DERIVED] manuscript: Poisson arrivals, rate varied per experiment
+bursty_on_s = 2.0              # [PROPOSED] on/off phases for ABRRR adaptation (manuscript "bursty")
+bursty_off_s = 2.0
+bursty_peak_factor = 4.0
+
+[veredact]
+committee_n = 7                # [DERIVED] manuscript Table VII n = [7]
+committee_t = 5                # [DERIVED] t = floor(2n/3) + 1 = 5, BFT-style majority
+B_min = 8                      # [DERIVED] manuscript Table VII
+B_max = 256                    # [DERIVED] manuscript Table VII
+T_max_ms = 500                 # [DERIVED] manuscript Table VII
+fixed_batch = 64               # [DERIVED] manuscript Exp. 1 Fixed-Batch variant [64]
+rli_shards = 16                # [DERIVED] manuscript Table VII S = [16]
+rai_shards = 16                # [DERIVED] manuscript Table VII S_A = [16]
+vps_workers = 8                # [PROPOSED] parallel VPS validation workers (<= vcpus / 2)
+
+[baselines.S1]
+# Li et al. [1] Improved DCH. Classical original instantiation; see docs/baselines/S1-improved-dch.md
+threshold_t = 5                # [DERIVED] = veredact.committee_t so threshold cost is compared at equal t
+nodes_n = 7                    # [DERIVED] = veredact.committee_n
+pairing = "BLS12-381"          # [DERIVED] >= 128-bit classical security (paper used PBC Type A/E/F, <128-bit)
+accumulator_rsa_bits = 3072    # [DERIVED] Jia chain RSA accumulator (consistency check) at 128-bit: 3072
+
+[baselines.S13]
+# Zhang et al. [13] EAQ-VRBC; see docs/baselines/S13-eaq-vrbc.md
+rsa_bits = 3072                # [DERIVED] 128-bit classical security (NIST SP 800-57); the paper used 2048 (112-bit)
+l_bits = 256                   # [PROPOSED] H1 output length (odd l-bit values, no hash-to-prime)
+miners = 7                     # [DERIVED] = dataset.organisations
+revoked_initial = 0            # [METHOD] revocation list grows with the trace, not pre-seeded
+
+[baselines.S27]
+# Liu et al. [27] ETCH; see docs/baselines/S27-etch.md
+threshold_t = 5                # [DERIVED] = veredact.committee_t
+redactors_n = 7                # [DERIVED] = veredact.committee_n
+curve = "secp256k1"            # [DERIVED] the paper's own instantiation (Sec. VII-B)
+
+[baselines.S34]
+# J. Xue et al. [34] REBS; see docs/baselines/S34-rebs.md
+rsa_bits = 3072                # [DERIVED] 128-bit classical (paper: RSA-1024)
+pairing = "BLS12-381"          # [DERIVED] prime-order translation of the paper's composite-order group
+policy_attributes = 10         # [PROPOSED] attributes l in the LSSS policy (paper sweeps 10..100)
+policy_threshold = 5           # [PROPOSED] t of the (t, l) LSSS threshold policy; = veredact.committee_t so
+                               # policy decryption and committee approval need the same number of parties
+
+# ----------------------------------------------------------------------------- experiments
+[experiments.exp1]
+# Redaction latency & throughput (Phases 3-5, submission -> finalized checkpoint). Manuscript Fig. 3.
+systems = ["veredact", "S1", "S13", "S27", "S34"]
+variants = ["per_request", "fixed_batch", "no_bimc"]
+rates = [100, 250, 500, 1000, 2000, 5000]   # [DERIVED] manuscript [100] .. [5,000] req/s
+zipf_sweep = [0.0, 0.4, 0.8, 1.2]           # [DERIVED] manuscript Exp. 1
+zipf_rate = 1000                            # [CONFIRM] fixed rate for the skew sweep (below saturation: set from pilot)
+duration_s = 20                             # [PROPOSED] steady-state window per point
+warmup_s = 10                               # [METHOD] discarded before measuring
+client_threads = 4             # [PROPOSED] requester threads that sign + prove (STARK prove releases the GIL);
+                               # enough that the offered rate is met, recorded as achieved_offered_rps
+saturation_tolerance = 0.10    # [PROPOSED] a system is saturated at a rate when decided/offered < 1 - tol;
+                               # higher rates for that system are skipped (a latency past saturation is queueing)
+drain_s = 15                   # [PROPOSED] after the window, wait this long for in-flight requests; the rest
+                               # are recorded as unfinished, never dropped silently
+
+[experiments.exp2]
+# Transaction authorization latency (Phase 4). Manuscript Fig. 4.
+systems = ["veredact", "S1", "S27", "S34"]  # S13 has no per-request authorization protocol (key possession only)
+committee_sizes = [4, 7, 10, 16, 32]        # [DERIVED] manuscript; t = floor(2n/3)+1
+batch_sizes = [1, 8, 32, 64, 128, 256]      # [DERIVED] manuscript
+variants = ["re_zk"]
+
+[experiments.exp3]
+# Audit efficiency (service side). Manuscript Fig. 5.
+systems = ["veredact", "S13", "S1"]         # only systems with an audit/consistency path
+n_Q = [10, 100, 1000]                # [DERIVED] manuscript
+records_per_batch = [1, 4, 16, 64]          # [DERIVED] manuscript 1 .. [64]
+variants = ["per_record_evidence"]
+
+[experiments.exp4]
+# Verification time (auditor side). Manuscript Fig. 6.
+systems = ["veredact", "S13", "S1"]
+n_Q = [10, 100, 1000, 10000]
+levels = ["normal", "deep"]
+inject_fractions = [0.01, 0.05, 0.10]       # [DERIVED] manuscript [1%-10%]
+
+[experiments.exp5]
+# Blockchain gas (Besu receipts only). Manuscript Fig. 7, Table VIII.
+systems = ["veredact", "S1", "S13", "S27", "S34"]
+batch_sizes = [1, 8, 32, 64, 128, 256]
+zipf_sweep = [0.0, 0.8]
+requests_per_point = 512       # [METHOD] multiple of max(batch_sizes) so every batch size forms full batches
+
+[output]
+dir = "results"
+per_request_rows = true              # [METHOD] never pre-aggregate
+record_resolved_config = true
+record_seed = true
+record_git_commit = true
+record_environment = true
+allow_published_numbers_in_tables = false   # [METHOD] every table number comes from this harness

@@ -8,6 +8,7 @@ Variants (paper, Sec. Evaluation):
 """
 import math
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -33,16 +34,19 @@ class AuditResponse:
 class VeRedactPQ:
     name = "VeRedact-PQ"
 
-    def __init__(self, ledger: Ledger, batching="abrrr", bimc=True, rezk=False, per_record=False,
-                 B_min=8, B_max=256, T_max_ms=500.0, fixed_B=64):
+    def __init__(self, ledger: Ledger, cfg: dict, batching="abrrr", bimc=True, rezk=False, per_record=False):
+        v = cfg["veredact"]
+        B_min, B_max, T_max_ms, fixed_B = v["B_min"], v["B_max"], v["T_max_ms"], v["fixed_batch"]
         self.L, self.c = ledger, ledger.c
+        self.pending_anchor = []  # futures of ledger operations (ledger_ms is measured from these)
+        self.last_finalization = None
         self.batching, self.bimc, self.rezk, self.per_record = batching, bimc, rezk, per_record
         self.B_min, self.B_max, self.T_max_ms, self.fixed_B = B_min, B_max, T_max_ms, fixed_B
-        self.queue: list[ValidatedRequest] = []
         self.evidence: dict[bytes, dict] = {}  # off-ledger evidence store: RID -> full evidence
         self.auths: dict[bytes, BatchAuth] = {}
         self.records: list[RedactionRecord] = []
         self._rid = 0
+        self._admit = threading.Lock()
 
     # ============================================================ requester side
     def make_request(self, requester: int, tid: bytes, m_new: bytes, op="modify", tamper="") -> Request:
@@ -54,9 +58,11 @@ class VeRedactPQ:
                     ts_r=int(time.time() * 1000), n_r=os.urandom(16), m_new=m_new, rho_new=rho_new, tamper=tamper)
         if tx is not None:
             bt = L.batches[tx.b]
+            R.v_b = bt.v
             R.x = self._statement(R, tx, bt.v)
-            eligible = tamper != "zk"
-            R.proof = c.zk_prove(L.zk_params, R.x, {"cred": requester}, lambda x, w: eligible)
+            # fault "zk": the requester lacks a valid credential -> a proof over a non-registered witness
+            forged = int.from_bytes(os.urandom(15), "big") if tamper == "zk" else None
+            R.proof = c.zk_prove(requester, R.x, forged)
         sk = L.requesters[requester].sk if tamper != "sig" else L.requesters[(requester + 1) % len(L.requesters)].sk
         R.sigma_R = c.sign(sk, self._hR(R))
         return R
@@ -79,7 +85,7 @@ class VeRedactPQ:
         hit = L.rli.lookup(tau)
         if hit is None:
             return Rejection("nonexistent target", "lookup")
-        entry, s, pos_s, shard_proof, global_proof = hit
+        entry, s, _, shard_proof, global_proof = hit
         c.counts["T_H"] += len(shard_proof) + len(global_proof)  # membership against R_s and R_RLI
         tx = L.txs[R.TID]
         bt = L.batches[tx.b]
@@ -87,21 +93,25 @@ class VeRedactPQ:
         # Step 2: PQ requester authentication; nonce consumed only after success
         if not c.verify(L.requesters[R.ID_r].pk, self._hR(R), R.sigma_R):
             return Rejection("bad requester signature", "auth")
-        if (R.ID_r, R.n_r) in L.used_nonces:
-            return Rejection("replay", "auth")
-        L.used_nonces.add((R.ID_r, R.n_r))
+        with self._admit:  # VPS workers run concurrently (Exp. 1): check-and-consume must be atomic
+            if (R.ID_r, R.n_r) in L.used_nonces:
+                return Rejection("replay", "auth")
+            L.used_nonces.add((R.ID_r, R.n_r))
         # Step 3: public policy + state
         pol = L.policies[tx.PID]
         if c.H(pol.PID, pol.body, pol.v, pol.e_P) != pol.C_P or R.op not in pol.ops or R.tamper == "policy":
             return Rejection("public policy", "policy")
         if R.tamper == "stale":
             return Rejection("stale state", "policy")
+        if R.v_b != bt.v:  # honest request overtaken by a redaction of its batch: returned for revalidation
+            return Rejection("stale state", "freshness")
         # Step 4: PQZK private policy
-        if R.x != self._statement(R, tx, bt.v) or not c.zk_verify(L.zk_params, R.x, R.proof):
+        if R.x != self._statement(R, tx, bt.v) or not c.zk_verify(R.ID_r, R.x, R.proof):
             return Rejection("PQZK", "zk")
         # Step 5: validated-request commitment + attestation
-        self._rid += 1
-        RID = self._rid.to_bytes(8, "big")
+        with self._admit:
+            self._rid += 1
+            RID = self._rid.to_bytes(8, "big")
         h_proof = c.H(R.proof)
         C_VR = c.H(RID, self._hR(R), tx.I, tx.D, pol.C_P, tx.b, tx.pos, bt.v, tx.e_i, h_proof)
         alpha = c.sign(L.vps.sk, c.H(RID, C_VR, L.e))
@@ -111,12 +121,15 @@ class VeRedactPQ:
 
     # ============================================================ Phase 4 (ABRRR + committee)
     def target_batch_size(self, arrival_rate: float) -> int:
-        """B_e* = min{B_max, max{B_min, ceil(B_hat)}}; B_hat = expected arrivals within T_max."""
+        """B_e* = min{B_max, max{B_min, ceil(B_hat)}}. The manuscript writes B_hat = f(lambda_e, |Q_e|, T_max)
+        without defining f; here f = lambda_e * T_max (expected arrivals within T_max). |Q_e| is applied by
+        the batcher (Exp. 1 closes a batch once |Q_e| >= B_e*); adding it to B_hat would keep B_hat above
+        |Q_e| forever, so batches would only close at T_max or B_max."""
         if self.batching == "none":
             return 1
         if self.batching == "fixed":
             return self.fixed_B
-        b_hat = arrival_rate * self.T_max_ms / 1000.0 + len(self.queue)
+        b_hat = arrival_rate * self.T_max_ms / 1000.0
         return min(self.B_max, max(self.B_min, math.ceil(b_hat)))
 
     def authorize(self, batch: list[ValidatedRequest]):
@@ -127,7 +140,7 @@ class VeRedactPQ:
                 continue
             if self.rezk:  # Re-ZK variant: re-verify the PQZK proof
                 ev = self.evidence[vr.RID]
-                if not c.zk_verify(L.zk_params, ev["x"], ev["proof"]):
+                if not c.zk_verify(vr.req.ID_r, ev["x"], ev["proof"]):
                     continue
             tx = L.txs[vr.req.TID]
             if (tx.D, L.batches[vr.b].v, tx.e_i) != (self._D_at_validation(vr), vr.v_b, vr.e_i) or vr.e != L.e:
@@ -153,7 +166,8 @@ class VeRedactPQ:
         auth = BatchAuth(BID, C_B, tree.root, approvals, L.e, ts, eligible, leaves,
                          {v.RID: tree.proof(i) for i, v in enumerate(eligible)})
         self.auths[BID] = auth
-        L.chain.anchor("abrrr_authorization", 16 + 32 + 32 + 8, phase=4)  # digest of Auth_e^B
+        self.pending_anchor.append(L.anchor.submit("abrrr_authorization", bid=BID.ljust(32, b"\0"),
+                                                   digest=c.H(BID, C_B, tree.root, *[s for _, s in approvals])))
         return auth
 
     def _D_at_validation(self, vr):
@@ -188,34 +202,39 @@ class VeRedactPQ:
                     changes[tx.pos] = c.H(tx.I, vr.req.D_new)  # L_i' = H(I_i || D_i')
                 c.counts["T_H"] += bt.tree.update(changes)
                 new_root = bt.tree.root
-                shares = [c.ch_part_adapt(L.td[k + 1], old_root, old_r, new_root, auth.BID) for k in range(L.t)]
-                new_r = c.ch_combine(shares, old_r)
-                if c.ch_hash(L.pk_ch, new_root, new_r) != bt.ch:
+                # distributed SIS adaptation: combiner prepares (p, z); t members return S_k z; combine
+                pert, z = c.ch_begin_adapt(L.pk_ch, old_root, old_r, new_root)
+                deltas = [c.ch_part_adapt(L.td[k + 1], z) for k in range(L.t)]
+                new_r = c.ch_combine(pert, z, deltas)
+                if not c.ch_verify(L.pk_ch, bt.ch, new_root, new_r):
                     raise RuntimeError(f"PQCH adaptation failed for batch {b}")
                 bt.r, bt.v = new_r, bt.v + 1
-                prepared.append((b, grp, old_root, new_root, bt.v - 1, bt.v))
-        for b, grp, old_root, new_root, v_old, v_new in prepared:  # atomic finalization
+                prepared.append((b, grp, old_root, new_root, bt.v - 1, bt.v, new_r))
+        for b, grp, old_root, new_root, v_old, v_new, new_r in prepared:  # atomic finalization
             for vr in grp:
                 tx = L.txs[vr.req.TID]
                 D_old = tx.D
                 tx.m, tx.rho, tx.D, tx.e_i = vr.req.m_new, vr.req.rho_new, vr.req.D_new, L.e
                 L._index_put(tx)
-                finalized.append((vr, tx, D_old, b, v_old, v_new, old_root, new_root))
+                finalized.append((vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r))
         if not prepared:
             return []
         R = L.rli.finalize()
         c.counts["T_H"] += L.rli.last_hash_ops
         for b in {p[0] for p in prepared}:
             L.checkpoints[b] = L._checkpoint(b, R)
-        n_cp = len(prepared)  # one anchored checkpoint per root transition (|Omega_e| with BIMC)
-        L.chain.anchor("redaction_finalization", n_cp * L.checkpoint_bytes() + 32, phase=5, transitions=n_cp,
-                       redactions=len(finalized))
+        # one anchored checkpoint per root transition (|Omega_e| with BIMC), finalized atomically
+        touched = [p[0] for p in prepared]
+        self.last_finalization = L.anchor.submit(
+            "redaction_finalization", bid=auth.BID.ljust(32, b"\0"), batches=touched,
+            sigs=[L.checkpoints[b].sigma for b in touched])
+        self.pending_anchor.append(self.last_finalization)
         out = []
-        for vr, tx, D_old, b, v_old, v_new, old_root, new_root in finalized:
+        for vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r in finalized:
             pbrp = {"RID": vr.RID, "eta": auth.leaves[auth.members.index(vr)], "MP_B": auth.proofs[vr.RID],
                     "BID": auth.BID, "I": tx.I, "D": D_old, "D_new": tx.D, "b": b, "pos": tx.pos,
                     "v_b": v_old, "v_b_new": v_new, "MR": old_root, "MR_new": new_root, "CH": L.batches[b].ch,
-                    "e": L.e, "vr": vr}
+                    "r_new": new_r, "e": L.e, "vr": vr}
             h_pbrp = self.pbrp_digest(vr.RID, auth.BID, tx.I, D_old, tx.D, b, tx.pos, v_old, v_new, old_root, new_root)
             rr = RedactionRecord(vr.RID, tx.TID, auth.BID, tx.PID, D_old, tx.D, v_old, v_new, h_pbrp,
                                  int(time.time()), b, tx.pos, L.e, pbrp)
@@ -232,8 +251,9 @@ class VeRedactPQ:
             L.rai.put(tau, self.rai_entry(rr))
         R = L.rai.finalize()
         c.counts["T_H"] += L.rai.last_hash_ops
-        L.chain.anchor("rai_checkpoint", 8 + 32 + 8 + 8, phase=6)
-        return c.H(L.e, R, L.rai.snapshot, int(time.time()))  # CP_e^A
+        cp = c.H(L.e, R, L.rai.snapshot, int(time.time()))  # CP_e^A
+        self.pending_anchor.append(L.anchor.submit("rai_checkpoint", epoch=L.e, cp=cp))
+        return cp
 
     def audit(self, records: list[RedactionRecord], qtype="authorization"):
         """Build Resp_j^A for a resolved record set R_{Q_j} (query resolution done by the caller)."""
@@ -301,11 +321,11 @@ class VeRedactPQ:
             vr = p["vr"]
             ok &= c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)  # normal audit: alpha_i
             if state_transition:
-                c.counts["T_H"] += 2
-                ok &= c.ch_hash(L.pk_ch, p["MR_new"], L.checkpoints[p["b"]].r) == p["CH"] if p["v_b_new"] == L.batches[p["b"]].v else True
+                c.counts["T_H"] += 2  # L_i, L_i' recomputation
+                ok &= c.ch_verify(L.pk_ch, p["CH"], p["MR_new"], p["r_new"])  # r_b' as recorded in A_b'
             if deep:
                 ev = self.evidence[rr.RID]
-                ok &= c.zk_verify(L.zk_params, ev["x"], ev["proof"]) and c.H(ev["proof"]) == vr.h_proof
+                ok &= c.zk_verify(vr.req.ID_r, ev["x"], ev["proof"]) and c.H(ev["proof"]) == vr.h_proof
             # H(PBRP_i) must bind the returned transition (catches modified D_i' / substituted evidence)
             ok &= self.pbrp_digest(rr.RID, rr.BID, p["I"], rr.D_old, rr.D_new, p["b"], p["pos"], rr.v_b, rr.v_b_new,
                                    p["MR"], p["MR_new"]) == rr.h_pbrp
