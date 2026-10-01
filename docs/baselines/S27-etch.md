@@ -23,6 +23,7 @@ adapter: `s27_baseline.py` (`ETCHScheme`, key `S27`) · own evaluation: `s27_run
 |:--|:--|:--|:--|
 | curve / hash | secp256k1 / SHA-256 | same (paper's own Sec. VII-B instantiation) | none |
 | network | CA rounds over a network | in-process; `s27_run.py` Fig. 6 adds `adapt_rounds × RTT` for the paper's own figure only | for S27 in Exp. 1 (no RTT inside one host) |
+| ledger writes | one per redaction | one per redaction, **pipelined** (finality tracked, not awaited), exactly like VeRedact-PQ's anchoring | neutral — removes a harness-imposed one-block-per-redaction cap |
 
 ## Not implemented
 

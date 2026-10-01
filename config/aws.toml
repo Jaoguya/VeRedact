@@ -21,6 +21,11 @@ remote_dir = "/opt/veredact"
 [besu]
 # Network shape (validators, block period, netem delay, RPC port) comes from config/<tier>.toml [ledger].
 image = "hyperledger/besu:25.6.0"
+# Transaction pool: pipelined anchoring keeps thousands of transactions from ONE sender in flight. The
+# default pools cap per-sender transactions (layered: future-by-sender; sequenced: 0.1 % of the pool), which
+# would drop or stall them; this network has one trusted sender, so the whole pool may belong to it.
+tx_pool = "SEQUENCED"
+tx_pool_max_size = 200000         # > peak in-flight transactions (5,000 req/s x 2 s block x margin)
 chain_id = 2026
 # Well-known public Besu dev key, funded in the private genesis only. Never use on a public chain.
 dev_private_key = "0x8f2a55949038a9610f50fb23b5883af3b4ecb3c3bb792cbcefbd1542c692be63"

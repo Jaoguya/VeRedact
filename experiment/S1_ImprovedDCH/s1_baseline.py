@@ -25,7 +25,7 @@ from coincurve import PrivateKey  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric import rsa  # noqa: E402
 from s1_scheme import ImprovedDCH, dkg  # noqa: E402
 
-from veredact_bench.anchor import make_anchor  # noqa: E402
+from veredact_bench.anchor import gather, make_anchor  # noqa: E402
 from veredact_bench.scheme import (AuditQuery, AuditResult, AuthCost, Authorization, Capabilities, Dataset,  # noqa: E402
                                    RedactionOutcome, RedactionResult, RedactionRequest, Scheme)
 
@@ -105,7 +105,7 @@ class ImprovedDCHScheme(Scheme):
 
     # ------------------------------------------------------------------ redact: steps 3-5
     def redact(self, batch: list) -> RedactionResult:
-        crypto_ms, ledger_ms, outcomes, gas = 0.0, 0.0, [], []
+        crypto_ms, outcomes, futs = 0.0, [], []
         for a in batch:
             if not a.ok:
                 outcomes.append(RedactionOutcome(a.request.seq, False, reason=a.reason))
@@ -127,14 +127,14 @@ class ImprovedDCHScheme(Scheme):
             if ok:
                 blk.update(payloads=payloads, msg=msg_new, r=r_new, redacted=True)
                 self.members.append(x)
-                ms, g = self.anchor.submit("baseline_redaction", tid=a.request.tid.ljust(32, b"\0")[:32],
-                                           commit=hashlib.sha256(msg_new).digest(), version=1,
-                                           evidence=r_new.to_compressed_bytes()).result()
-                ledger_ms += ms
-                gas.append(("baseline_redaction", g))
+                # pipelined like VeRedact's anchoring: finality is tracked by the Future, not awaited here
+                futs.append(self.anchor.submit("baseline_redaction", tid=a.request.tid.ljust(32, b"\0")[:32],
+                                               commit=hashlib.sha256(msg_new).digest(), version=1,
+                                               evidence=r_new.to_compressed_bytes()))
                 self.redacted.append((a.request.seq, b))
             outcomes.append(RedactionOutcome(a.request.seq, ok))
-        return RedactionResult(outcomes, crypto_ms, ledger_ms, len(gas), gas)
+        return RedactionResult(outcomes, crypto_ms, 0.0, len(futs), finality=gather(futs) if futs else None,
+                               finality_op="baseline_redaction")
 
     # ------------------------------------------------------------------ audit: consistency check
     def audit(self, query: AuditQuery) -> AuditResult:

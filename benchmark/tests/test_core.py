@@ -99,3 +99,49 @@ def test_dkg_cache_is_transparent(tmp_path):
     h = cached.hash(pk2, b"m", r_after_fresh)
     pert, z = cached.begin_adapt(pk2, b"m", r_after_fresh, b"m'")
     assert cached.verify(pk2, h, b"m'", cached.combine(pert, z, [cached.part_adapt(sh2[k], z) for k in (2, 3, 5, 6, 7)]))
+
+
+def test_round_vectorised_adaptation_matches_protocol(cfg):
+    s = cfg["security"]["pqch"]
+    ch = SISChameleonHash(default_params(s["n"], s["k"], s["sigma_R"], s["sigma_g"]), seed=9)
+    pk, shares = ch.dkeygen(7, 5)
+    msgs, new = [b"a", b"b", b"c"], [b"a'", b"b'", b"c'"]
+    R_old = np.stack([ch.sample_r() for _ in msgs], axis=1)
+    chs = [ch.hash(pk, m, R_old[:, j]) for j, m in enumerate(msgs)]
+    P, Z = ch.begin_adapt_many(pk, msgs, R_old, new)
+    R_new = ch.combine_many(P, Z, [ch.part_adapt_many(shares[k], Z) for k in (1, 2, 4, 5, 7)])
+    assert ch.verify_many(pk, chs, new, R_new) == [True] * 3
+    assert all(ch.verify(pk, chs[j], new[j], R_new[:, j]) for j in range(3))  # single-item verify agrees
+    assert ch.verify_many(pk, chs, msgs, R_new) == [False] * 3  # still binding to the new content
+    few = ch.combine_many(P, Z, [ch.part_adapt_many(shares[k], Z) for k in (1, 2, 4, 5)])  # t-1 members
+    assert ch.verify_many(pk, chs, new, few) == [False] * 3
+
+
+def test_besu_block_watcher_resolves_pipelined_transactions():
+    """Fake chain: a transaction mined BEFORE it is registered (race) and one mined after must both resolve."""
+    import threading
+    import time
+    from types import SimpleNamespace
+
+    from veredact_bench.anchor import BesuAnchor, gather
+
+    blocks = {}
+    eth = SimpleNamespace(block_number=0,
+                          get_block=lambda n: SimpleNamespace(transactions=blocks[n]),
+                          get_transaction_receipt=lambda h: SimpleNamespace(status=1, gasUsed=21000 + h[0]))
+    a = object.__new__(BesuAnchor)
+    a.w3, a.poll_s, a.timeout_s, a.receipts = SimpleNamespace(eth=eth), 0.005, 5, []
+    a._pending, a._mined, a._plock, a._stop, a._last_block = {}, {}, threading.Lock(), threading.Event(), 0
+    a._watcher = threading.Thread(target=a._watch, daemon=True)
+    a._watcher.start()
+    blocks[1] = [b"\x01" * 32]
+    eth.block_number = 1  # tx 1 mined before registration
+    time.sleep(0.05)
+    f1 = a._register(b"\x01" * 32, time.perf_counter())
+    f2 = a._register(b"\x02" * 32, time.perf_counter())
+    blocks[2] = [b"\x02" * 32]
+    eth.block_number = 2
+    both = gather([f1, f2])
+    assert f1.result(timeout=2)[1] == 21001 and f2.result(timeout=2)[1] == 21002
+    assert both.result(timeout=2)[1] == 21001 + 21002
+    a.close()

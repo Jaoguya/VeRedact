@@ -30,6 +30,7 @@ adapter: `s34_baseline.py` (`REBSScheme`, key `S34`) · own evaluation: `s34_run
 | AttrKeyGen | once per identity | at setup (and lazily, untimed, for identities first seen at run time) | for S34 (one-off Sig_AMC checks untimed) |
 | CHash | per transaction at creation | materialised only for trace-targeted transactions (other transactions are never touched); ephemeral RSA keygen in a process pool | neutral (setup, untimed) |
 | GT arithmetic | native exponentiation (PBC) | library exposes multiplication only → Straus multi-exponentiation in Python | against S34 (~5 ms of ~11 ms auth at t = 5) |
+| ledger writes | one per redaction | one per redaction, **pipelined** (finality tracked, not awaited), exactly like VeRedact-PQ's anchoring | neutral — removes a harness-imposed one-block-per-redaction cap |
 
 ## Not implemented
 

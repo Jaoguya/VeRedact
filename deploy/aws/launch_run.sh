@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Start a detached experiment run on the provisioned server (deploy/aws/provision_ec2.sh first).
-#   - syncs this working tree (SYNC=local, default) so the run uses exactly the code you see
+#   - refreshes the SSH rule to this machine's IP, syncs this working tree (SYNC=local, default),
+#     bootstraps a fresh instance or rebuilds the package + STARK module on a bootstrapped one
 #   - installs the idle watchdog (powers off [run].idle_shutdown_minutes after the run ends)
 #   - runs deploy/experiments/run_experiments.sh <tier> <exps> under nohup; survives logout
 # Costs money while the instance runs. Usage:
@@ -14,6 +15,7 @@ CONFIG="config/$TIER.toml" benchmark/.venv/bin/python -m veredact_bench.validate
 eval "$(python3 deploy/aws/aws_config.py)"
 [[ -f deploy/aws/.instance ]] || { echo "no instance: run deploy/aws/provision_ec2.sh"; exit 1; }
 read -r IID IP < deploy/aws/.instance
+deploy/aws/refresh_ssh_rule.sh
 KEY="$HOME/.ssh/$AWS_KEY_NAME.pem"
 A=(aws --profile "$AWS_PROFILE" --region "$AWS_REGION")
 state=$("${A[@]}" ec2 describe-instances --instance-ids "$IID" --query 'Reservations[0].Instances[0].State.Name' --output text)
@@ -29,6 +31,11 @@ if [[ "${SYNC:-local}" == local ]]; then
     --exclude .git --exclude .venv --exclude __pycache__ --exclude target --exclude '/results/*' --exclude '/plot/*' \
     --exclude deploy/aws/.instance --exclude deploy/besu/.network ./ "$AWS_SSH_USER@$IP:$REPO_REMOTE_DIR/"
 fi
+# first launch on a fresh/failed instance -> full bootstrap; otherwise refresh the package and the STARK
+# module so the run uses exactly the synced sources (cargo/pip are incremental: seconds when unchanged)
+"${SSH[@]}" "cd $REPO_REMOTE_DIR && if [ ! -x benchmark/.venv/bin/python ]; then sudo REMOTE_DIR=$REPO_REMOTE_DIR bash deploy/server/bootstrap_server.sh; \
+  else source ~/.cargo/env && benchmark/.venv/bin/pip install -q -r benchmark/requirements.txt -e benchmark && \
+  (cd benchmark/pqzk_stark && ../.venv/bin/maturin develop --release -q); fi"
 "${SSH[@]}" "echo '* * * * * root $REPO_REMOTE_DIR/deploy/server/idle_watchdog.sh' | sudo tee /etc/cron.d/veredact-idle >/dev/null"
 "${SSH[@]}" "cd $REPO_REMOTE_DIR && mkdir -p results/logs && nohup deploy/experiments/run_experiments.sh $TIER $EXPS > results/logs/launch_$TIER.out 2>&1 < /dev/null & echo started pid \$!"
 echo "follow: ssh -i $KEY $AWS_SSH_USER@$IP tail -f $REPO_REMOTE_DIR/results/logs/launch_$TIER.out"

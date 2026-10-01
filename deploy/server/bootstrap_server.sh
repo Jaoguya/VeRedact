@@ -47,7 +47,7 @@ sudo -u "$RUN_USER" bash -lc "
   .venv/bin/pip install -q -r requirements.txt
   .venv/bin/pip install -q 'liboqs-python @ git+https://github.com/open-quantum-safe/liboqs-python@$LIBOQS_VERSION' web3 py-solc-x
   .venv/bin/pip install -q -e .
-  (cd pqzk_stark && ../.venv/bin/maturin build --release -q -o target/wheels && ../.venv/bin/pip install -q --force-reinstall target/wheels/*.whl)
+  (cd pqzk_stark && ../.venv/bin/maturin develop --release -q)   # same build as make build-zk / launch_run.sh
   VRPQ_SIG_BACKEND=oqs .venv/bin/python -c 'from veredact_bench.crypto.pqsig import load_pqsig; print(\"signature backend:\", load_pqsig(\"oqs\").name)'
   .venv/bin/python -m pytest -q tests ../experiment
 "

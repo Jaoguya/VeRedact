@@ -31,7 +31,9 @@ deploy/aws/launch_run.sh experiment      # paper numbers (refuses unless validat
 deploy/aws/launch_run.sh experiment exp2 exp5   # a subset
 ```
 
-`launch_run.sh` syncs this working tree, installs the idle watchdog (power-off after
+`launch_run.sh` points the SSH rule at this machine's current IP (`refresh_ssh_rule.sh`; a changed home
+IP otherwise times out), syncs this working tree, bootstraps a fresh instance or rebuilds the package and
+the STARK module on a bootstrapped one, installs the idle watchdog (power-off after
 `[run].idle_shutdown_minutes` without an experiment or SSH session) and starts
 `deploy/experiments/run_experiments.sh <tier> <exps>` under `nohup`. That script validates the config,
 starts Besu when `ledger.backend = besu` (network shaped by `[ledger]`, `VRPQ_BESU_KEY` = the private

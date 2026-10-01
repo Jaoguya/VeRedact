@@ -38,7 +38,7 @@ VeRedact/
 │   ├── scheme_common.py
 │   └── S<ref>_<Short>/           s<ref>_scheme.py s<ref>_baseline.py s<ref>_run.py s<ref>_test.py
 ├── deploy/
-│   ├── aws/                      provision_ec2.sh launch_run.sh fetch_results.sh teardown_ec2.sh aws_config.py
+│   ├── aws/                      provision_ec2.sh launch_run.sh refresh_ssh_rule.sh fetch_results.sh teardown_ec2.sh aws_config.py
 │   ├── server/                   bootstrap_server.sh idle_watchdog.sh
 │   ├── besu/                     start/stop_besu_network.sh (QBFT validators + tc netem)
 │   └── experiments/              run_experiments.sh <tier> [exps]

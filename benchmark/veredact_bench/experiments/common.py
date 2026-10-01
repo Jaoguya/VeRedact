@@ -79,15 +79,19 @@ def capability_fields(s) -> dict:
 def build_history(s, trace, batch_size: int) -> dict:
     """Closed-loop, untimed: redact the trace in batches of batch_size until every valid request is either
     redacted or rejected for a non-freshness reason (a stale request is re-prepared and resubmitted, as its
-    requester would). Returns outcome counts. Used to create audit/gas histories, never to report latency."""
+    requester would). Returns outcome counts. Used to create audit/gas histories, never to report latency.
+    Ledger finality is awaited once at the end: outcomes (and so revalidation) never depend on a receipt,
+    and every system anchors pipelined, so the history costs crypto time, not one block per chunk."""
     counts = {"redacted": 0, "rejected": 0, "resubmitted": 0}
+    in_flight = []
     pending = list(trace)
     while pending:
         retry = []
         for i in range(0, len(pending), batch_size):
             chunk = pending[i:i + batch_size]
             auths = [authorize(s, r, prepare(s, r)) for r in chunk]
-            res = s.redact(auths).wait()
+            res = s.redact(auths)
+            in_flight.append(res)
             for r, o in zip(chunk, res.outcomes):
                 if o.ok:
                     counts["redacted"] += 1
@@ -101,6 +105,8 @@ def build_history(s, trace, batch_size: int) -> dict:
             break
         counts["resubmitted"] += len(retry)
         pending = retry
+    for res in in_flight:
+        res.wait()
     return counts
 
 

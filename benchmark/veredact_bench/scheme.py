@@ -104,13 +104,14 @@ class RedactionResult:
     ch_adaptations: int  # chameleon-hash adaptations performed
     onchain_tx: list = field(default_factory=list)  # [(operation, gas_used)] from receipts
     finality: object = None  # Future -> (ledger_ms, gas) when anchoring is still in flight
+    finality_op: str = "redaction_finalization"  # on-chain operation the finality Future stands for
 
     def wait(self):
         """Block until the ledger finalised this result; fills ledger_ms and onchain_tx."""
         if self.finality is not None:
             ms, gas = self.finality.result()
             self.ledger_ms += ms
-            self.onchain_tx.append(("redaction_finalization", gas))
+            self.onchain_tx.append((self.finality_op, gas))
             self.finality = None
         return self
 

@@ -80,6 +80,10 @@ validators = 7                 # [CONFIRM] manuscript: "[TBD]-validator Hyperled
 block_period_s = 2             # [PROPOSED] Besu QBFT default blockperiodseconds
 netem_delay_ms = 10            # [CONFIRM] manuscript: "[TBD] ms using Linux tc netem"
 rpc_url = "http://127.0.0.1:8545"
+receipt_poll_ms = 50           # [METHOD] block-watcher poll: finality resolution 50 ms << block period
+receipt_timeout_s = 600        # [PROPOSED] give up on a transaction not mined within 10 min (a fault, not a result)
+tx_gas_limit = 30000000        # [PROPOSED] per-transaction gas cap; the genesis block gas limit is effectively
+                               # unbounded, so the cap never delays inclusion; gasUsed is what Exp. 5 reports
 
 [dataset]
 # [METHOD] One seeded corpus, materialised by every system into its own native form before timing.

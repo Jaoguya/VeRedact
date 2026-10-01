@@ -30,6 +30,7 @@ The manuscript calls it "VRBC [13]".
 | primes | safe primes | standard RSA primes (equations unchanged) | for S13 (faster keygen, untimed) |
 | H1 | odd l-bit values | same; non-coprime factors peeled (Alg. 1) | neutral |
 | aggregation | recursive pairwise | balanced tree (same result, O(c log c) instead of O(c²)) | for S13 |
+| ledger writes | one per redaction | one per redaction, **pipelined** (finality tracked, not awaited), exactly like VeRedact-PQ's anchoring | neutral — removes a harness-imposed one-block-per-redaction cap |
 
 ## Not implemented
 

@@ -101,14 +101,15 @@ def _sample_coset(rng, sigma, c):
 
 
 def sample_g(rng, v: np.ndarray, k: int, sigma_g: float) -> np.ndarray:
-    """SampleG for q = 2^k: z in Z^{n k} with (I (x) g^T) z = v (mod q), bit by bit."""
+    """SampleG for q = 2^k: z in Z^{n k} with (I (x) g^T) z = v (mod q), bit by bit.
+    v may be n x B (one column per adaptation); z is then (n k) x B with the same row layout."""
     v = v.copy()
-    out = np.empty((v.shape[0], k), dtype=np.int64)
+    out = np.empty((v.shape[0], k) + v.shape[1:], dtype=np.int64)
     for i in range(k):
         x = _sample_coset(rng, sigma_g, v & 1)
         out[:, i] = x
         v = (v - x) >> 1  # exact: v - x is even
-    return out.reshape(-1)
+    return out.reshape((v.shape[0] * k,) + v.shape[1:])
 
 
 # ------------------------------------------------------------------ keys
@@ -121,6 +122,15 @@ class PublicKey:
     def mul(self, r: np.ndarray) -> np.ndarray:
         p = self.params
         return (self.Abar @ r[: p.mbar] + self.A2 @ r[p.mbar:]) % p.q
+
+    def mul_many(self, R: np.ndarray) -> np.ndarray:
+        """A R mod q for M x B columns: float64 BLAS, exact while every partial sum stays below 2^53."""
+        p = self.params
+        if p.M * (p.q - 1) * int(np.abs(R).max()) >= (1 << 53):
+            return (self.Abar @ R[: p.mbar] + self.A2 @ R[p.mbar:]) % p.q
+        if getattr(self, "_A_f", None) is None:
+            self._A_f = np.hstack([self.Abar, self.A2]).astype(np.float64)
+        return np.rint(self._A_f @ R.astype(np.float64)).astype(np.int64) % p.q
 
 
 @dataclass
@@ -281,6 +291,41 @@ class SISChameleonHash:
     def part_adapt(share: TrapdoorShare, z: np.ndarray) -> tuple[int, np.ndarray]:
         """delta_k = S_k z (mod P)."""
         return share.index, _matvec_mod(share.S, z)
+
+    # ---- round-vectorised adaptation: all batches touched in one ABRRR round at once --------------------
+    # Same algorithms as begin_adapt / part_adapt / combine / verify, one column per adaptation. Each member
+    # reads its 134 MB share once per round (S_k Z) instead of once per touched batch: PartAdapt is linear
+    # in z, and the round's z vectors are all fixed before any member is asked.
+    def begin_adapt_many(self, pk: PublicKey, msgs: list, R: np.ndarray, msgs_new: list):
+        p = self.p
+        H = lambda ms: np.stack([self.H(m) for m in ms], axis=1)
+        U = (pk.mul_many(R) + H(msgs) - H(msgs_new)) % p.q
+        P = _round_gauss(self.rng, p.s_dist, (p.M, R.shape[1]))
+        Z = sample_g(self.rng, (U - pk.mul_many(P)) % p.q, p.k, p.sigma_g)
+        return P, Z
+
+    @staticmethod
+    def part_adapt_many(share: TrapdoorShare, Z: np.ndarray) -> tuple[int, np.ndarray]:
+        """Delta_k = S_k Z (mod P); float64 BLAS is exact while nk * P * max|Z| < 2^53 (checked)."""
+        if share.S.shape[1] * SHAMIR_P * int(np.abs(Z).max()) >= (1 << 53):
+            return share.index, (share.S @ Z) % SHAMIR_P
+        if getattr(share, "_S_f", None) is None:
+            share._S_f = share.S.astype(np.float64)  # member-local working copy (int64 share stays canonical)
+        return share.index, np.rint(share._S_f @ Z.astype(np.float64)).astype(np.int64) % SHAMIR_P
+
+    def combine_many(self, P: np.ndarray, Z: np.ndarray, deltas: list) -> np.ndarray:
+        lam = lagrange_at_zero([k for k, _ in deltas])
+        acc = np.zeros((self.p.mbar, Z.shape[1]), dtype=np.int64)
+        for k, D in deltas:
+            acc = (acc + _mulmod(D, lam[k])) % SHAMIR_P
+        Rz = np.where(acc > SHAMIR_P // 2, acc - SHAMIR_P, acc)  # lift to Z
+        return P + np.vstack([Rz, Z])
+
+    def verify_many(self, pk: PublicKey, chs: list, msgs: list, R: np.ndarray) -> list[bool]:
+        H = np.stack([self.H(m) for m in msgs], axis=1)
+        C = ((pk.mul_many(R) + H) % self.p.q).astype(np.uint32)
+        norms = np.linalg.norm(R, axis=0)
+        return [bool(norms[j] <= self.p.beta and C[:, j].tobytes() == chs[j]) for j in range(R.shape[1])]
 
     def combine(self, pert: np.ndarray, z: np.ndarray, deltas: list[tuple[int, np.ndarray]]) -> np.ndarray:
         lam = lagrange_at_zero([k for k, _ in deltas])

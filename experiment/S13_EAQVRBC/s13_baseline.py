@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from s13_scheme import Ledger, setup as s13_setup  # noqa: E402
 
-from veredact_bench.anchor import make_anchor  # noqa: E402
+from veredact_bench.anchor import gather, make_anchor  # noqa: E402
 from veredact_bench.scheme import (AuditQuery, AuditResult, AuthCost, Authorization, Capabilities, Dataset,  # noqa: E402
                                    RedactionOutcome, RedactionResult, RedactionRequest, Scheme)
 
@@ -56,7 +56,7 @@ class EAQVRBCScheme(Scheme):
         return Authorization(req, ok, (time.perf_counter() - t0) * 1000, reason="" if ok else "nonexistent target")
 
     def redact(self, batch: list) -> RedactionResult:
-        crypto_ms, ledger_ms, outcomes, gas = 0.0, 0.0, [], []
+        crypto_ms, outcomes, futs = 0.0, [], []
         for a in batch:
             if not a.ok:
                 outcomes.append(RedactionOutcome(a.request.seq, False, reason=a.reason))
@@ -67,15 +67,15 @@ class EAQVRBCScheme(Scheme):
             txs[pos] = a.request.new_payload
             self.L.redact(s, txs)  # revoke old tag, CH collision, new tag
             crypto_ms += (time.perf_counter() - t0) * 1000
-            ms, g = self.anchor.submit("baseline_redaction", tid=a.request.tid.ljust(32, b"\0")[:32],
-                                       commit=self.L.blocks[s].m[:32], version=len(self.L.acc.revoked),
-                                       evidence=self.L.tags[s][0].S.to_bytes(self.p.N.bit_length() // 8 + 1, "big")
-                                       ).result()
-            ledger_ms += ms
-            gas.append(("baseline_redaction", g))
+            tag = self.L.tags[s][0].S.to_bytes(self.p.N.bit_length() // 8 + 1, "big")
+            # pipelined like VeRedact's anchoring: finality is tracked by the Future, not awaited here
+            futs.append(self.anchor.submit("baseline_redaction", tid=a.request.tid.ljust(32, b"\0")[:32],
+                                           commit=self.L.blocks[s].m[:32], version=len(self.L.acc.revoked),
+                                           evidence=tag))
             self.redacted.append((a.request.seq, s))
             outcomes.append(RedactionOutcome(a.request.seq, True))
-        return RedactionResult(outcomes, crypto_ms, ledger_ms, len(gas), gas)
+        return RedactionResult(outcomes, crypto_ms, 0.0, len(futs), finality=gather(futs) if futs else None,
+                               finality_op="baseline_redaction")
 
     def audit(self, query: AuditQuery) -> AuditResult:
         blocks = sorted({s for _, s in self.redacted[: query.records]})

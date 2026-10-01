@@ -5,6 +5,7 @@ Counter names follow the manuscript's cost notation (Table III):
   T_PA, T_CB (PQCH partial adaptation / combination) · T_H (SHA3-256) · T_PRF (HMAC-SHA3-256)
 The counts let every measured number be reconciled against the analytical Table IV.
 """
+import threading
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
@@ -28,16 +29,18 @@ class Crypto:
         self.zk = PolicySTARK(ZKParams(z["queries"], z["blowup"], z["grinding_bits"], z["registry_depth"]),
                               requesters, cfg["meta"]["seed"])
         self.counts: Counter = Counter()
+        self._count_lock = threading.Lock()
         self.time_s: defaultdict = defaultdict(float)
 
     @contextmanager
-    def _op(self, name):
+    def _op(self, name, n: int = 1):
         t = time.perf_counter()
         try:
             yield
         finally:
-            self.counts[name] += 1
-            self.time_s[name] += time.perf_counter() - t
+            with self._count_lock:  # VPS workers run concurrently: counter updates must not be lost
+                self.counts[name] += n
+                self.time_s[name] += time.perf_counter() - t
 
     def reset(self):
         self.counts.clear()
@@ -108,6 +111,23 @@ class Crypto:
     def ch_combine(self, pert, z, deltas):
         with self._op("T_CB"):
             return self.ch.combine(pert, z, deltas)
+
+    # round-vectorised forms (one column per touched batch); counters count adaptations, not calls
+    def ch_begin_adapt_many(self, pk, msgs, R, msgs_new):
+        with self._op("T_CB_prep", len(msgs)):
+            return self.ch.begin_adapt_many(pk, msgs, R, msgs_new)
+
+    def ch_part_adapt_many(self, share, Z):
+        with self._op("T_PA", Z.shape[1]):
+            return self.ch.part_adapt_many(share, Z)
+
+    def ch_combine_many(self, P, Z, deltas):
+        with self._op("T_CB", Z.shape[1]):
+            return self.ch.combine_many(P, Z, deltas)
+
+    def ch_verify_many(self, pk, chs, msgs, R):
+        with self._op("T_CH", len(msgs)):
+            return self.ch.verify_many(pk, chs, msgs, R)
 
 
 __all__ = ["Crypto", "hashing"]

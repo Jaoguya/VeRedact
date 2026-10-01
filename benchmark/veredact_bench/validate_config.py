@@ -67,6 +67,8 @@ def validate(path: Path) -> tuple[list[str], list[str]]:
         E("experiment tier must use ledger.backend = besu: in_process LedgerTime is not consensus cost")
     if L["validators"] < 4:
         E("QBFT needs >= 4 validators (3f+1, f >= 1)")
+    if L["receipt_poll_ms"] * 10 > L["block_period_s"] * 1000:
+        E("ledger.receipt_poll_ms must be <= block period / 10, or finality latency is dominated by polling")
     if c["dataset"]["organisations"] != L["validators"]:
         W("dataset.organisations != ledger.validators (manuscript: one validator per organisation)")
 

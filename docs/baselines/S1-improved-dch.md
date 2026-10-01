@@ -30,6 +30,7 @@ adapter: `s1_baseline.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `s1
 | accumulator | RSA, size unstated | RSA-3072 (`accumulator_rsa_bits`), hash-to-prime via `next_prime` | neutral at equal security |
 | tx signatures | unspecified | ECDSA secp256k1 (coincurve) | neutral |
 | one redaction per block | Jia's rule | enforced; a second request to a redacted block is rejected (reported, never retried) | real limit, not a harness artefact |
+| ledger writes | one per redaction | one per redaction, **pipelined** (finality tracked, not awaited), exactly like VeRedact-PQ's anchoring | neutral — removes a harness-imposed one-block-per-redaction cap |
 
 ## Not implemented
 

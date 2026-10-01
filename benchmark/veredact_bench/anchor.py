@@ -1,8 +1,10 @@
 """Ledger backends every scheme anchors through (docs/experiments.md §1.3.1).
 
   besu        real Hyperledger Besu QBFT: every operation is a transaction to contracts/VeRedactRegistry.sol
-              (VeRedact-PQ) or BaselineRedactionLog (baselines); ledger_ms = submit -> receipt, gas from the
-              receipt. This is the only backend whose LedgerTime may be called consensus cost.
+              (VeRedact-PQ) or BaselineRedactionLog (baselines); ledger_ms = submit -> the block containing
+              it is observed (one watcher polls every ledger.receipt_poll_ms, so thousands of in-flight
+              transactions never queue behind a waiting thread), gas from the receipt. This is the only
+              backend whose LedgerTime may be called consensus cost.
   in_process  in-memory log for smoke runs; LedgerTime is bookkeeping only (validate-config refuses it in
               the experiment tier).
 
@@ -12,7 +14,7 @@ Exp. 1 measures finality latency without serialising the pipeline behind it.
 import os
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 
 from .config import REPO_ROOT
 
@@ -27,6 +29,31 @@ class _Metered:
         fut = self._submit(op, **fields)
         fut.add_done_callback(lambda f, op=op: f.exception() is None and self.receipts.append((op, *f.result())))
         return fut
+
+
+def gather(futures: list) -> Future:
+    """One Future for several anchoring transactions: (slowest ledger_ms, summed gas; None if any is None)."""
+    out, left, res = Future(), [len(futures)], []
+    lock = threading.Lock()
+    if not futures:
+        out.set_result((0.0, 0))
+        return out
+
+    def done(f):
+        with lock:
+            if out.done():
+                return
+            if f.exception() is not None:
+                out.set_exception(f.exception())
+                return
+            res.append(f.result())
+            left[0] -= 1
+            if left[0] == 0:
+                gas = [g for _, g in res]
+                out.set_result((max(ms for ms, _ in res), None if None in gas else sum(gas)))
+    for f in futures:
+        f.add_done_callback(done)
+    return out
 
 
 class InProcessAnchor(_Metered):
@@ -61,20 +88,29 @@ class BesuAnchor(_Metered):
         key = os.environ.get("VRPQ_BESU_KEY")
         if not key:
             raise RuntimeError("VRPQ_BESU_KEY not set (funded dev key of the private Besu network)")
+        led = cfg["ledger"]
+        self.gas_limit, self.poll_s, self.timeout_s = led["tx_gas_limit"], led["receipt_poll_ms"] / 1000, \
+            led["receipt_timeout_s"]
         self.acct = self.w3.eth.account.from_key(key)
         self._nonce = self.w3.eth.get_transaction_count(self.acct.address)
         self._lock = threading.Lock()
-        self.pool = ThreadPoolExecutor(max_workers=32)
         self.reg = self._deploy(art["VeRedactRegistry"])
         self.base = self._deploy(art["BaselineRedactionLog"])
         self.receipts = []
         self._ver = {}  # batch -> anchored version (contract enforces v_b' = v_b + 1)
+        self._pending: dict[bytes, tuple] = {}  # tx hash -> (Future, submit time)
+        self._mined: dict[bytes, float] = {}  # tx hash -> time its block was observed (for late registration)
+        self._plock = threading.Lock()
+        self._stop = threading.Event()
+        self._last_block = self.w3.eth.block_number
+        self._watcher = threading.Thread(target=self._watch, name="besu-block-watcher", daemon=True)
+        self._watcher.start()
 
     # ---- transactions ---------------------------------------------------------------------------------
     def _send(self, fn):
         with self._lock:
             tx = fn.build_transaction({"from": self.acct.address, "nonce": self._nonce, "gasPrice": 0,
-                                       "gas": 30_000_000})
+                                       "gas": self.gas_limit})
             self._nonce += 1
             return self.w3.eth.send_raw_transaction(self.acct.sign_transaction(tx).raw_transaction)
 
@@ -83,11 +119,44 @@ class BesuAnchor(_Metered):
         rcpt = self.w3.eth.wait_for_transaction_receipt(self._send(c.constructor()))
         return self.w3.eth.contract(address=rcpt.contractAddress, abi=art["abi"])
 
-    def _wait(self, h, t0):
-        rcpt = self.w3.eth.wait_for_transaction_receipt(h, timeout=600)
+    def _watch(self):
+        """Resolve every pending transaction when the block containing it is observed."""
+        while not self._stop.is_set():
+            head = self.w3.eth.block_number
+            if head <= self._last_block:
+                self._stop.wait(self.poll_s)
+                continue
+            seen = time.perf_counter()
+            for bn in range(self._last_block + 1, head + 1):
+                for h in self.w3.eth.get_block(bn).transactions:
+                    h = bytes(h)
+                    with self._plock:
+                        item = self._pending.pop(h, None)
+                        if item is None:
+                            self._mined[h] = seen  # submitted but not yet registered: resolved on registration
+                            continue
+                    self._resolve(h, *item, seen)
+            self._last_block = head
+            with self._plock:  # forget unclaimed hashes after a while (deploys, other senders)
+                for h in [h for h, t in self._mined.items() if seen - t > self.timeout_s]:
+                    del self._mined[h]
+
+    def _resolve(self, h, fut, t0, seen):
+        rcpt = self.w3.eth.get_transaction_receipt(h)
         if rcpt.status != 1:
-            raise RuntimeError(f"anchoring transaction reverted: {h.hex()}")
-        return (time.perf_counter() - t0) * 1000, rcpt.gasUsed
+            fut.set_exception(RuntimeError(f"anchoring transaction reverted: {h.hex()}"))
+        else:
+            fut.set_result(((seen - t0) * 1000, rcpt.gasUsed))
+
+    def _register(self, h, t0) -> Future:
+        fut, h = Future(), bytes(h)
+        with self._plock:
+            seen = self._mined.pop(h, None)
+            if seen is None:
+                self._pending[h] = (fut, t0)
+                return fut
+        self._resolve(h, fut, t0, seen)
+        return fut
 
     def _submit(self, op: str, **f) -> Future:
         t0 = time.perf_counter()
@@ -115,10 +184,17 @@ class BesuAnchor(_Metered):
             h = self._send(self.base.functions.recordRedaction(f["tid"], f["commit"], f["version"], f["evidence"]))
         else:
             raise ValueError(f"unknown anchoring op {op}")
-        return self.pool.submit(self._wait, h, t0)
+        return self._register(h, t0)
 
     def close(self):
-        self.pool.shutdown(wait=True)
+        """Wait (up to ledger.receipt_timeout_s) for every submitted transaction, then stop the watcher."""
+        deadline = time.perf_counter() + self.timeout_s
+        while self._pending and time.perf_counter() < deadline:
+            time.sleep(self.poll_s)
+        self._stop.set()
+        self._watcher.join()
+        if self._pending:
+            raise RuntimeError(f"{len(self._pending)} anchoring transactions not mined within {self.timeout_s} s")
 
 
 def make_anchor(cfg: dict):

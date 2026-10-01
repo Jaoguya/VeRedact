@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import s34_scheme as R  # noqa: E402
 
-from veredact_bench.anchor import make_anchor  # noqa: E402
+from veredact_bench.anchor import gather, make_anchor  # noqa: E402
 from veredact_bench.scheme import (AuthCost, Authorization, Capabilities, Dataset, RedactionOutcome,  # noqa: E402
                                    RedactionResult, RedactionRequest, Scheme)
 
@@ -108,7 +108,7 @@ class REBSScheme(Scheme):
 
     # ------------------------------------------------------------------ redact: ChCld + ChVer
     def redact(self, batch: list) -> RedactionResult:
-        crypto_ms, ledger_ms, outcomes, adapt, gas = 0.0, 0.0, [], 0, []
+        crypto_ms, outcomes, adapt, futs = 0.0, [], 0, []
         for a in batch:
             if not a.ok:
                 outcomes.append(RedactionOutcome(a.request.seq, False, reason=a.reason))
@@ -123,13 +123,13 @@ class REBSScheme(Scheme):
             if ok:
                 self.ch[tid] = v2
                 r_bytes = v2.r.to_bytes((v2.r.bit_length() + 7) // 8, "big")
-                ms, g = self.anchor.submit("baseline_redaction", tid=tid.ljust(32, b"\0")[:32],
-                                           commit=hashlib.sha256(r_bytes).digest(), version=1,
-                                           evidence=r_bytes).result()
-                ledger_ms += ms
-                gas.append(("baseline_redaction", g))
+                # pipelined like VeRedact's anchoring: finality is tracked by the Future, not awaited here
+                futs.append(self.anchor.submit("baseline_redaction", tid=tid.ljust(32, b"\0")[:32],
+                                               commit=hashlib.sha256(r_bytes).digest(), version=1,
+                                               evidence=r_bytes))
             outcomes.append(RedactionOutcome(a.request.seq, ok, reason="" if ok else "ChVer"))
-        return RedactionResult(outcomes, crypto_ms, ledger_ms, adapt, gas)
+        return RedactionResult(outcomes, crypto_ms, 0.0, adapt, finality=gather(futs) if futs else None,
+                               finality_op="baseline_redaction")
 
     def teardown(self) -> None:
         self.anchor.close()

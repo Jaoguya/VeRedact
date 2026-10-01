@@ -12,6 +12,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from ..ds.merkle import MerkleTree, verify_multiproof, verify_proof
 from .ledger import Ledger
 from .types import BatchAuth, RedactionRecord, Request, ValidatedRequest
@@ -180,7 +182,7 @@ class VeRedactPQ:
         by_batch: dict[int, list] = {}
         for vr in auth.members:
             by_batch.setdefault(vr.b, []).append(vr)
-        prepared, finalized = [], []
+        prepared, finalized, chains = [], [], {}
         for b, reqs in by_batch.items():
             bt = L.batches[b]
             seen, exe = set(), []
@@ -193,23 +195,35 @@ class VeRedactPQ:
                 exe.append(vr)
             if not exe:
                 continue
-            groups = [exe] if self.bimc else [[v] for v in exe]
-            for grp in groups:
+            chains[b] = [exe] if self.bimc else [[v] for v in exe]
+        # distributed SIS adaptation, one ABRRR round at a time: the combiner prepares (p_j, z_j) for every
+        # touched batch j, each of the t members returns S_k Z for the whole round, the combiner combines.
+        # Without BIMC a batch has a chain of groups (each adapts from the previous one's randomness), so
+        # the round proceeds level by level: level l holds the l-th group of every batch that has one.
+        for level in range(max((len(ch) for ch in chains.values()), default=0)):
+            jobs = []
+            for b, chain in chains.items():
+                if level >= len(chain):
+                    continue
+                bt, grp = L.batches[b], chain[level]
                 old_root, old_r = bt.tree.root, bt.r
                 changes = {}
                 for vr in grp:
                     tx = L.txs[vr.req.TID]
                     changes[tx.pos] = c.H(tx.I, vr.req.D_new)  # L_i' = H(I_i || D_i')
                 c.counts["T_H"] += bt.tree.update(changes)
-                new_root = bt.tree.root
-                # distributed SIS adaptation: combiner prepares (p, z); t members return S_k z; combine
-                pert, z = c.ch_begin_adapt(L.pk_ch, old_root, old_r, new_root)
-                deltas = [c.ch_part_adapt(L.td[k + 1], z) for k in range(L.t)]
-                new_r = c.ch_combine(pert, z, deltas)
-                if not c.ch_verify(L.pk_ch, bt.ch, new_root, new_r):
+                jobs.append((b, grp, old_root, old_r, bt.tree.root))
+            R_old = np.stack([j[3] for j in jobs], axis=1)
+            P, Z = c.ch_begin_adapt_many(L.pk_ch, [j[2] for j in jobs], R_old, [j[4] for j in jobs])
+            deltas = [c.ch_part_adapt_many(L.td[k + 1], Z) for k in range(L.t)]
+            R_new = c.ch_combine_many(P, Z, deltas)
+            ok = c.ch_verify_many(L.pk_ch, [L.batches[j[0]].ch for j in jobs], [j[4] for j in jobs], R_new)
+            for col, (b, grp, old_root, _, new_root) in enumerate(jobs):
+                if not ok[col]:
                     raise RuntimeError(f"PQCH adaptation failed for batch {b}")
-                bt.r, bt.v = new_r, bt.v + 1
-                prepared.append((b, grp, old_root, new_root, bt.v - 1, bt.v, new_r))
+                bt = L.batches[b]
+                bt.r, bt.v = R_new[:, col].copy(), bt.v + 1
+                prepared.append((b, grp, old_root, new_root, bt.v - 1, bt.v, bt.r))
         for b, grp, old_root, new_root, v_old, v_new, new_r in prepared:  # atomic finalization
             for vr in grp:
                 tx = L.txs[vr.req.TID]

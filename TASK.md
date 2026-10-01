@@ -25,6 +25,11 @@ restarted for leftover requests. Stale code and outputs removed (unused classes,
 DKG: rewritten (same output bit for bit, ~33x faster at full size; n = 32 in ~5 min instead of hours)
 and cached per committee — saves ~60 h in Exp. 1 and ~2 h in Exp. 2.
 
+Full-rerun blockers fixed (2026-09-29): (1) SSH rule refreshed to the current IP on every provision/launch
+(`deploy/aws/refresh_ssh_rule.sh`); (4) PQCH adaptation vectorised per ABRRR round, 28 -> 135 redactions/s
+execution at full size; (5) every system anchors pipelined, finality from a block watcher. Still open: the
+first server run of the new code (smoke, then pilot on Besu).
+
 ## 2. Decisions that are yours
 
 | # | Decision | Recommendation |

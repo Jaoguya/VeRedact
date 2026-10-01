@@ -80,6 +80,16 @@ Outputs: `results/<exp>/<run_id>/rows.csv` + `manifest.json`; figures `plot/exp{
 
 ## 4. Known measurement limits
 
+- **Round-vectorised PQCH adaptation.** In an ABRRR round every touched batch's (p_j, z_j) is fixed
+  before any member is asked, so each member returns S_k Z for the whole round in one matrix product
+  (exact in float64; checked bound) instead of one 134 MB pass per batch — the same PartAdapt, linear in z.
+  All t members run on this one host and share its cores and memory bandwidth, which is conservative
+  against t separate nodes. Measured at full size: 28 → 135 redactions/s execution capacity (laptop).
+- **Pipelined anchoring for every system.** No system blocks on a receipt before its next redaction:
+  VeRedact-PQ and all four baselines hand back a finality Future; Exp. 1 latency ends when the block
+  holding the transaction is observed (one block watcher, `ledger.receipt_poll_ms`). None of the baseline
+  papers requires one transaction per block, so serialising them would be a strawman. Besu's pool admits
+  thousands of in-flight transactions from the one sender (`config/aws.toml [besu].tx_pool*`).
 - **Committee key reuse.** The SIS-PQCH DKG (untimed setup, 5 s at n = 4, ~5 min at n = 32 with 134 MB
   shares) runs once per (seed, n, t, lattice parameters) and is cached in `benchmark/.cache/pqch_dkg/`
   (gitignored), as a committee runs DKG once per epoch. All points and repetitions of a run therefore share

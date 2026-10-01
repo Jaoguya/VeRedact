@@ -35,6 +35,7 @@ if [[ -z "$SG" || "$SG" == None ]]; then
          --description "VeRedact benchmark SSH" --query GroupId --output text)
   run "${A[@]}" ec2 authorize-security-group-ingress --group-id "$SG" --protocol tcp --port 22 --cidr "$CIDR"
 fi
+[[ "${DRY_RUN:-0}" == 1 ]] || deploy/aws/refresh_ssh_rule.sh   # a reused group keeps an old IP otherwise
 
 echo "[4/6] instance"
 IID=$("${A[@]}" ec2 describe-instances \

@@ -61,6 +61,7 @@ $ports
       --data-path=/tmp/data --p2p-host=$ip --p2p-port=30303 $boot
       --rpc-http-enabled --rpc-http-host=0.0.0.0 --rpc-http-api=ETH,NET,QBFT,WEB3,TXPOOL
       --host-allowlist=* --rpc-http-cors-origins=* --min-gas-price=0 --profile=ENTERPRISE
+      --tx-pool=$BESU_TX_POOL --tx-pool-max-size=$BESU_TX_POOL_MAX_SIZE --tx-pool-limit-by-account-percentage=1
 EOF
   done
 } > "$COMPOSE"
