@@ -281,7 +281,7 @@ def postprocess(md, tables):
 
 if __name__ == "__main__":
     src, dst = sys.argv[1], sys.argv[2]
-    full = open(src).read()
+    full = re.sub(r"(?m)^[ \t]+", "", open(src).read())  # editor indentation would leak into $$ blocks
     doc = full.split("\\begin{document}", 1)[1].split("\\end{document}", 1)[0]
     body = doc.split("\\maketitle", 1)[1].split("\\begin{thebibliography}", 1)[0]
     tables = []

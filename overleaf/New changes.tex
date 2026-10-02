@@ -1,153 +1,28 @@
 % =====================================================================
-% REMAINING CHANGES — minimal edits only, checked against VeRedact-2.tex
+% REMAINING CHANGES — checked against VeRedact-2.tex (3,399 lines)
 %
-% Each edit: LINE(S), FIND (the exact text in your file, as a comment),
-% then the replacement as plain text below it, ready to copy and paste.
-% Work from the bottom up (edit 14 first) so the line numbers stay correct.
+% DONE: edits 1-5, 7, 8, 10-14 from the previous list.
+% LEFT: 3 small fixes below. FIND is a comment; the plain lines under it
+% are the replacement, ready to copy and paste.
 % =====================================================================
 
 
 % ---------------------------------------------------------------------
-% EDIT 1 — LINE 365 — double full stop
-% FIND:    ref35}.. Verifiable
-% REPLACE WITH:
-ref35}. Verifiable
-
-
-% ---------------------------------------------------------------------
-% EDIT 2 — LINE 674 ONLY — extra brace (compile error)
-% (lines 2147 and 2365 also end in "}}" but are correct: they close a "{" opened on 2143 / 2361)
-% FIND:    \end{aligned}}
-% REPLACE WITH:
-\end{aligned}
-
-
-% ---------------------------------------------------------------------
-% EDIT 3 — LINE 817 — purple "2" still printed
-% FIND:    ^{\textcolor{purple}{2}\lambda}
-% REPLACE WITH (or use ^{2\lambda} if you want to keep the 2):
-^{\lambda}
-
-
-% ---------------------------------------------------------------------
-% EDIT 4 — LINES 2739-2740 — baselines are not run on PQ primitives
-% FIND:    using identical PQ primitives across
-%          schemes.
-% REPLACE WITH:
-with each baseline on its own classical primitives at
-about 128-bit security.
-
-
-% ---------------------------------------------------------------------
-% EDIT 5a — LINES 2871-2874 — Experimental Setup
-% FIND:    To separate architectural effects from primitive choice, all baselines
-%          were reimplemented within the same framework and instantiated with the
-%          same PQ primitives: classical signatures were replaced by ML-DSA-65 and
-%          classical chameleon hashes by the same SIS-based PQCH.
-% REPLACE WITH:
-All baselines were reimplemented within the same framework and
-instantiated with their own classical primitives at about 128-bit
-security, since none of their papers defines a post-quantum variant.
-
-
-% EDIT 5b — LINES 2874-2877
-% FIND:    Stages not
-%          supported by a baseline were realized using its minimal equivalent; for
-%          example, schemes without distributed authorization use a single
-%          authority signature.
-% REPLACE WITH:
-Stages not
-defined by a baseline's paper are reported as not supported.
-
-
-% EDIT 5c — LINES 2878-2880 — DELETE this text (nothing to paste)
-% FIND:    Original
-%          classical instantiations are reported for reference in
-%          Experiment~4.
-
-
-% ---------------------------------------------------------------------
-% EDIT 6 — LINES 2947-2948 — Experiment 1, cite keys only
-% FIND:    \cite{ref14}, \cite{ref17}, \cite{ref27},
-%          and~\cite{ref33}
+% FIX 1 — LINE 2942 — Experiment 1: one cite key was not changed
+% FIND:    \cite{ref1}, \cite{ref17}, \cite{ref27},
 % REPLACE WITH:
 \cite{ref1}, \cite{ref13}, \cite{ref27},
-and~\cite{ref34}
 
 
 % ---------------------------------------------------------------------
-% EDIT 7a — LINES 2977-2978 — Experiment 1 results
-% FIND:    Refs.~\cite{ref14}
-%          and~\cite{ref17} saturate early
-% REPLACE WITH:
-Ref.~\cite{ref13}
-saturates early
-
-
-% EDIT 7b — LINES 2980-2981
-% FIND:    Refs.~\cite{ref27} and~\cite{ref33} additionally incur per-request
-%          threshold or policy-based authorization.
-% REPLACE WITH:
-Refs.~\cite{ref1}, \cite{ref27}, and~\cite{ref34} additionally incur per-request
-threshold adaptation or policy-based authorization.
+% FIX 2 — LINE 2870 — Experimental Setup: capital "All" after a comma
+% FIND:    To separate architectural effects from primitive choice, All baselines were reimplemented
+% REPLACE WITH (keeps your lead-in, lowercase "all"):
+To separate architectural effects from primitive choice, all baselines were reimplemented
 
 
 % ---------------------------------------------------------------------
-% EDIT 8 — LINES 3017-3019 — Experiment 2, the compared schemes
-% FIND:    Liu \emph{et al.}~\cite{ref27},
-%          Dong \emph{et al.}~\cite{ref15}, and Li \emph{et al.}~\cite{ref1}, which
-%          support distributed or threshold redaction authorization.
+% FIX 3 — LINE 3034 — Experiment 2 results (a): "perform interaction" has no object
+% FIND:    baselines perform interaction for every request, so their
 % REPLACE WITH:
-Scheme~\cite{ref1} and
-Scheme~\cite{ref34}, which
-support distributed or policy-based redaction authorization;
-Schemes~\cite{ref13} and~\cite{ref27} define no separate authorization step.
-
-
-% ---------------------------------------------------------------------
-% EDIT 9 — LINE 3038 — Experiment 2: Scheme [34] has no committee
-% FIND:    perform committee interaction for every request
-% REPLACE WITH:
-perform authorization for every request
-
-
-% ---------------------------------------------------------------------
-% EDIT 10 — LINES 3046-3047 — Experiment 2: baselines are classical
-% FIND:    because more PQ
-%          signatures must be generated and verified.
-% REPLACE WITH:
-because more
-signatures or attribute pairings must be processed.
-
-
-% ---------------------------------------------------------------------
-% EDIT 11 — LINES 3062-3063 — Experiment 3, the compared schemes
-% FIND:    VRBC~\cite{ref13}, Xue \emph{et al.}~\cite{ref33}, and
-%          Miao \emph{et al.}~\cite{ref20}.
-% REPLACE WITH:
-Scheme~\cite{ref13} and Scheme~\cite{ref1}.
-
-
-% ---------------------------------------------------------------------
-% EDIT 12 — LINES 3108-3110 — Experiment 4, cite keys + "PQ-adapted"
-% FIND:    \cite{ref13},
-%          \cite{ref20}, and~\cite{ref33} in both PQ-adapted and original
-%          classical instantiations.
-% REPLACE WITH:
-\cite{ref13}
-and~\cite{ref1} in their original classical instantiations.
-
-
-% ---------------------------------------------------------------------
-% EDIT 13 — LINES 3136-3137 — Experiment 4 results: no PQ-adapted baselines exist
-% FIND:    Compared with the classical instantiations of the baselines, the
-%          PQ-adapted instantiations and VeRedact-PQ incur higher absolute
-% REPLACE WITH:
-Compared with the classical baselines, VeRedact-PQ incurs higher absolute
-
-
-% ---------------------------------------------------------------------
-% EDIT 14 — LINE 3155 — Experiment 5: add the operation the gas table now lists
-% FIND:    $A_b$ (Phase~2), redaction finalization,
-% REPLACE WITH:
-$A_b$ (Phase~2), authorization anchoring $H(Auth_e^B)$ (Phase~4), redaction finalization,
+baselines perform authorization for every request, so their

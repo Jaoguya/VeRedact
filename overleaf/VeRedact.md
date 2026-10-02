@@ -59,7 +59,7 @@ Scalability has also been addressed through efficient update mechanisms, lightwe
 
 ### Policy-Controlled, Private, and Verifiable Redaction
 
-Fine-grained redaction has been developed using attribute- and policy-based mechanisms [8, 15], while privacy-preserving and policy-hiding constructions restrict disclosure of sensitive authorization information [4, 18, 24, 31, 34]. Other schemes strengthen traceability and accountability through dynamic policies, anonymous but accountable redaction, policy-compliant rewriting, and cross-chain accountability [25, 28, 29, 32, 35].. Verifiable redaction has likewise been studied through efficient query and integrity auditing [13], lightweight verification and permission supervision [20], and publicly auditable architectures [33].
+Fine-grained redaction has been developed using attribute- and policy-based mechanisms [8, 15], while privacy-preserving and policy-hiding constructions restrict disclosure of sensitive authorization information [4, 18, 24, 31, 34]. Other schemes strengthen traceability and accountability through dynamic policies, anonymous but accountable redaction, policy-compliant rewriting, and cross-chain accountability [25, 28, 29, 32, 35]. Verifiable redaction has likewise been studied through efficient query and integrity auditing [13], lightweight verification and permission supervision [20], and publicly auditable architectures [33].
 
 Despite these advances, policy validation, multi-party authorization, redaction execution, and auditing are often treated as separate functions. VeRedact-PQ instead binds them at request level: private policy eligibility is verified before batching, committee authorization is bound to an authenticated batch, and PBRP links this evidence to the executed state transition. A sharded RAI subsequently supports query-based auditing using compact multiproofs and shared batch evidence, preserving individual accountability without repeatedly processing complete redaction proofs.
 
@@ -145,7 +145,7 @@ The VeRedact-PQ framework operates through 6 sequential phases where its details
 | $X_i^{\mathrm{red}}$ | Redaction payload $(m_i',\rho_i')$ | $D_i'$ | Proposed content commitment |
 | {$rc_i$} | {VPS admission receipt} |  |  |
 
-#### Phase 1: System Setup
+#### Phase 1: System Initialization
 
 This phase initializes the cryptographic parameters, registered entities, redaction policies, and distributed redaction authority required by VeRedact-PQ. Let $\lambda$ denote the security parameter and $e$ denote the current authorization epoch.
 
@@ -155,7 +155,7 @@ $$
 \begin{aligned}
 PP=(&\lambda,H,H_1,H_2,H_A,\mathsf{PQCH},\\
 &\mathsf{PQSIG},\mathsf{PQZK},\mathsf{Merkle},\mathsf{PRF})
-\end{aligned}}
+\end{aligned}
 \tag{1}
 $$
 
@@ -432,15 +432,14 @@ and determines the SA-RLI shard and bucket:
 $$
 sid_i=H_1(\tau_i)\bmod S,
 \qquad
-bid_i=H_2(\tau_i)\bmod B.
+bid_i=H_2(\tau_i)\bmod B
 \tag{29}
 $$
 
 The synchronized Cuckoo filter $CF_{sid_i}$ screens absent tokens. For a positive result, or when filter synchronization is uncertain, VPS performs authenticated lookup and retrieves
 
 $$
-E_i=
-\big(\tau_i,Tag_i,b,pos_i,PID_i,e_i,I_i,D_i,ptr_i\big).
+E_i=\big(\tau_i,Tag_i,b,pos_i,PID_i,e_i,I_i,D_i,ptr_i\big)
 \tag{30}
 $$
 
@@ -571,7 +570,7 @@ The complete request $R_i$, public statement $x_i$, proof $\pi_i^{PQ}$, and auth
 Validated requests enter the pending queue $\mathcal{Q}_e$. Upon admitting $VR_i$ to $\mathcal{Q}_e$, the VPS returns to the requester a signed admission receipt
 
 $$
-rc_i=\mathsf{PQSIG.Sign}\big(sk_V,H(RID_i\parallel H(R_i)\parallel ts_i^{rc})\big),
+rc_i=\mathsf{PQSIG.Sign}\big(sk_V,H(RID_i\parallel H(R_i)\parallel ts_i^{rc})\big)
 \tag{42}
 $$
 
@@ -1574,7 +1573,7 @@ Table IV Table IV shows that the schemes differ mainly in how the cost of auth
 
 VeRedact-PQ incurs the highest per-request validation cost among the compared schemes because the VPS verifies a PQZK proof $T_{ZV}$ for private policy compliance. This cost is paid once per request: Phase 4 authorization verifies only the compact attestation $\alpha_i$, and routine audits verify $\alpha_i$ together with the committed $H(\pi_i^{PQ})$ instead of repeating PQZK verification. Committee authorization requires $t(T_S+T_V)$ per ABRRR batch rather than per request, so the committee cost amortized over each request is $t(T_S+T_V)/m$. During execution, BIMC coalesces all modifications that target the same transaction batch, so the number of distributed PQCH adaptations scales with $|\Omega_e|$ rather than $m$. Since $|\Omega_e|\le m$ and $|\Omega_e|\ll m$ whenever requests cluster on a subset of transaction batches, the most expensive threshold PQ operation is amortized across all co-located modifications. For auditing, committee approvals are verified once per distinct authorization batch, giving $t|\Omega_{Q_j}^B|T_V$ rather than $t\,n_QT_V$, while the query-scoped multiproof shares authentication paths across returned RAI entries.
 
-Post-quantum primitives are individually more expensive than their classical counterparts. The analytical comparison therefore highlights that VeRedact-PQ concentrates expensive PQ operations at request level (PQZK verification) and batch level (committee authorization and PQCH adaptation), while the per-request online path is dominated by signature verification and hash-based authentication. The experiments below quantify these effects using identical PQ primitives across schemes.
+Post-quantum primitives are individually more expensive than their classical counterparts. The analytical comparison therefore highlights that VeRedact-PQ concentrates expensive PQ operations at request level (PQZK verification) and batch level (committee authorization and PQCH adaptation), while the per-request online path is dominated by signature verification and hash-based authentication. The experiments below quantify these effects with each baseline on its own classical primitives at about 128-bit security.
 
 ### Communication and Storage Cost Analysis
 
@@ -1608,7 +1607,7 @@ PQSIG was instantiated with ML-DSA-65 (FIPS 204) through the Open Quantum Safe 
 
 The workload consists of synthetic enterprise transactions with payloads of 256 B to 4 KB, organized into transaction batches of $N$ leaves. Redaction targets follow a Zipf distribution with skew $s$ to control batch locality, where $s=0$ corresponds to uniformly distributed targets and larger $s$ concentrates requests on fewer transaction batches. Request arrivals follow a Poisson process whose rate is varied per experiment, including bursty on/off phases to evaluate ABRRR adaptation. Unless otherwise stated, the parameters in Table VII are used, and all reported results represent the mean of 30 independent runs with 95% confidence intervals.
 
-To separate architectural effects from primitive choice, all baselines were reimplemented within the same framework and instantiated with the same PQ primitives: classical signatures were replaced by ML-DSA-65 and classical chameleon hashes by the same SIS-based PQCH. Stages not supported by a baseline were realized using its minimal equivalent; for example, schemes without distributed authorization use a single authority signature. Each baseline otherwise follows its original workflow, including per-request authorization and adaptation. Original classical instantiations are reported for reference in Experiment 4.
+To separate architectural effects from primitive choice, All baselines were reimplemented within the same framework and instantiated with their own classical primitives at about 128-bit security, since none of their papers defines a post-quantum variant. Stages not defined by a baseline’s paper are reported as not supported. Each baseline otherwise follows its original workflow, including per-request authorization and adaptation.
 
 **TABLE VI.** Execution Time of Cryptographic Primitives
 
@@ -1648,7 +1647,7 @@ To separate architectural effects from primitive choice, all baselines were reim
 
 #### Experiment 1: Redaction Latency and Throughput
 
-This experiment evaluates end-to-end redaction performance under increasing redaction workloads. The request arrival rate is varied from **[100]** to **[5,000]** requests/s over the default ledger. End-to-end latency is measured from request submission to blockchain finalization of the updated checkpoint, covering Phases 3 to 5, and throughput is measured as finalized redactions per second. VeRedact-PQ is compared with Refs. [14], [17], [27], and [33]. In addition, three internal variants isolate the contribution of each mechanism:
+This experiment evaluates end-to-end redaction performance under increasing redaction workloads. The request arrival rate is varied from **[100]** to **[5,000]** requests/s over the default ledger. End-to-end latency is measured from request submission to blockchain finalization of the updated checkpoint, covering Phases 3 to 5, and throughput is measured as finalized redactions per second. VeRedact-PQ is compared with Refs. [1], [17], [27], and [34]. In addition, three internal variants isolate the contribution of each mechanism:
 
 1.  **Per-Request**: Each validated request is authorized and executed individually, without ABRRR or BIMC.
 
@@ -1662,7 +1661,7 @@ To evaluate the effect of batch locality, the Zipf skew is additionally varied a
 
 **Fig. 3.** Redaction performance: (a) throughput and (b) 95th-percentile end-to-end latency versus request arrival rate, and (c) PQCH adaptations per 1,000 redactions versus Zipf skew.
 
-Fig. 3(a) shows that throughput increases with the arrival rate until each scheme saturates. Refs. [14] and [17] saturate early because every request requires an independent chameleon-hash adaptation and checkpoint update, while Refs. [27] and [33] additionally incur per-request threshold or policy-based authorization. VeRedact-PQ sustains the highest throughput because committee authorization is amortized across each ABRRR batch and distributed PQCH adaptation is performed once per affected transaction batch.
+Fig. 3(a) shows that throughput increases with the arrival rate until each scheme saturates. Ref. [13] saturates early because every request requires an independent chameleon-hash adaptation and checkpoint update, while Refs. [1], [27], and [34] additionally incur per-request threshold adaptation or policy-based authorization. VeRedact-PQ sustains the highest throughput because committee authorization is amortized across each ABRRR batch and distributed PQCH adaptation is performed once per affected transaction batch.
 
 Fig. 3(b) shows that at low arrival rates Per-Request may achieve slightly lower latency than batched execution, because batches wait for additional requests. This waiting time is bounded by $T_{\max}$ in ABRRR, whereas Fixed-Batch waits until its static batch size is reached and therefore incurs higher latency under light workloads. Under heavy workloads, ABRRR enlarges batches toward $B_{\max}$, improving amortization, while Fixed-Batch remains limited by its static size. The gap between No-BIMC and VeRedact-PQ isolates the benefit of coalesced Merkle updates and shared PQCH adaptation.
 
@@ -1670,19 +1669,19 @@ Fig. 3(c) shows that the number of PQCH adaptations of per-request schemes rema
 
 #### Experiment 2: Transaction Authorization Latency
 
-This experiment evaluates the latency of Phase 4 multi-party authorization. The committee size is varied as $n\in\{4,7,10,16,32\}$ with $t=\lfloor 2n/3\rfloor+1$, and the ABRRR batch size as $m\in\{1,8,32,64,128,256\}$. Authorization latency is measured from batch closure to the availability of $Auth_e^B$, and is reported both per batch and amortized per request. The latency is further decomposed into attestation verification, state-freshness checking, batch-commitment construction, and committee signing and verification. VeRedact-PQ is compared with Liu *et al.* [27], Dong *et al.* [15], and Li *et al.* [1], which support distributed or threshold redaction authorization. An internal variant, **Re-ZK**, is also evaluated, in which committee members re-verify each PQZK proof instead of the VPS attestation $\alpha_i$. The results are shown in Fig. 4.
+This experiment evaluates the latency of Phase 4 multi-party authorization. The committee size is varied as $n\in\{4,7,10,16,32\}$ with $t=\lfloor 2n/3\rfloor+1$, and the ABRRR batch size as $m\in\{1,8,32,64,128,256\}$. Authorization latency is measured from batch closure to the availability of $Auth_e^B$, and is reported both per batch and amortized per request. The latency is further decomposed into attestation verification, state-freshness checking, batch-commitment construction, and committee signing and verification. VeRedact-PQ is compared with Scheme [1] and Scheme [34], which support distributed or policy-based redaction authorization; Schemes [13] and [27] define no separate authorization step. An internal variant, **Re-ZK**, is also evaluated, in which committee members re-verify each PQZK proof instead of the VPS attestation $\alpha_i$. The results are shown in Fig. 4.
 
 ![Fig. 4](exp2_authorization_latency.png)
 
 **Fig. 4.** Authorization latency: (a) amortized latency per request versus batch size and (b) per-batch latency versus committee size.
 
-Fig. 4(a) shows that the amortized authorization latency of VeRedact-PQ decreases as the batch size increases, because the $t$ committee signatures and their verification are shared by all $m$ requests. As $m$ grows, the amortized latency approaches the per-request attestation-verification cost $T_V$. In contrast, the baselines perform committee interaction for every request, so their amortized latency remains approximately constant with respect to $m$. Re-ZK exhibits substantially higher latency because each batch requires $m$ PQZK verifications, confirming that PQ-signed validation attestations remove PQZK verification from the authorization path without weakening request-level validation.
+Fig. 4(a) shows that the amortized authorization latency of VeRedact-PQ decreases as the batch size increases, because the $t$ committee signatures and their verification are shared by all $m$ requests. As $m$ grows, the amortized latency approaches the per-request attestation-verification cost $T_V$. In contrast, the baselines perform interaction for every request, so their amortized latency remains approximately constant with respect to $m$. Re-ZK exhibits substantially higher latency because each batch requires $m$ PQZK verifications, confirming that PQ-signed validation attestations remove PQZK verification from the authorization path without weakening request-level validation.
 
-Fig. 4(b) shows that per-batch authorization latency increases with committee size for all schemes because more PQ signatures must be generated and verified. For VeRedact-PQ, this growth is incurred once per ABRRR batch and therefore affects all $m$ requests only through the amortized term $t(T_S+T_V)/m$. Consequently, larger committees, which strengthen distributed control, remain practical under high redaction volumes.
+Fig. 4(b) shows that per-batch authorization latency increases with committee size for all schemes because more signatures or attribute pairings must be processed. For VeRedact-PQ, this growth is incurred once per ABRRR batch and therefore affects all $m$ requests only through the amortized term $t(T_S+T_V)/m$. Consequently, larger committees, which strengthen distributed control, remain practical under high redaction volumes.
 
 #### Experiment 3: Audit Efficiency
 
-This experiment evaluates the service-side efficiency of Phase 6 auditing, namely query resolution, evidence generation, and response size. The number of returned redaction records is varied as $n_Q\in\{10,10^2,10^3,10^4\}$, while the average number of returned records per authorization batch is varied from 1 to **[64]** to control evidence sharing. VeRedact-PQ is compared with VRBC [13], Xue *et al.* [33], and Miao *et al.* [20]. An internal variant, **Per-Record Evidence**, returns an individual Merkle path and complete authorization evidence for every record instead of a query-scoped multiproof with shared batch evidence. Response-generation time and response size are measured. The results are shown in Fig. 5.
+This experiment evaluates the service-side efficiency of Phase 6 auditing, namely query resolution, evidence generation, and response size. The number of returned redaction records is varied as $n_Q\in\{10,10^2,10^3,10^4\}$, while the average number of returned records per authorization batch is varied from 1 to **[64]** to control evidence sharing. VeRedact-PQ is compared with Scheme [13] and Scheme [1]. An internal variant, **Per-Record Evidence**, returns an individual Merkle path and complete authorization evidence for every record instead of a query-scoped multiproof with shared batch evidence. Response-generation time and response size are measured. The results are shown in Fig. 5.
 
 ![Fig. 5](exp3_audit_efficiency.png)
 
@@ -1694,7 +1693,7 @@ The benefit of shared batch evidence is greatest when returned records cluster w
 
 #### Experiment 4: Verification Time
 
-This experiment evaluates auditor-side verification of returned redaction evidence. The number of verified records is varied as in Experiment 3 under two verification levels: **Normal Audit**, which verifies validation attestations and the committed $H(\pi_i^{PQ})$, and **Deep Audit**, which additionally reconstructs $x_i$ and verifies $\pi_i^{PQ}$. Verification time is decomposed into response signature and query binding, RAI multiproof, committee approvals, validation attestations, state-transition and PQCH checks, and PQZK verification. VeRedact-PQ is compared with Refs. [13], [20], and [33] in both PQ-adapted and original classical instantiations. To evaluate verification granularity, modified, substituted, and stale evidence is additionally injected into **[1%–10%]** of returned records, and the fraction of invalid records individually rejected and valid records retained is measured. The results are shown in Fig. 6.
+This experiment evaluates auditor-side verification of returned redaction evidence. The number of verified records is varied as in Experiment 3 under two verification levels: **Normal Audit**, which verifies validation attestations and the committed $H(\pi_i^{PQ})$, and **Deep Audit**, which additionally reconstructs $x_i$ and verifies $\pi_i^{PQ}$. Verification time is decomposed into response signature and query binding, RAI multiproof, committee approvals, validation attestations, state-transition and PQCH checks, and PQZK verification. VeRedact-PQ is compared with Refs. [13] and [1] in their original classical instantiations. To evaluate verification granularity, modified, substituted, and stale evidence is additionally injected into **[1%–10%]** of returned records, and the fraction of invalid records individually rejected and valid records retained is measured. The results are shown in Fig. 6.
 
 ![Fig. 6](exp4_verification_time.png)
 
@@ -1702,11 +1701,11 @@ This experiment evaluates auditor-side verification of returned redaction eviden
 
 Fig. 6(a) shows that normal-audit verification time grows approximately linearly with $n_Q$, dominated by attestation verification $n_QT_V$ and hash-based multiproof checking, while committee approvals contribute only $t|\Omega_{Q_j}^B|T_V$. Deep-audit verification is dominated by $n_QT_{ZV}$ and is therefore considerably more expensive. This confirms the rationale of cost-aware auditing: routine audits rely on PQ-signed attestations and hash-based authentication, while complete PQZK verification is reserved for challenged or forensic audits in which independent re-verification is required.
 
-Fig. 6(b) shows the verification-time breakdown. Compared with the classical instantiations of the baselines, the PQ-adapted instantiations and VeRedact-PQ incur higher absolute signature-verification cost, which quantifies the overhead of post-quantum protection. Nevertheless, VeRedact-PQ reduces the number of PQ verifications by verifying shared authorization evidence once per batch. Because each returned record carries individual membership and execution evidence, every injected modified, substituted, or stale record is rejected individually while all valid records remain acceptable, as stale evidence fails the version, epoch, and checkpoint checks of Phase 6.
+Fig. 6(b) shows the verification-time breakdown. Compared with the classical baselines, VeRedact-PQ incurs higher absolute signature-verification cost, which quantifies the overhead of post-quantum protection. Nevertheless, VeRedact-PQ reduces the number of PQ verifications by verifying shared authorization evidence once per batch. Because each returned record carries individual membership and execution evidence, every injected modified, substituted, or stale record is rejected individually while all valid records remain acceptable, as stale evidence fails the version, epoch, and checkpoint checks of Phase 6.
 
 #### Experiment 5: Blockchain Gas Consumption
 
-This experiment evaluates the on-chain cost of VeRedact-PQ on the permissioned Besu network. Although the gas price is set to zero in the permissioned deployment, gas usage provides a deterministic measure of on-chain computation and storage. The measured contract operations are policy and committee registration (Phase 1), batch-checkpoint anchoring $A_b$ (Phase 2), redaction finalization, which atomically commits the updated checkpoints $\{A_b'\}$ and SA-RLI state (Phase 5), and RAI checkpoint anchoring $CP_e^A$ (Phase 6). The number of redactions per ABRRR batch is varied as $m\in\{1,8,32,64,128,256\}$ under Zipf skews $s\in\{0,0.8\}$. The baselines were implemented as contracts that store the on-chain redaction state prescribed by each scheme. Total gas per authorization round and amortized gas per redaction are measured. The results are shown in Fig. 7.
+This experiment evaluates the on-chain cost of VeRedact-PQ on the permissioned Besu network. Although the gas price is set to zero in the permissioned deployment, gas usage provides a deterministic measure of on-chain computation and storage. The measured contract operations are policy and committee registration (Phase 1), batch-checkpoint anchoring $A_b$ (Phase 2), authorization anchoring $H(Auth_e^B)$ (Phase 4), redaction finalization, which atomically commits the updated checkpoints $\{A_b'\}$ and SA-RLI state (Phase 5), and RAI checkpoint anchoring $CP_e^A$ (Phase 6). The number of redactions per ABRRR batch is varied as $m\in\{1,8,32,64,128,256\}$ under Zipf skews $s\in\{0,0.8\}$. The baselines were implemented as contracts that store the on-chain redaction state prescribed by each scheme. Total gas per authorization round and amortized gas per redaction are measured. The results are shown in Fig. 7.
 
 ![Fig. 7](exp5_gas_consumption.png)
 
