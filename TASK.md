@@ -34,8 +34,8 @@ first server run of the new code (smoke, then pilot on Besu).
 
 | # | Decision | Recommendation |
 |:--|:--|:--|
-| D1 | Rewrite the manuscript's baseline list to [1], [13], [27], [34] (Sec. Evaluation, Exp. 1–5 text, Tables IV/V) and Table I cells | do it; exact list in `docs/paper-conformance.md` §1–2. I did not edit the `.tex` |
-| D2 | l. 1555 claims "identical PQ primitives across schemes"; baselines run their own classical primitives at 128-bit | change the sentence; a PQ-adapted RSA accumulator / CHET / pairing ABE is not defined by those papers |
+| D1 | ~~Rewrite the manuscript's baseline list~~ | **done 2026-10-01**: Table I names/cells, Sec. Evaluation, Tables IV/V, Exp. 1–4 text. S27's synthesised ECDSA approvals removed; S27 left Exp. 2 |
+| D2 | ~~"identical PQ primitives across schemes"~~ | **done 2026-10-01**: sentence, setup paragraph and Exp. 4 now say own classical primitives at ~128-bit |
 | D3 | 8 `[CONFIRM]` values (repetitions, SIS n/k, validators, netem delay, zipf_rate) | set repetitions and zipf_rate from the pilot; validators/netem to what the paper will state |
 | D4 | SIS-PQCH distributed perturbation is spherical → leaks R statistically over many adaptations | either implement the distributed Genise–Micciancio perturbation (cost rises) or state it as a limitation |
 | D5 | STARK encodes credential membership + requester/statement binding, not PrivatePolicy attribute predicates | extend the AIR, or narrow the manuscript's PQZK claim |

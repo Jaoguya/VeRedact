@@ -86,7 +86,7 @@ doi = "10.1109/TDSC.2025.3634512"
 folder = "Scheme/S27_Liu2026_ETCH"
 fulltext = "S27_fulltext.md"
 summary = "S27_summary.md"
-experiments = [1, 2, 5]
+experiments = [1, 5]
 implementation = "experiment/S27_ETCH/s27_baseline.py:ETCHScheme"
 boundaries = "docs/baselines/S27-etch.md"
 

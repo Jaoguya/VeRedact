@@ -1,9 +1,9 @@
 """S27 [27] ETCH behind the shared Scheme contract (docs/baselines/S27-etch.md).
 
 Paper workflow, per request (Sec. VI):
-  authorize  "once more than t redactors reach consensus on the new transaction content": each of t
-             redactors verifies the initiator's signature on the chameleon hash h and signs its approval
-             (ECDSA secp256k1). No policy, no requester privacy — the paper defines none.
+  authorize  target lookup only. The paper has no request object and no approval protocol: redactors
+             "reach a consensus" by means it leaves unspecified, and the t-of-n threshold is enforced only
+             inside Adapt. No policy, no requester privacy — the paper defines none.
   redact     ETCH.Adapt (2 CA rounds, t shares) -> new (r, w); nodes re-verify ETCH hash + initiator
              signature; one ledger write per redaction (no batching in the paper).
   audit      not defined by the paper -> NotSupported (capability column says so; nothing synthesised).
@@ -14,7 +14,6 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from coincurve import PrivateKey  # noqa: E402
 from s27_scheme import Initiator, keygen, redact_tx, verify_tx  # noqa: E402
 
 from veredact_bench.anchor import gather, make_anchor  # noqa: E402
@@ -35,11 +34,10 @@ class ETCHScheme(Scheme):
                             consensus_bound_auth=False)
 
     def auth_cost(self) -> AuthCost:
-        return AuthCost(signature_verifications=self.t, signatures_generated=self.t)
+        return AuthCost()  # no approval step in the paper: the threshold lives in Adapt (redact)
 
     def setup(self, dataset: Dataset) -> None:
         self.keys = keygen(self.t, self.n)  # Pedersen/Feldman DKG among redactors
-        self.redactors = [PrivateKey() for _ in range(self.n)]
         self.initiators = [Initiator() for _ in range(dataset.requesters)]
         self.txs = {tx.tid: (self.initiators[tx.owner].create_tx(self.keys.Y, tx.payload), tx.owner)
                     for tx in dataset.transactions}
@@ -51,14 +49,7 @@ class ETCHScheme(Scheme):
         entry = self.txs.get(req.tid)
         if entry is None or req.fault == "absent":
             return Authorization(req, False, (time.perf_counter() - t0) * 1000, reason="nonexistent target")
-        tx, owner = entry
-        pk = self.initiators[owner].sk.public_key
-        approvals = []
-        for k in range(self.t):  # each redactor checks the transaction and approves the new content
-            if not verify_tx(self.keys.Y, pk, tx):
-                return Authorization(req, False, (time.perf_counter() - t0) * 1000, reason="tx signature")
-            approvals.append(self.redactors[k].sign(tx.etch.h.format() + req.new_payload[:32]))
-        return Authorization(req, True, (time.perf_counter() - t0) * 1000, handle=approvals)
+        return Authorization(req, True, (time.perf_counter() - t0) * 1000)
 
     def redact(self, batch: list) -> RedactionResult:
         crypto_ms, outcomes, adapt, futs = 0.0, [], 0, []

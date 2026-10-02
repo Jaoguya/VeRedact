@@ -99,7 +99,7 @@ def tabular_to_md(body):
             r = r.strip()
             if not r:
                 continue
-            m = re.match(r"\\multicolumn\{\d+\}\{[^}]*\}\{(.*)\}\s*$", r, re.S)
+            m = re.match(r"\\multicolumn\{\d+\}\{(?:[^{}]|\{[^{}]*\})*\}\{(.*)\}\s*$", r, re.S)
             if m:
                 notes.append(inline(m.group(1)))
             else:

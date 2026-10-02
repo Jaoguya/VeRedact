@@ -70,7 +70,7 @@ Where this differs from manuscript Table I, the code is right and the table must
 | Exp | Fig. | Systems (config) | What is measured | Notes |
 |:--|:--|:--|:--|:--|
 | 1 | 3 | all five + 3 variants | open-loop, real time: per-request latency submit → finalized, goodput, per-stage times | client threads prove at arrival; VPS worker pool; ABRRR batcher (B_e\* from λ̂, T_max); stale requests returned for revalidation (manuscript Phases 4/5); saturation = decided/offered < 1 − tol stops the rate sweep; load-generator shortfall recorded separately |
-| 2 | 4 | veredact, re_zk, S1, S27, S34 | Phase 3 per request + Phase 4 per batch; baselines' own authorization | committee axis maps to each system's own distribution parameter (S1 nodes, S27 redactors, S34 policy attributes); baselines have no batch axis (b = 1) |
+| 2 | 4 | veredact, re_zk, S1, S34 | Phase 3 per request + Phase 4 per batch; baselines' own authorization | committee axis maps to each system's own distribution parameter (S1 nodes, S34 policy attributes); baselines have no batch axis (b = 1). S13 (key possession) and S27 (threshold only inside Adapt) define no authorization step |
 | 3 | 5 | veredact, per_record_evidence, S13, S1 | audit response generation time + size vs n_Q, records per batch | n_Q above a system's history is recorded `unreachable` (S1: one redaction per block) |
 | 4 | 6 | veredact, S13, S1 | auditor verification time; normal/deep; injected modified/substituted/stale records | per-record decisions written; S13's aggregate decision shows as false rejections |
 | 5 | 7, VIII | all five | gas from Besu receipts per on-chain transaction | anchor receipt log; no receipts on the in-process ledger (refused in the experiment tier) |

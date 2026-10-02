@@ -162,7 +162,7 @@ drain_s = 15                   # [PROPOSED] after the window, wait this long for
 
 [experiments.exp2]
 # Transaction authorization latency (Phase 4). Manuscript Fig. 4.
-systems = ["veredact", "S1", "S27", "S34"]  # S13 has no per-request authorization protocol (key possession only)
+systems = ["veredact", "S1", "S34"]  # S13: key possession only; S27: threshold enforced inside Adapt, no approval step
 committee_sizes = [4, 7, 10, 16, 32]        # [DERIVED] manuscript; t = floor(2n/3)+1
 batch_sizes = [1, 8, 32, 64, 128, 256]      # [DERIVED] manuscript
 variants = ["re_zk"]
