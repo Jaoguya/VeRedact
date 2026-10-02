@@ -2867,7 +2867,7 @@
     used, and all reported results represent the mean of 30 independent runs
     with 95\% confidence intervals.
     
-    To separate architectural effects from primitive choice, All baselines were reimplemented within the same framework and
+    To separate architectural effects from primitive choice, all baselines were reimplemented within the same framework and
     instantiated with their own classical primitives at about 128-bit
     security, since none of their papers defines a post-quantum variant.
     Stages not
@@ -2939,7 +2939,7 @@
     End-to-end latency is measured from request submission to blockchain
     finalization of the updated checkpoint, covering Phases~3 to~5, and
     throughput is measured as finalized redactions per second. VeRedact-PQ
-    is compared with Refs.~\cite{ref1}, \cite{ref17}, \cite{ref27},
+    is compared with Refs.~\cite{ref1}, \cite{ref13}, \cite{ref27},
     and~\cite{ref34}. In addition, three internal variants isolate the
     contribution of each mechanism:
     
@@ -3031,7 +3031,7 @@
     the $t$ committee signatures and their verification are shared by all
     $m$ requests. As $m$ grows, the amortized latency approaches the
     per-request attestation-verification cost $T_V$. In contrast, the
-    baselines perform interaction for every request, so their
+    baselines perform authorization for every request, so their
     amortized latency remains approximately constant with respect to $m$.
     Re-ZK exhibits substantially higher latency because each batch requires
     $m$ PQZK verifications, confirming that PQ-signed validation
