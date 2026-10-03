@@ -13,7 +13,7 @@ instance) and is **not on GitHub**; `paper/` (generated tables + figures) is com
 | # | Step | Command | Status | Result stored at |
 |:-:|:--|:--|:--|:--|
 | 1 | Code aligned with the final manuscript | — | **done** 2026-10-03 | commit `c86a97d` (what changed: §3) |
-| 2 | Restructure to the IEEE evaluation-code layout (option B: YAML configs, `src/`, one run per point) | — | **done** 2026-10-03 | this commit (what changed: §3.2) |
+| 2 | Restructure to the IEEE evaluation-code layout (option B: YAML configs, `src/`, one run per point) | — | **done** 2026-10-03 | commit `f93f640` on GitHub `main` (what changed: §3.2) |
 | 3 | Tests | `make test` | **done** 2026-10-03 | console only: 44 passed |
 | 4 | Local smoke from a fresh `.venv` (laptop, in-process ledger) | `make all TIER=smoke FORCE=--force` | **done** 2026-10-03 (11 min, no errors) | laptop: `results/<exp>/<method>/smoke/` (§1.1); `paper/tables/*.tex`, `paper/figures/*.pdf` (smoke numbers, not for the paper) |
 | 5 | Start the server | `deploy/aws/provision_ec2.sh` | to do | instance id → `deploy/aws/.instance` (gitignored) |
