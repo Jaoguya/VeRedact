@@ -5,29 +5,47 @@ needs goes to `overleaf/newchange.md`. Update the **Progress** table as each ste
 
 ## 1. Progress
 
-| # | Step | Command | Status | Result / note |
+Rule: when a step finishes, set **Status** to `done <date>` and write in **Result stored at** the exact path
+(run id) it produced. `results/` and `plot/` are gitignored: they exist only on the machine that ran them
+(this laptop or the EC2 instance) and are **not on GitHub**; `deploy/aws/fetch_results.sh` copies the
+server's `results/` and `plot/` into this checkout.
+
+| # | Step | Command | Status | Result stored at |
 |:-:|:--|:--|:--|:--|
-| 1 | Code aligned with the final manuscript | — | **done** 2026-10-03 | see §3 |
-| 2 | Tests | `make test` | **done** 2026-10-03 | 21 + 15 passed |
-| 3 | Local smoke (laptop, in-process ledger) | `make smoke` | **done** 2026-10-03 | 20 min; primitives + Exp. 1–5 ran, 5 figures + primitives table drawn; Exp. 1 client-bound at 50 req/s (laptop ML-DSA ≈ 8.7 ms/sign; liboqs on the server) |
-| 4 | Start the server | `deploy/aws/provision_ec2.sh` | to do | c7i.4xlarge, ap-southeast-1; refreshes the SSH rule to this IP |
-| 5 | Server smoke (Besu + liboqs + STARK build) | `deploy/aws/launch_run.sh smoke` | to do | first run of the new code on Besu |
-| 6 | Pilot | `deploy/aws/launch_run.sh pilot` | to do | sets `zipf_rate`, checks CV for 30 repetitions (§2) |
-| 7 | Full experiment | `deploy/aws/launch_run.sh experiment` | to do | primitives + Exp. 1–5; ≈ 2.5–3 days, ≈ US$ 60–70 (§4) |
-| 8 | Fetch results + figures | `deploy/aws/fetch_results.sh` | to do | `results/`, `plot/*.png`, `plot/primitives_table.csv`, `plot/gas_by_operation.csv` |
-| 9 | Stop paying | `deploy/aws/teardown_ec2.sh` | to do | the idle watchdog powers off after 30 min idle anyway |
-| 10 | Fill the manuscript from the run | `overleaf/newchange.md` §C | to do | primitive times, gas, hardware, Exp. 1–4 result paragraphs |
+| 1 | Code aligned with the final manuscript | — | **done** 2026-10-03 | commit `c86a97d` on GitHub `main` (what changed: §3) |
+| 2 | Tests | `make test` | **done** 2026-10-03 | console only: 21 + 15 passed |
+| 3 | Local smoke (laptop, in-process ledger) | `make smoke` + `make plots` | **done** 2026-10-03 | laptop: run ids in §1.1 (smoke 2026-10-03); figures `plot/exp{1..4}_*.png`, `plot/primitives_table.csv` (no gas figure: in-process ledger) |
+| 4 | Start the server | `deploy/aws/provision_ec2.sh` | to do | instance id → `deploy/aws/.instance` (gitignored) |
+| 5 | Server smoke (Besu + liboqs + STARK build) | `deploy/aws/launch_run.sh smoke` | to do | server: `results/<exp>/<run_id>/`, log `results/logs/smoke_*.log` |
+| 6 | Pilot | `deploy/aws/launch_run.sh pilot` | to do | server: `results/<exp>/<run_id>/`, log `results/logs/pilot_*.log` |
+| 7 | Full experiment | `deploy/aws/launch_run.sh experiment` | to do | server: `results/<exp>/<run_id>/`, log `results/logs/experiment_*.log` (§1.1) |
+| 8 | Fetch results + figures | `deploy/aws/fetch_results.sh` | to do | laptop: `results/`, `plot/*.png`, `plot/primitives_table.csv`, `plot/gas_by_operation.csv` |
+| 9 | Stop paying | `deploy/aws/teardown_ec2.sh` | to do | — (the idle watchdog powers off after 30 min idle anyway) |
+| 10 | Fill the manuscript from the run | `overleaf/newchange.md` §C | to do | `overleaf/newchange.md` (GitHub) |
 
-Per-experiment progress of step 7 (the run writes `results/<exp>/<run_id>/manifest.json` when each finishes):
+### 1.1 Run ledger
 
-| Experiment | Manuscript | Status | Run id |
-|:--|:--|:--|:--|
-| primitives | tab:primitives | to do | |
-| exp1 | Fig. 3 throughput / p95 latency / adaptations vs skew | to do | |
-| exp2 | Fig. 4 authorization latency | to do | |
-| exp3 | Fig. 5 audit efficiency | to do | |
-| exp4 | Fig. 6 verification time + breakdown | to do | |
-| exp5 | Fig. 7 gas + tab:gas | to do | |
+Every run writes `results/<exp>/<run_id>/rows.csv` (one row per request/operation) and `manifest.json`
+(resolved config, seed, git commit, environment). Only rows marked **current** may feed figures or tables.
+
+| Date | Tier | Machine | Experiment | Run id (`results/<exp>/…`) | Status |
+|:--|:--|:--|:--|:--|:--|
+| 2026-10-03 | smoke | laptop | primitives | `primitives/20261003-190228` | **current** (smoke) |
+| 2026-10-03 | smoke | laptop | exp1 | `exp1/20261003-190229` | **current** (smoke) |
+| 2026-10-03 | smoke | laptop | exp2 | `exp2/20261003-192016` | **current** (smoke) |
+| 2026-10-03 | smoke | laptop | exp3 | `exp3/20261003-192024` | **current** (smoke) |
+| 2026-10-03 | smoke | laptop | exp4 | `exp4/20261003-192128` | **current** (smoke) |
+| 2026-10-03 | smoke | laptop | exp5 | `exp5/20261003-192150` | **current** (smoke; no gas: in-process ledger) |
+| 2026-10-03 | smoke | laptop | primitives, exp1 | `primitives/20261003-185719`, `…185736`, `exp1/20261003-185737` | superseded (code changed during the run; exp1 aborted) |
+| 2026-09-29 | smoke | laptop | exp1–exp5 | `exp*/20260929-*` | superseded (code before 2026-10-03) |
+| — | experiment | EC2 | primitives (tab:primitives) | (fill in after step 7) | to do |
+| — | experiment | EC2 | exp1 (Fig. 3) | (fill in after step 7) | to do |
+| — | experiment | EC2 | exp2 (Fig. 4) | (fill in after step 7) | to do |
+| — | experiment | EC2 | exp3 (Fig. 5) | (fill in after step 7) | to do |
+| — | experiment | EC2 | exp4 (Fig. 6) | (fill in after step 7) | to do |
+| — | experiment | EC2 | exp5 (Fig. 7, tab:gas) | (fill in after step 7) | to do |
+
+Plotting always uses the newest run of each experiment; check that it is the one marked current here.
 
 ## 2. Decisions still yours (before step 7)
 
