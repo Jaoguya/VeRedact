@@ -15,6 +15,7 @@ Load-bearing decisions (same as the conference artefact ZK-Redact):
   * auth_cost() counts what one authorization DID (signature/proof verifications, consensus blocks,
     round trips), so a latency can be re-derived under another configuration instead of taken on trust.
 """
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
@@ -27,14 +28,14 @@ class NotSupported(Exception):
 # ----------------------------------------------------------------------------------------- capabilities
 @dataclass(frozen=True)
 class Capabilities:
-    pq_security: bool            # every security-critical primitive post-quantum (manuscript Table I col. 1)
-    distributed_auth: bool       # no single entity can authorize unilaterally
-    policy_control: bool         # rights evaluated against a policy, not mere key possession
-    batch_redaction: bool        # blockchain-side cost amortised across independent requests
-    private_verification: bool   # authorization without revealing requester attributes
-    verifiable_auditing: bool    # auditor can verify redaction evidence
+    pq_security: bool  # every security-critical primitive post-quantum (manuscript Table I col. 1)
+    distributed_auth: bool  # no single entity can authorize unilaterally
+    policy_control: bool  # rights evaluated against a policy, not mere key possession
+    batch_redaction: bool  # blockchain-side cost amortised across independent requests
+    private_verification: bool  # authorization without revealing requester attributes
+    verifiable_auditing: bool  # auditor can verify redaction evidence
     state_freshness_check: bool  # revalidates the authorized state at execution time
-    consensus_bound_auth: bool   # authorization itself needs ledger agreement
+    consensus_bound_auth: bool  # authorization itself needs ledger agreement
 
 
 @dataclass
@@ -59,6 +60,7 @@ class Transaction:
 @dataclass(frozen=True)
 class RedactionRequest:
     """One entry of the shared request trace (identical, in identical order, for every system)."""
+
     seq: int
     requester: int
     tid: bytes
@@ -158,5 +160,5 @@ class Scheme(ABC):
     def auth_cost(self) -> AuthCost:
         raise NotSupported(f"{self.key}: cannot count its authorization cost honestly")
 
-    def teardown(self) -> None:
-        pass
+    def teardown(self) -> None:  # noqa: B027 — optional hook: systems without background resources keep it
+        """Release background resources (ledger watchers, process pools). No-op by default."""

@@ -38,9 +38,11 @@ def test_forged_amc_signature_and_collusion_rejected():
     assert R.attr_keygen(amc, avns[0], b"TR2", sig, pol.values[0]) is None  # Sig_AMC bound to identity
     v, _, _ = R.chash(amc, avns, pol, b"tx", 1000, BITS)
     _, sig2 = R.key_tr(amc, b"TR2")
-    mixed = {0: R.attr_keygen(amc, avns[0], b"TR1", sig, pol.values[0]),
-             1: R.attr_keygen(amc, avns[1], b"TR2", sig2, pol.values[1]),
-             2: R.attr_keygen(amc, avns[2], b"TR2", sig2, pol.values[2])}
+    mixed = {
+        0: R.attr_keygen(amc, avns[0], b"TR1", sig, pol.values[0]),
+        1: R.attr_keygen(amc, avns[1], b"TR2", sig2, pol.values[1]),
+        2: R.attr_keygen(amc, avns[2], b"TR2", sig2, pol.values[2]),
+    }
     assert R.recover_trap(pol, v.info, b"TR2", mixed) is None  # keys of two TRs cannot be combined
 
 

@@ -6,6 +6,7 @@ R_RLI / R_RAI. Each shard has a Cuckoo filter CF_s, synchronized with the finali
 negative is authoritative only when the filter is synchronized; otherwise, and for every positive, the
 lookup is authenticated against the shard and global roots.
 """
+
 from dataclasses import dataclass, field
 
 from ..crypto.hashing import H1, H2, HA, to_int

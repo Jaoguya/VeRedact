@@ -2,14 +2,15 @@
 
 One run per configuration point (configs/base.yaml): a point's statistics come from the samples inside
 that run (every request in Exp. 1, every authorization batch / audit query in Exp. 2-4, every primitive
-call in exp00). Confidence intervals use the normal approximation (samples_per_point >= 30 in the
-experiment tier); comparisons between two systems use the Mann-Whitney U test (unpaired: two systems
-never see the same request at the same time).
+call in exp00). Confidence intervals of the mean use Student's t; comparisons between two systems use
+the two-sided Mann-Whitney U test (unpaired: two systems never see the same request at the same time).
+Both come from scipy.stats.
 """
+
 import math
 from collections.abc import Sequence
 
-Z_975 = 1.959963984540054  # standard normal 0.975 quantile (two-sided 95%)
+from scipy import stats
 
 
 def _sorted(values: Sequence[float]) -> list[float]:
@@ -48,9 +49,10 @@ def std(values: Sequence[float]) -> float:
 
 
 def ci95_halfwidth(values: Sequence[float]) -> float:
-    """Half-width of the 95% CI of the mean (normal approximation)."""
+    """Half-width of the 95% CI of the mean: t_{0.975, n-1} * s / sqrt(n)."""
     xs = _sorted(values)
-    return Z_975 * std(xs) / math.sqrt(len(xs)) if len(xs) > 1 else 0.0
+    n = len(xs)
+    return float(stats.t.ppf(0.975, n - 1)) * std(xs) / math.sqrt(n) if n > 1 else 0.0
 
 
 def throughput(completed: int, duration_s: float) -> float:
@@ -73,34 +75,13 @@ def rate(hits: int, total: int) -> float:
 
 
 def mann_whitney_u(a: Sequence[float], b: Sequence[float]) -> tuple[float, float]:
-    """Two-sided Mann-Whitney U test. Returns (U of sample a, p-value).
-
-    Normal approximation with tie correction and continuity correction; adequate for the sample sizes here
-    (>= 20 per side). U counts pairs (x in a, y in b) with x > y, ties counting one half.
-    """
-    a, b = list(map(float, a)), list(map(float, b))
-    n1, n2 = len(a), len(b)
-    if n1 == 0 or n2 == 0:
+    """Two-sided Mann-Whitney U test (scipy.stats.mannwhitneyu, method "auto": exact for small samples
+    without ties, normal approximation with tie and continuity correction otherwise).
+    Returns (U of sample a, p-value); U counts pairs (x in a, y in b) with x > y, ties counting one half."""
+    a, b = [float(v) for v in a], [float(v) for v in b]
+    if not a or not b:
         raise ValueError("both samples need values")
-    pooled = sorted([(v, 0) for v in a] + [(v, 1) for v in b])
-    ranks, ties, i = [0.0] * len(pooled), [], 0
-    while i < len(pooled):  # average ranks over ties
-        j = i
-        while j + 1 < len(pooled) and pooled[j + 1][0] == pooled[i][0]:
-            j += 1
-        r = (i + j) / 2 + 1
-        for k in range(i, j + 1):
-            ranks[k] = r
-        if j > i:
-            ties.append(j - i + 1)
-        i = j + 1
-    r1 = sum(r for r, (_, g) in zip(ranks, pooled) if g == 0)
-    u1 = r1 - n1 * (n1 + 1) / 2
-    n = n1 + n2
-    mu = n1 * n2 / 2
-    var = n1 * n2 / 12 * ((n + 1) - sum(t ** 3 - t for t in ties) / (n * (n - 1)))
-    if var == 0:
-        return u1, 1.0
-    z = (abs(u1 - mu) - 0.5) / math.sqrt(var)
-    p = math.erfc(max(z, 0.0) / math.sqrt(2))  # two-sided
-    return u1, min(1.0, p)
+    if len(set(a) | set(b)) == 1:  # every value tied: no evidence of a difference (scipy returns nan)
+        return len(a) * len(b) / 2, 1.0
+    r = stats.mannwhitneyu(a, b, alternative="two-sided")
+    return float(r.statistic), float(r.pvalue)

@@ -10,6 +10,7 @@
 Idempotent: a method whose metrics.json exists is skipped unless force=True; a forced re-run replaces the
 whole folder (never a silent partial overwrite).
 """
+
 import csv
 import json
 import os
@@ -23,21 +24,37 @@ from veredact_bench.evaluation.summaries import summarize
 from veredact_bench.utils.config import REPO_ROOT, dump
 from veredact_bench.utils.log import add_file, get_logger, remove
 
-LIBS = ("numpy", "omegaconf", "pqcrypto", "cryptography", "gmpy2", "coincurve", "py_arkworks_bls12381",
-        "matplotlib", "vrpq_stark", "liboqs-python", "web3")
+LIBS = (
+    "numpy",
+    "omegaconf",
+    "pqcrypto",
+    "cryptography",
+    "gmpy2",
+    "coincurve",
+    "py_arkworks_bls12381",
+    "matplotlib",
+    "vrpq_stark",
+    "liboqs-python",
+    "web3",
+)
 
 
 def _git(*args):
     try:
-        return subprocess.run(["git", "-C", str(REPO_ROOT), *args], capture_output=True, text=True,
-                              timeout=10).stdout.strip()
+        return subprocess.run(
+            ["git", "-C", str(REPO_ROOT), *args], capture_output=True, text=True, timeout=10
+        ).stdout.strip()
     except Exception:
         return "unavailable"
 
 
 def environment() -> dict:
-    fp = {"python": platform.python_version(), "platform": platform.platform(), "machine": platform.machine(),
-          "cpu_count": os.cpu_count()}
+    fp = {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "cpu_count": os.cpu_count(),
+    }
     try:
         for line in open("/proc/cpuinfo"):
             if line.startswith("model name"):
@@ -45,8 +62,10 @@ def environment() -> dict:
                 break
         fp["mem_gb"] = round(int(open("/proc/meminfo").readline().split()[1]) / 1048576, 1)
     except OSError:
-        fp["cpu"] = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True,
-                                   text=True).stdout.strip() or platform.processor()
+        fp["cpu"] = (
+            subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True).stdout.strip()
+            or platform.processor()
+        )
     versions = {}
     for lib in LIBS:
         try:
@@ -56,6 +75,7 @@ def environment() -> dict:
     fp["libraries"] = versions
     try:
         from veredact_bench.methods.veredact.crypto.pqsig import load_pqsig
+
         fp["signature_backend"] = load_pqsig().name
     except Exception as e:  # recorded, not hidden
         fp["signature_backend"] = f"unavailable: {e}"
@@ -95,10 +115,18 @@ class RunWriter:
         self.method, self.dir, self._rows, self._keys = method, d, [], []
         self._handler = add_file(d / "run.log")
         self._t0 = time.time()
-        self.info = {"experiment": self.exp, "method": method, "tier": self.tier, "seed": self.cfg["meta"]["seed"],
-                     "git_commit": self._git["commit"], "git_dirty": self._git["dirty"],
-                     "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                     "environment": self._env, "dataset_ids": [], "notes": []}
+        self.info = {
+            "experiment": self.exp,
+            "method": method,
+            "tier": self.tier,
+            "seed": self.cfg["meta"]["seed"],
+            "git_commit": self._git["commit"],
+            "git_dirty": self._git["dirty"],
+            "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "environment": self._env,
+            "dataset_ids": [],
+            "notes": [],
+        }
         dump(self.cfg, d / "config_resolved.yaml")
         self.log.info(f"{self.exp} {method} tier={self.tier} -> {show(d)}")
         return True
@@ -123,8 +151,11 @@ class RunWriter:
             w = csv.DictWriter(f, fieldnames=self._keys)
             w.writeheader()
             w.writerows(self._rows)
-        self.info.update(finished_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                         runtime_s=round(time.time() - self._t0, 1), rows=len(self._rows))
+        self.info.update(
+            finished_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            runtime_s=round(time.time() - self._t0, 1),
+            rows=len(self._rows),
+        )
         (self.dir / "run_info.json").write_text(json.dumps(self.info, indent=2, default=str))
         summary = summarize(self.exp, self._rows, self.cfg)
         (self.dir / "metrics.json").write_text(json.dumps(summary, indent=2, default=str))  # last: marks done

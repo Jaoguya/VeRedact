@@ -8,12 +8,13 @@ Most checks target errors that crash nothing and silently void the comparison: a
 below the security level looks faster, a threshold below the stated majority looks cheaper, a sweep that
 never reaches saturation looks linear, a smoke-tier ledger backend reports in-memory time as consensus.
 """
+
 import math
 import sys
 
 from omegaconf.errors import OmegaConfBaseException
 
-from veredact_bench.utils.config import CONFIG_DIR, TIERS, load, load_all, tier_overrides
+from veredact_bench.utils.config import CONFIG_DIR, TIERS, load_all, tier_overrides
 
 
 def _keys(d, prefix=""):
@@ -35,8 +36,9 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
     over = tier_overrides(tier)
     exp_over = over.pop("experiments", {})
     unknown = sorted(k for k in _keys(over) if k not in known)
-    unknown += sorted(f"experiments.{e}.{k}" for e, d in exp_over.items() for k in _keys(d)
-                      if f"experiments.{e}.{k}" not in known)
+    unknown += sorted(
+        f"experiments.{e}.{k}" for e, d in exp_over.items() for k in _keys(d) if f"experiments.{e}.{k}" not in known
+    )
     if unknown:
         E(f"tiers/{tier}.yaml overrides keys that do not exist: {unknown}")
     if c["meta"]["tier"] != tier:
@@ -59,8 +61,10 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
         (E if final else W)("baselines.S1.accumulator_rsa_bits < 3072: below 128-bit")
     for s in ("S13", "S34"):
         if c["baselines"][s]["rsa_bits"] < classical_min:
-            (E if final else W)(f"baselines.{s}.rsa_bits {c['baselines'][s]['rsa_bits']} < 3072: below 128-bit, "
-                                "the baseline would look faster than its secure instantiation")
+            (E if final else W)(
+                f"baselines.{s}.rsa_bits {c['baselines'][s]['rsa_bits']} < 3072: below 128-bit, "
+                "the baseline would look faster than its secure instantiation"
+            )
     for s in ("S1", "S34"):
         if c["baselines"][s]["pairing"].upper() in ("BN254", "BN256", "TYPE A", "TYPE E"):
             E(f"baselines.{s}.pairing below 128-bit security (BN254 is ~100-110 bits after exTNFS)")
@@ -134,8 +138,12 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
         if "samples_per_point" in xe and xe["samples_per_point"] < 30 and final:
             W(f"{e}.samples_per_point={xe['samples_per_point']} < 30: wide confidence intervals")
 
-    confirms = [ln.strip() for f in sorted(CONFIG_DIR.rglob("*.yaml")) for ln in f.read_text().splitlines()
-                if "[CONFIRM]" in ln and not ln.lstrip().startswith("#   [CONFIRM]")]
+    confirms = [
+        ln.strip()
+        for f in sorted(CONFIG_DIR.rglob("*.yaml"))
+        for ln in f.read_text().splitlines()
+        if "[CONFIRM]" in ln and not ln.lstrip().startswith("#   [CONFIRM]")
+    ]
     if confirms:
         W(f"{len(confirms)} [CONFIRM] values still need a decision: grep -rn CONFIRM configs/")
     return err, warn

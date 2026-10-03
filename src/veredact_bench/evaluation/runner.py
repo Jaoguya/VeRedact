@@ -3,6 +3,7 @@
 Gates (refuse to run, never warn and continue): an invalid config; the HMAC signature stand-in; any
 ML-DSA backend other than liboqs in the experiment tier.
 """
+
 import time
 
 from veredact_bench.evaluation.experiments import RUNNERS
@@ -31,8 +32,10 @@ def check(tier: str) -> None:
     if "sim" in backend.lower():
         raise RefuseToRun(f"signature backend {backend!r} is an HMAC stand-in: refusing to run experiments")
     if tier == "experiment" and "liboqs" not in backend:
-        raise RefuseToRun(f"experiment tier requires the liboqs ML-DSA-65 backend, got {backend!r}: export "
-                          "VRPQ_SIG_BACKEND=oqs (deploy/server/bootstrap_server.sh installs liboqs)")
+        raise RefuseToRun(
+            f"experiment tier requires the liboqs ML-DSA-65 backend, got {backend!r}: export "
+            "VRPQ_SIG_BACKEND=oqs (deploy/server/bootstrap_server.sh installs liboqs)"
+        )
     log.info(f"signature backend: {backend}")
 
 

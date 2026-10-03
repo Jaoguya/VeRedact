@@ -1,4 +1,5 @@
 """Results layout, idempotency and a tiny end-to-end run through the real runner."""
+
 import copy
 import json
 
@@ -24,9 +25,9 @@ def test_writer_layout_skip_and_force(tmp_path):
     d = tmp_path / "exp00_primitives" / "veredact-per_request" / "smoke"
     assert {p.name for p in d.iterdir()} == FILES
     assert json.loads((d / "metrics.json").read_text())["rows"] == 1
-    assert not RunWriter(cfg).begin("veredact:per_request")          # done: skipped
+    assert not RunWriter(cfg).begin("veredact:per_request")  # done: skipped
     w2 = RunWriter(cfg, force=True)
-    assert w2.begin("veredact:per_request")                          # forced: folder replaced
+    assert w2.begin("veredact:per_request")  # forced: folder replaced
     assert not (d / "metrics.json").exists()
     w2.end()
 

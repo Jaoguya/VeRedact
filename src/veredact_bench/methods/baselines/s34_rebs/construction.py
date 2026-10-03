@@ -19,13 +19,14 @@ prime-order BLS12-381 (asymmetric; the standard dual-system -> prime-order trans
 decryption equation); Trap is encapsulated as Trap XOR KDF(e(g,g)^s) because GT is a group, not a
 message space. Delegate (AVN join/leave) is not exercised by the VeRedact experiments and not built.
 """
+
 import hashlib
 import secrets
 from dataclasses import dataclass
 
 import gmpy2
 from cryptography.hazmat.primitives.asymmetric import rsa
-from py_arkworks_bls12381 import G1Point, G2Point, GT, Scalar
+from py_arkworks_bls12381 import GT, G1Point, G2Point, Scalar
 
 R_ORDER = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
 G1, G2 = G1Point(), G2Point()
@@ -163,7 +164,7 @@ def chash(amc: AMC, avns: list, policy: Policy, tx: bytes, t: int, rsa_bits: int
     lam = [sum(a * b for a, b in zip(row, v)) % R_ORDER for row in policy.A]
     th = [sum(a * b for a, b in zip(row, w)) % R_ORDER for row in policy.A]
     c1, c2, c3 = [], [], []
-    for l, row in enumerate(policy.A):
+    for l, _row in enumerate(policy.A):
         a = avns[l]
         rl = rnd()
         c1.append(GT.pairing(G1 * sc(lam[l] + a.eps * policy.values[l] * rl), G2))
@@ -197,8 +198,9 @@ def recover_trap(policy: Policy, info: Ciphertext, identity: bytes, keys: dict[i
     use = rows[: policy.t]
     # prod_l c1_l^mu_l * e(h_ID^mu_l, c3_l) * e(k_l^-mu_l, c2_l): exponents moved into G1, one multi-pairing
     g1s = [hid * sc(mu[l]) for l in use] + [-(keys[l] * sc(mu[l])) for l in use]
-    acc = gt_multiexp([info.c1[l] for l in use], [mu[l] for l in use]) * \
-        GT.multi_pairing(g1s, [info.c3[l] for l in use] + [info.c2[l] for l in use])
+    acc = gt_multiexp([info.c1[l] for l in use], [mu[l] for l in use]) * GT.multi_pairing(
+        g1s, [info.c3[l] for l in use] + [info.c2[l] for l in use]
+    )
     trap = bytes(x ^ y for x, y in zip(info.c0, kdf(acc, len(info.c0))))
     return trap if hashlib.sha3_256(trap).digest() == info.h_trap else None
 

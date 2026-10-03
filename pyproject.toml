@@ -17,15 +17,34 @@ dependencies = [
     "coincurve==21.0.0",              # secp256k1 for Schemes [1], [27]
     "py_arkworks_bls12381==0.5.0",    # BLS12-381 pairings for Schemes [1], [34]
     "matplotlib==3.11.2",             # figures
+    "scipy==1.18.1",                  # significance tests and t-based confidence intervals (metrics/)
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1", "maturin==1.15.0"]
+dev = ["pytest==9.1.1", "maturin==1.15.0", "ruff==0.16.10"]
 # installed by deploy/server/bootstrap_server.sh: liboqs-python (built against liboqs 0.16.0), web3, py-solc-x
 server = ["web3", "py-solc-x"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E731",  # small lambdas are used as operation tables in exp00_primitives
+    "E741",  # names l, I follow the papers' notation (policy attributes l, RADC binding I_i)
+    "B905",  # zipped sequences are built together; strict= adds noise, not safety
+]
+
+[tool.ruff.lint.per-file-ignores]
+# timing helpers call each lambda inside the same loop iteration, so the captured loop variable is current
+"src/veredact_bench/methods/baselines/*/reproduce.py" = ["B023"]
+"tools/*.py" = ["B023"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

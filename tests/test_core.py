@@ -1,15 +1,15 @@
 """Primitives, data structures, dataset determinism and config gating."""
-import copy
+
 import os
 
 import numpy as np
 import pytest
 
+from veredact_bench.data.dataset import build_dataset
+from veredact_bench.methods.veredact.crypto.pqch_sis import SISChameleonHash, default_params
+from veredact_bench.methods.veredact.ds.merkle import MerkleTree, verify_multiproof, verify_proof
 from veredact_bench.utils import validate as validate_module
 from veredact_bench.utils.config import load, load_all
-from veredact_bench.methods.veredact.crypto.pqch_sis import SISChameleonHash, default_params
-from veredact_bench.data.dataset import build_dataset
-from veredact_bench.methods.veredact.ds.merkle import MerkleTree, verify_multiproof, verify_proof
 from veredact_bench.utils.validate import validate
 
 
@@ -56,10 +56,15 @@ def test_stark_rejects_wrong_witness_statement_requester(cfg):
     import time
 
     from veredact_bench.methods.veredact.crypto.pqzk_stark import PolicySTARK, ZKParams
+
     z = cfg["security"]["pqzk"]
     now = int(time.time())
-    zk = PolicySTARK(ZKParams(z["queries"], z["blowup"], z["grinding_bits"], z["registry_depth"],
-                              z["attribute_levels"], 86400), 4, seed=1, now_s=now)
+    zk = PolicySTARK(
+        ZKParams(z["queries"], z["blowup"], z["grinding_bits"], z["registry_depth"], z["attribute_levels"], 86400),
+        4,
+        seed=1,
+        now_s=now,
+    )
     x, thr, ts = os.urandom(32), 3, now + 10
     pi = zk.prove(1, x, thr, ts)
     assert zk.verify(1, x, pi, thr, ts)
@@ -93,14 +98,16 @@ def test_validator_rejects_weakened_baseline(monkeypatch):
 
 
 def test_validator_rejects_unknown_tier_override(monkeypatch):
-    monkeypatch.setattr(validate_module, "tier_overrides",
-                        lambda tier: {"meta": {"tier": tier}, "ledger": {"backnd": "besu"}})
+    monkeypatch.setattr(
+        validate_module, "tier_overrides", lambda tier: {"meta": {"tier": tier}, "ledger": {"backnd": "besu"}}
+    )
     err, _ = validate("smoke")
     assert any("ledger.backnd" in e for e in err)
 
 
 def test_dkg_cache_is_transparent(tmp_path):
     from veredact_bench.methods.veredact.crypto import pqch_sis
+
     params = default_params(32, 8, 1.0, 3.0)  # small lattice: the property, not the size, is under test
     fresh = SISChameleonHash(params, seed=5, cache_dir=tmp_path)
     pk1, sh1 = fresh.dkeygen(7, 5)
@@ -113,7 +120,9 @@ def test_dkg_cache_is_transparent(tmp_path):
     assert not sh2[1].S.flags.writeable
     h = cached.hash(pk2, b"m", r_after_fresh)
     pert, z = cached.begin_adapt(pk2, b"m", r_after_fresh, b"m'")
-    assert cached.verify(pk2, h, b"m'", cached.combine(pert, z, [cached.part_adapt(sh2[k], z) for k in (2, 3, 5, 6, 7)]))
+    assert cached.verify(
+        pk2, h, b"m'", cached.combine(pert, z, [cached.part_adapt(sh2[k], z) for k in (2, 3, 5, 6, 7)])
+    )
 
 
 def test_round_vectorised_adaptation_matches_protocol(cfg):
@@ -141,9 +150,11 @@ def test_besu_block_watcher_resolves_pipelined_transactions():
     from veredact_bench.evaluation.anchor import BesuAnchor, gather
 
     blocks = {}
-    eth = SimpleNamespace(block_number=0,
-                          get_block=lambda n: SimpleNamespace(transactions=blocks[n]),
-                          get_transaction_receipt=lambda h: SimpleNamespace(status=1, gasUsed=21000 + h[0]))
+    eth = SimpleNamespace(
+        block_number=0,
+        get_block=lambda n: SimpleNamespace(transactions=blocks[n]),
+        get_transaction_receipt=lambda h: SimpleNamespace(status=1, gasUsed=21000 + h[0]),
+    )
     a = object.__new__(BesuAnchor)
     a.w3, a.poll_s, a.timeout_s, a.receipts = SimpleNamespace(eth=eth), 0.005, 5, []
     a._pending, a._mined, a._plock, a._stop, a._last_block = {}, {}, threading.Lock(), threading.Event(), 0

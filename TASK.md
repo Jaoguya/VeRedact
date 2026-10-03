@@ -14,7 +14,7 @@ instance) and is **not on GitHub**; `paper/` (generated tables + figures) is com
 |:-:|:--|:--|:--|:--|
 | 1 | Code aligned with the final manuscript | — | **done** 2026-10-03 | commit `c86a97d` (what changed: §3) |
 | 2 | Restructure to the IEEE evaluation-code layout (option B: YAML configs, `src/`, one run per point) | — | **done** 2026-10-03 | commit `f93f640` on GitHub `main` (what changed: §3.2) |
-| 3 | Tests | `make test` | **done** 2026-10-03 | console only: 44 passed |
+| 3 | Tests + lint | `make test lint` | **done** 2026-10-03 | console only: 44 passed; ruff clean |
 | 4 | Local smoke from a fresh `.venv` (laptop, in-process ledger) | `make all TIER=smoke FORCE=--force` | **done** 2026-10-03 (11 min, no errors) | laptop: `results/<exp>/<method>/smoke/` (§1.1); `paper/tables/*.tex`, `paper/figures/*.pdf` (smoke numbers, not for the paper) |
 | 5 | Start the server | `deploy/aws/provision_ec2.sh` | to do | instance id → `deploy/aws/.instance` (gitignored) |
 | 6 | Server smoke (Besu + liboqs + STARK build) | `deploy/aws/launch_run.sh smoke` | to do | server: `results/<exp>/<method>/smoke/`, log `results/logs/smoke_*.log` |
@@ -46,7 +46,7 @@ Mapping to the manuscript: `paper/MANIFEST.md`.
 | — | experiment | EC2 | exp03_audit_efficiency | `results/exp03_audit_efficiency/<method>/experiment/` | to do |
 | — | experiment | EC2 | exp04_verification_time | `results/exp04_verification_time/<method>/experiment/` | to do |
 | — | experiment | EC2 | exp05_gas_consumption | `results/exp05_gas_consumption/<method>/experiment/` | to do |
-| 2026-09-29 – 2026-10-03 | smoke | laptop | old layout | `results/{exp1..exp5,primitives}/<run_id>/`, `results/S*_*.csv` | superseded (before the restructure; never used for the paper) |
+| 2026-09-29 – 2026-10-03 | smoke | laptop | old layout | `results/{exp1..exp5,primitives}/<run_id>/`, `results/S*_*.csv` | **deleted** 2026-10-03 (before the restructure; never used for the paper) |
 
 ## 2. Decisions still yours (before step 8)
 
@@ -56,7 +56,7 @@ Mapping to the manuscript: `paper/MANIFEST.md`.
 | D3b | `ledger.netem_delay_ms` | 10 [CONFIRM] | keep 10 unless the paper should model a WAN |
 | D3c | `exp01_redaction_throughput.zipf_rate` | 1000 [CONFIRM] | set from the pilot: below the lowest baseline saturation rate |
 | D3d | repetitions | **decided 2026-10-03: one run per point** | manuscript text fix in `newchange.md` D1–D2 |
-| D8 | new dependencies `scipy` (significance tests) and `ruff` (lint/format gate) | not added | the significance test is hand-written and tested; `ruff` would make the brief's lint gate checkable |
+| D8 | new dependencies `scipy` and `ruff` | **decided 2026-10-03: both added** | scipy 1.18.1 (Mann–Whitney U, t-based CI in `metrics/`); ruff 0.16.10 (`make lint`: check + format, clean on 82 files) |
 | D4 | SIS-PQCH distributed perturbation is spherical → statistical leakage of R over many adaptations | open | state as a limitation, or implement the distributed Genise–Micciancio perturbation (cost rises) |
 | D6 | SIS n = 256, q = 2^16 not checked with a lattice estimator for NIST level 3 | open | run the estimator before claiming level 3 for PQCH; does not change timings already measured |
 | D7 | Exp. 1 load generator shares the host with VPS, committee and 7 Besu validators | open | watch the pilot for "client-bound" notes; if they appear, add a client instance |
@@ -98,7 +98,8 @@ Phase 5 Auth check, f in ABRRR, Docker wording) and §B ([TBD]s the code already
 | Paper artifacts | `plot/*.png`, `plot/*.csv` | `paper/figures/*.pdf` (+ .png; IEEE column width, 8 pt, Okabe–Ito colours), `paper/tables/*.tex` (booktabs, best bold), `paper/MANIFEST.md` |
 | Logging | `print` | `logging`, one `run.log` per results folder |
 | Rust / contracts / tests | `benchmark/pqzk_stark`, `benchmark/contracts`, `benchmark/tests` + `experiment/*/s*_test.py` | `native/pqzk_stark`, `contracts/`, `tests/` (+ `tests/baselines/`) |
-| Dependencies | `benchmark/requirements.txt` (unpinned) | root `pyproject.toml`, pinned; `omegaconf` added (approved) |
+| Dependencies | `benchmark/requirements.txt` (unpinned) | root `pyproject.toml`, pinned; `omegaconf`, `scipy`, `ruff` (dev) added (approved) |
+| Quality gate | none | `make lint` (ruff check + format, config in `pyproject.toml`) |
 
 ## 4. Run time and cost (estimate)
 

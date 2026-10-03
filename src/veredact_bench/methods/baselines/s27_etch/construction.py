@@ -12,6 +12,7 @@ Implements the paper's construction as instantiated in its Sec. VII-B (secp256k1
   * ETCH-based redactable chain (Sec. VI): initiator signs the chameleon hash (ECDSA), Merkle leaf = ETCH,
     redaction replaces (TX, r, w) while the signature stays valid.
 """
+
 import hashlib
 import secrets
 from dataclasses import dataclass, field
@@ -168,7 +169,6 @@ class Tx:
 @dataclass
 class Block:
     txs: list = field(default_factory=list)
-
 
 
 class Initiator:

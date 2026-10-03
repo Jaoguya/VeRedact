@@ -13,7 +13,6 @@ Usage:  python scripts/paper_reproduction.py s34_rebs [--quick]
 """
 
 from veredact_bench.methods.baselines.reproduce_common import Csv, cli, median_ms, scheme_config
-
 from veredact_bench.methods.baselines.s34_rebs import construction as R
 
 G1_B, G2_B, GT_B = 48, 96, 576
@@ -36,13 +35,17 @@ def fig3(cfg, reps):
         v, _, _ = R.chash(amc, avns, pol, b"tx", 1000, bits, eph)
         keys = {i: R.attr_keygen(amc, avns[i], b"TR", sig, pol.values[i]) for i in range(l)}
         trap = R.recover_trap(pol, v.info, b"TR", keys)
-        out.add(l=l,
-                keygen_ms=median_ms(lambda: [R.attr_keygen(amc, avns[i], b"TR", sig, pol.values[i]) for i in range(l)], reps),
-                hash_ms=median_ms(lambda: R.chash(amc, avns, pol, b"tx", 1000, bits, eph), reps),
-                hash_with_eph_rsa_keygen_ms=median_ms(lambda: R.chash(amc, avns, pol, b"tx", 1000, bits), reps),
-                verify_ms=median_ms(lambda: R.chver(amc, b"tx", v), reps),
-                adapt_ms=median_ms(lambda: R.chcld(amc, k_tr, R.recover_trap(pol, v.info, b"TR", keys), v, b"tx'"), reps),
-                update_ms=median_ms(lambda: R.time_update(amc, k_tr, trap, v, b"tx", cfg["update_dt"]), reps))
+        out.add(
+            l=l,
+            keygen_ms=median_ms(
+                lambda: [R.attr_keygen(amc, avns[i], b"TR", sig, pol.values[i]) for i in range(l)], reps
+            ),
+            hash_ms=median_ms(lambda: R.chash(amc, avns, pol, b"tx", 1000, bits, eph), reps),
+            hash_with_eph_rsa_keygen_ms=median_ms(lambda: R.chash(amc, avns, pol, b"tx", 1000, bits), reps),
+            verify_ms=median_ms(lambda: R.chver(amc, b"tx", v), reps),
+            adapt_ms=median_ms(lambda: R.chcld(amc, k_tr, R.recover_trap(pol, v.info, b"TR", keys), v, b"tx'"), reps),
+            update_ms=median_ms(lambda: R.time_update(amc, k_tr, trap, v, b"tx", cfg["update_dt"]), reps),
+        )
     out.save()
 
 
@@ -56,13 +59,20 @@ def fig7(cfg):
         keys_b = l * G1_B
         tuple_b = 2 * mod_b + (v.t.bit_length() + 7) // 8  # h, r in Z_{n n~}, t
         ct_b = len(v.info.c0) + l * (GT_B + 2 * G2_B) + len(v.info.h_trap)
-        out.add(l=l, attribute_keys_bits=8 * keys_b, hash_tuple_bits=8 * tuple_b, ciphertext_bits=8 * ct_b,
-                total_bits=8 * (keys_b + tuple_b + ct_b))
+        out.add(
+            l=l,
+            attribute_keys_bits=8 * keys_b,
+            hash_tuple_bits=8 * tuple_b,
+            ciphertext_bits=8 * ct_b,
+            total_bits=8 * (keys_b + tuple_b + ct_b),
+        )
     out.save()
 
 
 if __name__ == "__main__":
     a = cli(__doc__)
     cfg = scheme_config("S34", a.quick)
-    print("== S34 Fig. 3"); fig3(cfg, cfg["reps"])
-    print("== S34 Fig. 7"); fig7(cfg)
+    print("== S34 Fig. 3")
+    fig3(cfg, cfg["reps"])
+    print("== S34 Fig. 7")
+    fig7(cfg)

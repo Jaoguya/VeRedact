@@ -3,7 +3,6 @@
 Used for transaction batches (MR_b), SA-RLI / RAI shard and global roots, and the ABRRR request root R_e^VR.
 Leaves are padded to a power of two with an empty-leaf constant so positions are stable.
 """
-from dataclasses import dataclass
 
 from ..crypto.hashing import H
 

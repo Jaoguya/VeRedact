@@ -8,11 +8,11 @@ to results/reproduction/<scheme>/<what>.csv.
 
 Run from the repository root:  python scripts/paper_reproduction.py <scheme> [--quick]
 """
+
 import argparse
 import csv
 import statistics
 import time
-from pathlib import Path
 
 from veredact_bench.utils.config import REPO_ROOT, load
 
@@ -43,8 +43,9 @@ class Csv:
 
     def add(self, **row):
         self.rows.append(row)
-        print("  " + ", ".join(f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}" for k, v in row.items()),
-              flush=True)
+        print(
+            "  " + ", ".join(f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}" for k, v in row.items()), flush=True
+        )
 
     def save(self):
         keys = list(dict.fromkeys(k for r in self.rows for k in r))

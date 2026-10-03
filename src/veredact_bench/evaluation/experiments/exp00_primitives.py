@@ -5,9 +5,10 @@ protocol uses (ML-DSA-65, winterfell STARK with the policy predicates, distribut
 HMAC-SHA3-256); baseline primitives run on each baseline's own construction module at the parameters in
 [baselines.*]. Inputs are fresh per repetition; setup (keys, DKG, registries) is untimed.
 """
+
 import hashlib
-import os
 import importlib
+import os
 import time
 
 from veredact_bench.methods.veredact.crypto import Crypto
@@ -88,6 +89,7 @@ def veredact_ops(cfg):
 
 def _ecdsa_op():
     from coincurve import PrivateKey
+
     sk = PrivateKey()
     msg = os.urandom(32)
     s = sk.sign(msg)
@@ -97,6 +99,7 @@ def _ecdsa_op():
 def s01_ops(cfg):
     import gmpy2
     from cryptography.hazmat.primitives.asymmetric import rsa
+
     ops = [_ecdsa_op()]
     # ---- [1] Improved DCH on BLS12-381, RSA accumulator ------------------------------------------------
     s1 = _mod("s01_improved_dch")
@@ -106,8 +109,13 @@ def s01_ops(cfg):
     parties = list(key.shares)[: b1["threshold_t"]]
     lam = s1.lagrange_at_zero(parties)
     hv = dch.hash(b"m")
-    ops.append(("T_PA^c", "Improved DCH partial collision, BLS12-381 [1]",
-                lambda: dch.partial(parties[0], lam[parties[0]], b"m", os.urandom(32))))
+    ops.append(
+        (
+            "T_PA^c",
+            "Improved DCH partial collision, BLS12-381 [1]",
+            lambda: dch.partial(parties[0], lam[parties[0]], b"m", os.urandom(32)),
+        )
+    )
     parts = [dch.partial(i, lam[i], b"m", b"m2") for i in parties]
 
     def s1_combine():
@@ -115,10 +123,15 @@ def s01_ops(cfg):
         for p in parts:
             out = out + p
         return out
+
     ops.append(("T_CB^c", "Improved DCH share combination [1]", s1_combine))
     ops.append(("T_CV^c", "Improved DCH verify (2 pairings) [1]", lambda: dch.verify(b"m", hv.r, hv.h)))
 
-    N = rsa.generate_private_key(public_exponent=65537, key_size=b1["accumulator_rsa_bits"]).private_numbers().public_numbers.n
+    N = (
+        rsa.generate_private_key(public_exponent=65537, key_size=b1["accumulator_rsa_bits"])
+        .private_numbers()
+        .public_numbers.n
+    )
     g = pow(3, 2, N)
     primes = [int(gmpy2.next_prime(int.from_bytes(os.urandom(32), "big") | 1)) for _ in range(64)]
     u = 1
@@ -128,13 +141,19 @@ def s01_ops(cfg):
     x = int(gmpy2.next_prime(int.from_bytes(os.urandom(32), "big") | 1))
     _, a_, b_ = gmpy2.gcdext(u, x)
     B = gmpy2.powmod(g, b_, N)
-    ops.append(("T_Acc", f"RSA-{b1['accumulator_rsa_bits']} accumulator non-membership verify [1]",
-                lambda: gmpy2.powmod(acc, a_, N) * gmpy2.powmod(B, x, N) % N == g))
+    ops.append(
+        (
+            "T_Acc",
+            f"RSA-{b1['accumulator_rsa_bits']} accumulator non-membership verify [1]",
+            lambda: gmpy2.powmod(acc, a_, N) * gmpy2.powmod(B, x, N) % N == g,
+        )
+    )
     return ops
 
 
 def s13_ops(cfg):
     import gmpy2
+
     s13 = _mod("s13_eaq_vrbc")
     b13 = cfg["baselines"]["S13"]
     p = s13.setup(b13["rsa_bits"], b13["miners"], b13["l_bits"])
@@ -142,14 +161,23 @@ def s13_ops(cfg):
     tag, _, _ = s13.tag_gen(p, 0, blk.h())
     txs_new = [os.urandom(16) for _ in range(cfg["dataset"]["leaves_per_batch"])]
     return [
-        ("T_AD^c", f"double-trapdoor CH collision incl. MHT, RSA-{b13['rsa_bits']} [13]",
-         lambda: s13.redact_block(p, blk, txs_new)),
+        (
+            "T_AD^c",
+            f"double-trapdoor CH collision incl. MHT, RSA-{b13['rsa_bits']} [13]",
+            lambda: s13.redact_block(p, blk, txs_new),
+        ),
         ("T_CV^c", f"double-trapdoor CH verify, RSA-{b13['rsa_bits']} [13]", lambda: s13.ch_verify(p, blk)),
         ("T_Tag", f"identity-based tag generation, RSA-{b13['rsa_bits']} [13]", lambda: s13.tag_gen(p, 0, blk.h())),
-        ("T_Tag", f"identity-based tag verification, RSA-{b13['rsa_bits']} [13]",
-         lambda: s13.tag_verify(p, 0, blk.h(), tag)),
-        ("T_E^c", f"modular exponentiation, RSA-{b13['rsa_bits']} full exponent [13]",
-         lambda: gmpy2.powmod(p.g, p.d, p.N)),
+        (
+            "T_Tag",
+            f"identity-based tag verification, RSA-{b13['rsa_bits']} [13]",
+            lambda: s13.tag_verify(p, 0, blk.h(), tag),
+        ),
+        (
+            "T_E^c",
+            f"modular exponentiation, RSA-{b13['rsa_bits']} full exponent [13]",
+            lambda: gmpy2.powmod(p.g, p.d, p.N),
+        ),
     ]
 
 
@@ -167,6 +195,7 @@ def s27_ops(cfg):
         r_new = s27.add(v.h, s27.neg(Ki))
         e_new = s27.Hs(b"m2", r_new)
         return (k - e_new * lam27[signers[0]] * keys.parts[signers[0]].s) % s27.N
+
     Ks = [s27.gmul(s27.rand()) for _ in signers]
     ws = [s27.rand() for _ in signers]
     return [
@@ -189,8 +218,11 @@ def s34_ops(cfg):
     k_tr, sig_amc = s34.key_tr(amc, b"TR0")
     akeys = {i: s34.attr_keygen(amc, avns[i], b"TR0", sig_amc, pol.values[i]) for i in range(l)}
     return [
-        ("T_Pol", f"MA-ABE Info_Trap decryption, t={tt} of l={l}, BLS12-381 [34]",
-         lambda: s34.recover_trap(pol, chv.info, b"TR0", akeys)),
+        (
+            "T_Pol",
+            f"MA-ABE Info_Trap decryption, t={tt} of l={l}, BLS12-381 [34]",
+            lambda: s34.recover_trap(pol, chv.info, b"TR0", akeys),
+        ),
         ("T_AD^c", f"CHET ChCld, RSA-{b34['rsa_bits']} [34]", lambda: s34.chcld(amc, k_tr, trap, chv, os.urandom(32))),
         ("T_CV^c", f"CHET ChVer, RSA-{b34['rsa_bits']} [34]", lambda: s34.chver(amc, b"tx", chv)),
     ]

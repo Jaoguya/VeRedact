@@ -7,9 +7,10 @@ read from the anchor's receipt log (anchor._Metered) — one row per on-chain tr
 RAI checkpoint. With ledger.backend = in_process there are no receipts: gas is left empty and the run is
 marked; validate-config refuses that backend in the experiment tier.
 """
+
 from veredact_bench.data.dataset import build_dataset
-from veredact_bench.methods.registry import system_keys
 from veredact_bench.evaluation.common import build_history, capability_fields, open_system
+from veredact_bench.methods.registry import system_keys
 
 
 def run(cfg, out):
@@ -22,7 +23,7 @@ def run(cfg, out):
         for zs in x["zipf_sweep"]:
             ds = build_dataset(cfg, n_requests=x["requests_per_point"], zipf_s=zs)
             out.dataset(ds.dataset_id)
-            for b in (x["batch_sizes"] if key.startswith("veredact") else [1]):
+            for b in x["batch_sizes"] if key.startswith("veredact") else [1]:
                 s = open_system(cfg, key, ds)
                 mark = len(s.anchor.receipts)
                 counts = build_history(s, ds.trace, b)
@@ -32,9 +33,19 @@ def run(cfg, out):
                 tx = s.anchor.receipts[mark:]
                 total = sum(g for _, _, g in tx if g is not None)
                 for op, ms, gas in tx:
-                    out.row(experiment=x["id"], system=key, zipf_s=zs, batch_size=b, op=op, gas_used=gas if gas is not None
-                            else "", ledger_ms=ms, redactions=counts["redacted"], onchain_tx=len(tx),
-                            gas_per_redaction=total / counts["redacted"] if counts["redacted"] and gas is not None else "",
-                            backend=cfg["ledger"]["backend"], **capability_fields(s))
+                    out.row(
+                        experiment=x["id"],
+                        system=key,
+                        zipf_s=zs,
+                        batch_size=b,
+                        op=op,
+                        gas_used=gas if gas is not None else "",
+                        ledger_ms=ms,
+                        redactions=counts["redacted"],
+                        onchain_tx=len(tx),
+                        gas_per_redaction=total / counts["redacted"] if counts["redacted"] and gas is not None else "",
+                        backend=cfg["ledger"]["backend"],
+                        **capability_fields(s),
+                    )
                 out.log.info(f"  {key:28s} s={zs} b={b:<4} tx={len(tx):<5} redactions={counts['redacted']} gas={total}")
         out.end()

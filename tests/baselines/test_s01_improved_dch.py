@@ -1,5 +1,13 @@
-from veredact_bench.methods.baselines.s01_improved_dch.construction import (BLSChameleon, ImprovedDCH, JiaDCH, dkg, forge_jia, lagrange_at_zero, R,
-                       try_forge_improved)
+from veredact_bench.methods.baselines.s01_improved_dch.construction import (
+    BLSChameleon,
+    ImprovedDCH,
+    JiaDCH,
+    R,
+    dkg,
+    forge_jia,
+    lagrange_at_zero,
+    try_forge_improved,
+)
 
 
 def test_dkg_shares_reconstruct_secret():

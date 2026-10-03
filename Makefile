@@ -1,5 +1,5 @@
 # VeRedact-PQ evaluation. One command per paper artifact; every run is gated by the config check.
-#   make venv build-zk test                      one-time setup (Python 3.12 + Rust) and tests
+#   make venv build-zk test lint                 one-time setup (Python 3.12 + Rust), tests, ruff gate
 #   make smoke                                   every experiment on the smoke tier (laptop, minutes)
 #   make eval EXP=exp02_authorization_latency TIER=pilot      one experiment on one tier
 #   make all TIER=experiment                     all experiments + tables + figures (server: deploy/aws/launch_run.sh)
@@ -9,7 +9,7 @@ EXP  ?= all
 PY   := .venv/bin/python
 FORCE ?=
 
-.PHONY: venv build-zk test validate eval smoke pilot experiment tables figures all capabilities paper-runs clean-results
+.PHONY: venv build-zk test lint validate eval smoke pilot experiment tables figures all capabilities paper-runs clean-results
 
 venv:
 	python3.12 -m venv .venv
@@ -21,6 +21,10 @@ build-zk:                        ## winterfell STARK -> vrpq_stark module (needs
 
 test:
 	$(PY) -m pytest -q
+
+lint:                            ## quality gate: ruff lint + format check (config in pyproject.toml)
+	.venv/bin/ruff check src tests scripts tools deploy/aws/aws_config.py
+	.venv/bin/ruff format --check src tests scripts tools deploy/aws/aws_config.py
 
 validate:
 	$(PY) scripts/validate_config.py $(TIER)

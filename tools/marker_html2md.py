@@ -3,6 +3,7 @@
 Run with the marker venv: ~/.venvs/marker/bin/python tools/marker_html2md.py <p.html> <reference.md|/dev/null>
 Writes <p.md> next to the HTML. Used by tools/marker_convert.sh.
 """
+
 import re
 import sys
 from pathlib import Path

@@ -14,11 +14,12 @@ randomness live in G1, public keys are published in both G1 and G2 so every equa
     Improved DCH Verify:  e(h - H(m), X2) == e(r, g2)        (paper: e(h/H(m), y) = e(g, r))
     Jia DH-tuple check:   e(g1^e, S2)    == e(g1^{se}, g2)   (paper: (g, g^s, g^e, g^se) is a DH tuple)
 """
+
 import hashlib
 import secrets
 from dataclasses import dataclass
 
-from py_arkworks_bls12381 import G1Point, G2Point, GT, Scalar
+from py_arkworks_bls12381 import GT, G1Point, G2Point, Scalar
 
 # BLS12-381 scalar field order
 R = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001

@@ -5,15 +5,17 @@ Counter names follow the manuscript's cost notation (Table III):
   T_PA, T_CB (PQCH partial adaptation / combination) · T_H (SHA3-256) · T_PRF (HMAC-SHA3-256)
 The counts let every measured number be reconciled against the analytical Table IV.
 """
+
 import threading
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 
+from veredact_bench.utils.config import REPO_ROOT
+
 from . import hashing
 from .pqch_sis import SISChameleonHash, default_params
 from .pqsig import load_pqsig
-from veredact_bench.utils.config import REPO_ROOT
 from .pqzk_stark import PolicySTARK, ZKParams
 
 
@@ -22,13 +24,24 @@ class Crypto:
         sec = cfg["security"]
         self.sig = load_pqsig()
         ch = sec["pqch"]
-        self.ch = SISChameleonHash(default_params(n=ch["n"], k=ch["k"], sigma_R=ch["sigma_R"],
-                                                  sigma_g=ch["sigma_g"]), seed=cfg["meta"]["seed"],
-                                   cache_dir=REPO_ROOT / ".cache" / "pqch_dkg")
+        self.ch = SISChameleonHash(
+            default_params(n=ch["n"], k=ch["k"], sigma_R=ch["sigma_R"], sigma_g=ch["sigma_g"]),
+            seed=cfg["meta"]["seed"],
+            cache_dir=REPO_ROOT / ".cache" / "pqch_dkg",
+        )
         z = sec["pqzk"]
-        self.zk = PolicySTARK(ZKParams(z["queries"], z["blowup"], z["grinding_bits"], z["registry_depth"],
-                                       z["attribute_levels"], z["credential_validity_days"] * 86400),
-                              requesters, cfg["meta"]["seed"])
+        self.zk = PolicySTARK(
+            ZKParams(
+                z["queries"],
+                z["blowup"],
+                z["grinding_bits"],
+                z["registry_depth"],
+                z["attribute_levels"],
+                z["credential_validity_days"] * 86400,
+            ),
+            requesters,
+            cfg["meta"]["seed"],
+        )
         self.counts: Counter = Counter()
         self._count_lock = threading.Lock()
         self.time_s: defaultdict = defaultdict(float)

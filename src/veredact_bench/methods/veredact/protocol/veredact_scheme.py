@@ -8,13 +8,25 @@ Boundaries (docs/experiments.md):
                    adaptation, checkpoints; ledger finality returned as a Future (crypto/ledger split).
   audit(query)     Phase 6: RAI multiproof + shared batch evidence (service), AuditVerify (auditor).
 """
+
 import random
 import time
 
 from veredact_bench.evaluation.anchor import make_anchor
+from veredact_bench.methods.scheme import (
+    AuditQuery,
+    AuditResult,
+    AuthCost,
+    Authorization,
+    Capabilities,
+    Dataset,
+    RedactionOutcome,
+    RedactionRequest,
+    RedactionResult,
+    Scheme,
+)
+
 from ..crypto import Crypto
-from veredact_bench.methods.scheme import (AuditQuery, AuditResult, AuthCost, Authorization, Capabilities, Dataset,
-                      RedactionOutcome, RedactionResult, RedactionRequest, Scheme)
 from .ledger import Ledger
 from .veredact import Rejection, VeRedactPQ
 
@@ -29,8 +41,9 @@ VARIANTS = {
 
 
 class VeRedactScheme(Scheme):
-    def __init__(self, cfg: dict, variant: str = "veredact", committee_n: int | None = None,
-                 committee_t: int | None = None):
+    def __init__(
+        self, cfg: dict, variant: str = "veredact", committee_n: int | None = None, committee_t: int | None = None
+    ):
         self.cfg, self.variant = cfg, variant
         self.key = "veredact" if variant == "veredact" else f"veredact:{variant}"
         self.n = committee_n or cfg["veredact"]["committee_n"]
@@ -38,15 +51,27 @@ class VeRedactScheme(Scheme):
         self._last_submitted = None
 
     def capabilities(self) -> Capabilities:
-        return Capabilities(pq_security=True, distributed_auth=True, policy_control=True, batch_redaction=True,
-                            private_verification=True, verifiable_auditing=True, state_freshness_check=True,
-                            consensus_bound_auth=False)
+        return Capabilities(
+            pq_security=True,
+            distributed_auth=True,
+            policy_control=True,
+            batch_redaction=True,
+            private_verification=True,
+            verifiable_auditing=True,
+            state_freshness_check=True,
+            consensus_bound_auth=False,
+        )
 
     def auth_cost(self) -> AuthCost:
         # per request at the VPS: requester ML-DSA verify + STARK verify + attestation and admission-receipt
         # signatures; Phase 4 adds (1 attestation verify) per request and t signatures + t verifications per BATCH.
-        return AuthCost(signature_verifications=2, proof_verifications=1 + (1 if self.variant == "re_zk" else 0),
-                        signatures_generated=2, consensus_blocks=0, round_trips=0)
+        return AuthCost(
+            signature_verifications=2,
+            proof_verifications=1 + (1 if self.variant == "re_zk" else 0),
+            signatures_generated=2,
+            consensus_blocks=0,
+            round_trips=0,
+        )
 
     # ------------------------------------------------------------------ setup (untimed)
     def setup(self, dataset: Dataset) -> None:
@@ -60,8 +85,12 @@ class VeRedactScheme(Scheme):
     def prepare(self, req: RedactionRequest):
         """Requester side (client): sign R_i and prove policy compliance against the CURRENT state."""
         tid = req.tid if req.fault != "absent" else b"TX-DOES-NOT-EXIST"
-        R = self.p.make_request(req.requester % len(self.ledger.requesters), tid, req.new_payload,
-                                tamper=req.fault if req.fault in ("sig", "zk", "policy", "stale") else "")
+        R = self.p.make_request(
+            req.requester % len(self.ledger.requesters),
+            tid,
+            req.new_payload,
+            tamper=req.fault if req.fault in ("sig", "zk", "policy", "stale") else "",
+        )
         if req.fault == "replay" and self._last_submitted is not None:
             return self._last_submitted  # re-send an already submitted request (same nonce)
         self._last_submitted = R
@@ -95,10 +124,21 @@ class VeRedactScheme(Scheme):
         outcomes = []
         for a in batch:
             ok = a.ok and a.handle is not None and a.handle.RID in done
-            outcomes.append(RedactionOutcome(a.request.seq, ok, stale=a.ok and not ok,
-                                             reason="" if ok else ("stale/conflict" if a.ok else a.reason)))
-        return RedactionResult(outcomes, crypto_ms, 0.0, self.crypto.counts["T_CB"] - before,
-                               finality=self.p.last_finalization if records else None)
+            outcomes.append(
+                RedactionOutcome(
+                    a.request.seq,
+                    ok,
+                    stale=a.ok and not ok,
+                    reason="" if ok else ("stale/conflict" if a.ok else a.reason),
+                )
+            )
+        return RedactionResult(
+            outcomes,
+            crypto_ms,
+            0.0,
+            self.crypto.counts["T_CB"] - before,
+            finality=self.p.last_finalization if records else None,
+        )
 
     # ------------------------------------------------------------------ Phase 6
     def index_records(self):
@@ -115,9 +155,14 @@ class VeRedactScheme(Scheme):
         t1 = time.perf_counter()
         accepted = self.p.verify_audit(resp, Q, deep=query.deep)
         t2 = time.perf_counter()
-        return AuditResult("redaction provenance (authorization + state transition)", (t1 - t0) * 1000,
-                           (t2 - t1) * 1000, resp.nbytes,
-                           {i: accepted[r.RID] for i, r in enumerate(recs)}, dict(self.p.last_breakdown))
+        return AuditResult(
+            "redaction provenance (authorization + state transition)",
+            (t1 - t0) * 1000,
+            (t2 - t1) * 1000,
+            resp.nbytes,
+            {i: accepted[r.RID] for i, r in enumerate(recs)},
+            dict(self.p.last_breakdown),
+        )
 
     def _tamper(self, rr, kind, rng):
         if not kind:
@@ -125,6 +170,7 @@ class VeRedactScheme(Scheme):
         import copy
 
         from ..crypto.hashing import H
+
         r = copy.copy(rr)
         if kind == "modified":
             r.D_new = H("forged", r.D_new)

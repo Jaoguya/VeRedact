@@ -9,11 +9,20 @@
 Output: results/S27_fig4_stages.csv, S27_fig5_hash.csv, S27_fig6_latency.csv
 Usage:  python scripts/paper_reproduction.py s27_etch [--quick]
 """
+
 import hashlib
 
 from veredact_bench.methods.baselines.reproduce_common import Csv, cli, median_ms, scheme_config
-
-from veredact_bench.methods.baselines.s27_etch.construction import Initiator, adapt, hash_, keygen, keyupt, verify, verify_tx, redact_tx
+from veredact_bench.methods.baselines.s27_etch.construction import (
+    Initiator,
+    adapt,
+    hash_,
+    keygen,
+    keyupt,
+    redact_tx,
+    verify,
+    verify_tx,
+)
 
 
 def fig4(ts, reps, keygen_reps):
@@ -23,11 +32,14 @@ def fig4(ts, reps, keygen_reps):
         keys = keygen(t, n)
         signers = list(keys.parts)[:t]
         v = hash_(keys.Y, b"tx")
-        out.add(t=t, keygen_ms=median_ms(lambda: keygen(t, n), keygen_reps),
-                hash_ms=median_ms(lambda: hash_(keys.Y, b"tx"), reps),
-                adapt_ms=median_ms(lambda: adapt(keys, signers, v, b"tx'"), reps),
-                verify_ms=median_ms(lambda: verify(keys.Y, b"tx", v), reps),
-                keyupt_ms=median_ms(lambda: keyupt(keys), keygen_reps))
+        out.add(
+            t=t,
+            keygen_ms=median_ms(lambda: keygen(t, n), keygen_reps),
+            hash_ms=median_ms(lambda: hash_(keys.Y, b"tx"), reps),
+            adapt_ms=median_ms(lambda: adapt(keys, signers, v, b"tx'"), reps),
+            verify_ms=median_ms(lambda: verify(keys.Y, b"tx", v), reps),
+            keyupt_ms=median_ms(lambda: keyupt(keys), keygen_reps),
+        )
     out.save()
 
 
@@ -51,8 +63,14 @@ def fig6(redactors, rtts, reps, rounds):
         comp = median_ms(lambda: redact_tx(keys, signers, tx, b"tx'"), reps)
         ok = verify_tx(keys.Y, ini.sk.public_key, redact_tx(keys, signers, tx, b"tx'"))
         for rtt in rtts:
-            out.add(redactors=t, rtt_ms=rtt, rounds=rounds, compute_ms=comp, total_ms=comp + rounds * rtt,
-                    redacted_tx_valid=ok)
+            out.add(
+                redactors=t,
+                rtt_ms=rtt,
+                rounds=rounds,
+                compute_ms=comp,
+                total_ms=comp + rounds * rtt,
+                redacted_tx_valid=ok,
+            )
     out.save()
 
 
@@ -60,6 +78,9 @@ if __name__ == "__main__":
     a = cli(__doc__)
     cfg = scheme_config("S27", a.quick)
     reps, ts, red = cfg["reps"], cfg["t_sweep"], cfg["redactors_sweep"]
-    print("== S27 Fig. 4"); fig4(ts, reps, cfg["keygen_reps"])
-    print("== S27 Fig. 5"); fig5(reps, cfg["fig5_tx_bytes"], cfg["fig5_sha256_reps"])
-    print("== S27 Fig. 6"); fig6(red, cfg["rtt_ms"], reps, cfg["adapt_rounds"])
+    print("== S27 Fig. 4")
+    fig4(ts, reps, cfg["keygen_reps"])
+    print("== S27 Fig. 5")
+    fig5(reps, cfg["fig5_tx_bytes"], cfg["fig5_sha256_reps"])
+    print("== S27 Fig. 6")
+    fig6(red, cfg["rtt_ms"], reps, cfg["adapt_rounds"])

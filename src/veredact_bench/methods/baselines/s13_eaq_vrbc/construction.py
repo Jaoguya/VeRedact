@@ -17,6 +17,7 @@ Deviation: the paper asks for safe primes p = 2p'+1, q = 2q'+1; key generation h
 (`cryptography`) for speed. All equations are unchanged. In Alg. 2/3 the base written "u" in the paper is the
 accumulator value acc; verification checks acc^{a'} * B'^{x1 x2'} == u.
 """
+
 import hashlib
 import math
 import secrets
@@ -29,7 +30,7 @@ try:  # GMP-backed modular exponentiation (the paper's 2048-bit RSA workload is 
 
     def pow(b, e, m=None):  # noqa: A001 — shadow builtin pow within this module
         if m is None:
-            return b ** e
+            return b**e
         if e < 0:
             return int(gmpy2.powmod(gmpy2.invert(b, m), -e, m))
         return int(gmpy2.powmod(b, e, m))
@@ -332,8 +333,7 @@ def nonmem_verify_agg(A: Accumulator, w: AggWit) -> bool:
     N, X = A.p.N, math.prod(w.xs)
     if any(f > 1 << 64 for f in w.peeled):  # peeled factors must stay below 2^tau
         return False
-    return (poe_verify(N, A.acc, w.a, w.C, w.pi_C) and poe_verify(N, w.B, X, w.D, w.pi_D)
-            and w.C * w.D % N == A.p.u)
+    return poe_verify(N, A.acc, w.a, w.C, w.pi_C) and poe_verify(N, w.B, X, w.D, w.pi_D) and w.C * w.D % N == A.p.u
 
 
 # ====================================================================== ledger + Query / Audit / Update

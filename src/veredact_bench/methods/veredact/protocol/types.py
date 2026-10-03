@@ -1,4 +1,5 @@
 """Protocol objects (names follow the paper's notation table)."""
+
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -13,7 +14,7 @@ class Tx:
     PID: str
     ts: int
     owner: int
-    sigma: bytes = b""   # data-owner ML-DSA signature over H(TID || D_i || DT || PID || ts)
+    sigma: bytes = b""  # data-owner ML-DSA signature over H(TID || D_i || DT || PID || ts)
     C_orig: bytes = b""  # provenance commitment H(TID || D_i || sigma_i)
     I: bytes = b""
     D: bytes = b""

@@ -6,16 +6,15 @@ salted commitment D_i (verified by the PBN) and provenance commitments C_i^orig,
 anchored on the ledger backend. Setup records (policies, committee) carry a PQ signature of the
 registering member. Runs inside Scheme.setup() — NOT timed.
 """
+
 import os
 import time
 from dataclasses import dataclass
 
-from ..crypto import Crypto
-from ..crypto import hashing
+from ..crypto import Crypto, hashing
 from ..ds.index import rai, sa_rli
 from ..ds.merkle import MerkleTree
 from .types import Checkpoint, Tx
-
 
 # Setup is untimed but repeated for every experiment point (Exp. 1 re-runs it per rate). Data-owner keys and
 # their signatures over the (seeded) commitments D_i are therefore made once per process and reused; the
@@ -75,14 +74,26 @@ class Ledger:
         # ---- Step 4-5: committee + dealerless PQCH DKG ---------------------------------------------------
         self.pk_ch, self.td = crypto.ch.dkeygen(committee_n, committee_t)
         # setup records are signed with the registering member's PQ key (here the PBN ordering service)
-        self.pending_setup = [anchor.submit("policy_register", pid=crypto.H(p.PID), commit=p.C_P,
-                                            sig=crypto.sign(self.cp.sk, crypto.H(p.PID, p.C_P, p.v, p.e_P)))
-                              for p in self.policies.values()]
+        self.pending_setup = [
+            anchor.submit(
+                "policy_register",
+                pid=crypto.H(p.PID),
+                commit=p.C_P,
+                sig=crypto.sign(self.cp.sk, crypto.H(p.PID, p.C_P, p.v, p.e_P)),
+            )
+            for p in self.policies.values()
+        ]
         members = crypto.H(*[k.pk for k in self.committee])
-        self.pending_setup.append(anchor.submit("committee_register", epoch=self.e, members=members,
-                                                n=committee_n, t=committee_t,
-                                                sig=crypto.sign(self.cp.sk, crypto.H(self.e, members, committee_n,
-                                                                                     committee_t))))
+        self.pending_setup.append(
+            anchor.submit(
+                "committee_register",
+                epoch=self.e,
+                members=members,
+                n=committee_n,
+                t=committee_t,
+                sig=crypto.sign(self.cp.sk, crypto.H(self.e, members, committee_n, committee_t)),
+            )
+        )
         # ---- Phase 2 state -------------------------------------------------------------------------------
         self.txs: dict[bytes, Tx] = {}
         self.batches: dict[int, Batch] = {}
@@ -98,10 +109,17 @@ class Ledger:
         for off in range(0, len(transactions), self.N):
             b = len(self.batches)
             tids = []
-            for pos, src in enumerate(transactions[off:off + self.N]):
+            for pos, src in enumerate(transactions[off : off + self.N]):
                 rho = hashing.H("rho", self.cfg["meta"]["seed"], src.tid)  # seeded lambda-bit salt (same per run)
-                tx = Tx(TID=src.tid, m=src.payload, rho=rho, DT="record",
-                        PID=pids[src.policy % len(pids)], ts=src.ts, owner=src.owner)
+                tx = Tx(
+                    TID=src.tid,
+                    m=src.payload,
+                    rho=rho,
+                    DT="record",
+                    PID=pids[src.policy % len(pids)],
+                    ts=src.ts,
+                    owner=src.owner,
+                )
                 tx.D = c.H(tx.m, tx.rho)  # salted content commitment D_i, rho_i in {0,1}^lambda
                 # Step 1: the data owner signs the commitment (not m_i); the PBN recomputes D_i and verifies
                 do = self.requesters[tx.owner % len(self.requesters)]
@@ -141,5 +159,15 @@ class Ledger:
         bt = self.batches[b]
         ts = int(time.time())
         msg = self.c.H(b, bt.ch, bt.tree.root, bt.r.tobytes(), R_RLI, self.rli.snapshot, self.e, bt.v, ts)
-        return Checkpoint(b, bt.ch, bt.tree.root, bt.r.copy(), R_RLI, self.rli.snapshot, self.e, bt.v, ts,
-                          self.c.sign(self.cp.sk, msg))
+        return Checkpoint(
+            b,
+            bt.ch,
+            bt.tree.root,
+            bt.r.copy(),
+            R_RLI,
+            self.rli.snapshot,
+            self.e,
+            bt.v,
+            ts,
+            self.c.sign(self.cp.sk, msg),
+        )

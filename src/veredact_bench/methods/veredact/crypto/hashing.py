@@ -1,7 +1,7 @@
 """H, H1, H2, H_A (domain-separated SHA3-256) and PRF (HMAC-SHA3-256), as in Phase 1 / Sec. Experimental Setup."""
+
 import hashlib
 import hmac
-
 
 
 def _enc(parts):

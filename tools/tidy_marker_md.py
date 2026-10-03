@@ -2,6 +2,7 @@
 
 Usage: python3 tools/tidy_marker_md.py Scheme/S*/S*_fulltext.md
 """
+
 import re
 import sys
 
@@ -59,7 +60,9 @@ def tidy(md):
             continue
         if stripped.startswith("|"):
             flush()
-            cells = [INLINE_MATH.sub(lambda m: "$" + m.group(1) + "$", c.strip()) for c in stripped.strip("|").split("|")]
+            cells = [
+                INLINE_MATH.sub(lambda m: "$" + m.group(1) + "$", c.strip()) for c in stripped.strip("|").split("|")
+            ]
             out.append("| " + " | ".join(cells) + " |")
             continue
         if STRUCTURAL.match(stripped):
@@ -70,7 +73,15 @@ def tidy(md):
     text = "\n".join(out)
     text = re.sub(r"\n{3,}", "\n\n", text)
     # headings/tables/images need a blank line before them to render
-    text = re.sub(r"([^\n])\n(#{1,4} |\| |!\[)", lambda m: m.group(1) + "\n\n" + m.group(2) if not (m.group(1) == "|" or m.group(2) == "| " and m.group(1).endswith("|")) else m.group(0), text)
+    text = re.sub(
+        r"([^\n])\n(#{1,4} |\| |!\[)",
+        lambda m: (
+            m.group(1) + "\n\n" + m.group(2)
+            if not (m.group(1) == "|" or m.group(2) == "| " and m.group(1).endswith("|"))
+            else m.group(0)
+        ),
+        text,
+    )
     return text.strip() + "\n"
 
 

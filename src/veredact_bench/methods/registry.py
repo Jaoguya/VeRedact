@@ -9,10 +9,11 @@ committee_n is the Exp. 2 sweep axis. Each system maps it to ITS OWN distributio
 t = floor(2n/3)+1: VeRedact committee, S1 full nodes, S27 redactors, S34 attribute authorities
 (l = n attributes, t-of-l policy). S13 has no distributed authorization and ignores it (recorded).
 """
+
 import importlib
 
-from veredact_bench.utils.config import threshold
 from veredact_bench.methods.veredact.protocol.veredact_scheme import VARIANTS, VeRedactScheme
+from veredact_bench.utils.config import threshold
 
 BASELINES = {  # key -> (package under methods/baselines/, adapter class)
     "S1": ("s01_improved_dch", "ImprovedDCHScheme"),
@@ -51,8 +52,12 @@ def make(cfg: dict, key: str, committee_n: int | None = None):
 
 
 def distribution_param(key: str) -> str:
-    return {"S1": "full nodes", "S27": "redactors", "S34": "policy attributes (AVN keys)",
-            "S13": "none (single System Manager)"}.get(key.split(":")[0], "committee members")
+    return {
+        "S1": "full nodes",
+        "S27": "redactors",
+        "S34": "policy attributes (AVN keys)",
+        "S13": "none (single System Manager)",
+    }.get(key.split(":")[0], "committee members")
 
 
 def capability_matrix(cfg: dict) -> str:

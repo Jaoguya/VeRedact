@@ -1,4 +1,5 @@
 """Print the capability matrix reported by each method's implementation (Scheme.capabilities())."""
+
 from veredact_bench.methods.registry import capability_matrix
 from veredact_bench.utils.config import load
 

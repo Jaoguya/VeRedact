@@ -1,10 +1,11 @@
 """Paper tables from results/<experiment>/<method>/<tier>/ -> paper/tables/<name>.tex (booktabs, never hand-edited).
 
-  tab_primitives.tex    tab:primitives  median (95% CI) of every primitive, VeRedact-PQ then the baselines
-  tab_gas.tex           tab:gas         VeRedact-PQ gas per contract operation (median over transactions)
-  tab_significance.tex  reviewer table: each experiment's headline metric per method, best bold, second
-                        underlined, Mann-Whitney p-value of every baseline against VeRedact-PQ
+tab_primitives.tex    tab:primitives  median (95% CI) of every primitive, VeRedact-PQ then the baselines
+tab_gas.tex           tab:gas         VeRedact-PQ gas per contract operation (median over transactions)
+tab_significance.tex  reviewer table: each experiment's headline metric per method, best bold, second
+                      underlined, Mann-Whitney p-value of every baseline against VeRedact-PQ
 """
+
 import re
 
 from veredact_bench import metrics as M
@@ -43,8 +44,10 @@ def table_primitives(tier, written):
         body.append(rf"\multicolumn{{3}}{{l}}{{\textit{{{style.label(key)}}}}} \\")
         for k, v in ms[key]["points"].items():
             sym = k.split("|")[0].split("=", 1)[1]
-            body.append(f"{sym_tex(sym)} & {tex_escape(v['instantiation'])} & "
-                        f"{v['median']:.3f} $\\pm$ {v['ci95_halfwidth']:.3f} \\\\")
+            body.append(
+                f"{sym_tex(sym)} & {tex_escape(v['instantiation'])} & "
+                f"{v['median']:.3f} $\\pm$ {v['ci95_halfwidth']:.3f} \\\\"
+            )
     body += [r"\bottomrule", r"\end{tabular}"]
     _write("tab_primitives", body, written)
 
@@ -85,10 +88,17 @@ def _samples(tier):
             e2.setdefault(r["system"], []).append(num(r["auth_per_request_ms"]))
     if e2:
         out[f"Exp. 2 authorization per request (ms), $n$={n0}"] = e2
-    for exp, col, title in (("exp03_audit_efficiency", "retrieval_ms", "Exp. 3 response generation (ms)"),
-                            ("exp04_verification_time", "verify_ms", "Exp. 4 normal verification (ms)")):
-        rr = [r for r in rows(exp, tier) if r.get("status") == "ok" and r.get("level", "normal") == "normal"
-              and num(r.get("inject_fraction", 0)) in (0, None)]
+    for exp, col, title in (
+        ("exp03_audit_efficiency", "retrieval_ms", "Exp. 3 response generation (ms)"),
+        ("exp04_verification_time", "verify_ms", "Exp. 4 normal verification (ms)"),
+    ):
+        rr = [
+            r
+            for r in rows(exp, tier)
+            if r.get("status") == "ok"
+            and r.get("level", "normal") == "normal"
+            and num(r.get("inject_fraction", 0)) in (0, None)
+        ]
         by = {}
         for r in rr:
             by.setdefault(r["system"], {}).setdefault(int(r["n_Q"]), []).append(num(r[col]))
@@ -104,8 +114,12 @@ def table_significance(tier, written):
     if not data:
         return
     methods = [k for k in ORDER if any(k in d for d in data.values())]
-    body = [r"\begin{tabular}{l" + "r" * len(methods) + "}", r"\toprule",
-            "Metric (median) & " + " & ".join(style.label(k) for k in methods) + r" \\", r"\midrule"]
+    body = [
+        r"\begin{tabular}{l" + "r" * len(methods) + "}",
+        r"\toprule",
+        "Metric (median) & " + " & ".join(style.label(k) for k in methods) + r" \\",
+        r"\midrule",
+    ]
     for title, d in data.items():
         med = {k: M.median(v) for k, v in d.items() if v}
         rank = sorted(med, key=med.get)

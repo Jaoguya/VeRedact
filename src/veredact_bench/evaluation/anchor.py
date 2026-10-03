@@ -11,6 +11,7 @@
 submit() returns a Future resolving to (ledger_ms, gas_used): executors never block on a block period, so
 Exp. 1 measures finality latency without serialising the pipeline behind it.
 """
+
 import os
 import threading
 import time
@@ -49,6 +50,7 @@ def gather(futures: list) -> Future:
             if left[0] == 0:
                 gas = [g for _, g in res]
                 out.set_result((max(ms for ms, _ in res), None if None in gas else sum(gas)))
+
     for f in futures:
         f.add_done_callback(done)
     return out
@@ -75,8 +77,8 @@ class BesuAnchor(_Metered):
     name = "besu"
 
     def __init__(self, cfg: dict):
-        from web3 import Web3
         import solcx
+        from web3 import Web3
 
         solcx.install_solc("0.8.24")
         src = REPO_ROOT / "contracts" / "VeRedactRegistry.sol"
@@ -87,8 +89,11 @@ class BesuAnchor(_Metered):
         if not key:
             raise RuntimeError("VRPQ_BESU_KEY not set (funded dev key of the private Besu network)")
         led = cfg["ledger"]
-        self.gas_limit, self.poll_s, self.timeout_s = led["tx_gas_limit"], led["receipt_poll_ms"] / 1000, \
-            led["receipt_timeout_s"]
+        self.gas_limit, self.poll_s, self.timeout_s = (
+            led["tx_gas_limit"],
+            led["receipt_poll_ms"] / 1000,
+            led["receipt_timeout_s"],
+        )
         self.acct = self.w3.eth.account.from_key(key)
         self._nonce = self.w3.eth.get_transaction_count(self.acct.address)
         self._lock = threading.Lock()
@@ -107,8 +112,9 @@ class BesuAnchor(_Metered):
     # ---- transactions ---------------------------------------------------------------------------------
     def _send(self, fn):
         with self._lock:
-            tx = fn.build_transaction({"from": self.acct.address, "nonce": self._nonce, "gasPrice": 0,
-                                       "gas": self.gas_limit})
+            tx = fn.build_transaction(
+                {"from": self.acct.address, "nonce": self._nonce, "gasPrice": 0, "gas": self.gas_limit}
+            )
             self._nonce += 1
             return self.w3.eth.send_raw_transaction(self.acct.sign_transaction(tx).raw_transaction)
 
@@ -159,8 +165,17 @@ class BesuAnchor(_Metered):
     def _submit(self, op: str, **f) -> Future:
         t0 = time.perf_counter()
         r = os.urandom
-        cp = lambda b, vb: (b.to_bytes(32, "big"), f.get("mr", r(32)), r(32), f.get("rli", r(32)), 1,
-                            f.get("epoch", 1), vb, int(time.time()), b"\0" * 32)
+        cp = lambda b, vb: (
+            b.to_bytes(32, "big"),
+            f.get("mr", r(32)),
+            r(32),
+            f.get("rli", r(32)),
+            1,
+            f.get("epoch", 1),
+            vb,
+            int(time.time()),
+            b"\0" * 32,
+        )
         if op == "policy_register":
             h = self._send(self.reg.functions.registerPolicy(f["pid"], f["commit"], 1, 0, f["sig"]))
         elif op == "committee_register":

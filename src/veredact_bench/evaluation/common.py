@@ -1,4 +1,5 @@
 """Shared runner machinery. Every experiment drives systems ONLY through Scheme (scheme.py) + registry."""
+
 import dataclasses
 import threading
 import time
@@ -88,7 +89,7 @@ def build_history(s, trace, batch_size: int) -> dict:
     while pending:
         retry = []
         for i in range(0, len(pending), batch_size):
-            chunk = pending[i:i + batch_size]
+            chunk = pending[i : i + batch_size]
             auths = [authorize(s, r, prepare(s, r)) for r in chunk]
             res = s.redact(auths)
             in_flight.append(res)
@@ -114,4 +115,3 @@ def revalidate(req, outcome) -> bool:
     """Manuscript Phases 4/5: stale or conflicting requests are "returned for revalidation" — the requester
     re-proves against the current state and resubmits. Injected faults are never resubmitted."""
     return not req.fault and (outcome.stale or outcome.reason.startswith("freshness:"))
-

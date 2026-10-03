@@ -14,18 +14,28 @@ hash covers everything except r; acc is an RSA accumulator over the headers of r
   audit      Sec. III-C4 consistency check per queried block: integrity (Improved DCH Verify) + RSA
              accumulator membership witness for the redaction.
 """
+
 import hashlib
 import time
 
 import gmpy2
-
 from coincurve import PrivateKey
 from cryptography.hazmat.primitives.asymmetric import rsa
-from veredact_bench.methods.baselines.s01_improved_dch.construction import ImprovedDCH, dkg
 
 from veredact_bench.evaluation.anchor import gather, make_anchor
-from veredact_bench.methods.scheme import (AuditQuery, AuditResult, AuthCost, Authorization, Capabilities, Dataset,
-                                   RedactionOutcome, RedactionResult, RedactionRequest, Scheme)
+from veredact_bench.methods.baselines.s01_improved_dch.construction import ImprovedDCH, dkg
+from veredact_bench.methods.scheme import (
+    AuditQuery,
+    AuditResult,
+    AuthCost,
+    Authorization,
+    Capabilities,
+    Dataset,
+    RedactionOutcome,
+    RedactionRequest,
+    RedactionResult,
+    Scheme,
+)
 
 
 def _hprime(data: bytes) -> int:
@@ -47,13 +57,24 @@ class ImprovedDCHScheme(Scheme):
 
     def __init__(self, cfg: dict, nodes_n: int | None = None, threshold_t: int | None = None):
         b = cfg["baselines"]["S1"]
-        self.cfg, self.n, self.t, self.acc_bits = cfg, nodes_n or b["nodes_n"], threshold_t or b["threshold_t"], \
-            b["accumulator_rsa_bits"]
+        self.cfg, self.n, self.t, self.acc_bits = (
+            cfg,
+            nodes_n or b["nodes_n"],
+            threshold_t or b["threshold_t"],
+            b["accumulator_rsa_bits"],
+        )
 
     def capabilities(self) -> Capabilities:
-        return Capabilities(pq_security=False, distributed_auth=True, policy_control=False, batch_redaction=False,
-                            private_verification=False, verifiable_auditing=True, state_freshness_check=False,
-                            consensus_bound_auth=False)
+        return Capabilities(
+            pq_security=False,
+            distributed_auth=True,
+            policy_control=False,
+            batch_redaction=False,
+            private_verification=False,
+            verifiable_auditing=True,
+            state_freshness_check=False,
+            consensus_bound_auth=False,
+        )
 
     def auth_cost(self) -> AuthCost:
         return AuthCost(signature_verifications=2 * self.t)
@@ -72,11 +93,13 @@ class ImprovedDCHScheme(Scheme):
         self.blocks, self.block_of, self.sig = [], {}, {}
         prev = b"genesis"
         for off in range(0, len(dataset.transactions), N_leaves):
-            chunk = dataset.transactions[off:off + N_leaves]
+            chunk = dataset.transactions[off : off + N_leaves]
             payloads = [t.payload for t in chunk]
             msg = prev + _mroot(payloads)
             hv = self.dch.hash(msg)
-            self.blocks.append({"prev": prev, "payloads": payloads, "msg": msg, "h": hv.h, "r": hv.r, "redacted": False})
+            self.blocks.append(
+                {"prev": prev, "payloads": payloads, "msg": msg, "h": hv.h, "r": hv.r, "redacted": False}
+            )
             for pos, t in enumerate(chunk):
                 self.block_of[t.tid] = (len(self.blocks) - 1, pos)
                 self.sig[t.tid] = self.owners[t.owner].sign(t.payload)
@@ -134,13 +157,25 @@ class ImprovedDCHScheme(Scheme):
                 blk.update(payloads=payloads, msg=msg_new, r=r_new, redacted=True)
                 self.members.append(x)
                 # pipelined like VeRedact's anchoring: finality is tracked by the Future, not awaited here
-                futs.append(self.anchor.submit("baseline_redaction", tid=a.request.tid.ljust(32, b"\0")[:32],
-                                               commit=hashlib.sha256(msg_new).digest(), version=1,
-                                               evidence=r_new.to_compressed_bytes()))
+                futs.append(
+                    self.anchor.submit(
+                        "baseline_redaction",
+                        tid=a.request.tid.ljust(32, b"\0")[:32],
+                        commit=hashlib.sha256(msg_new).digest(),
+                        version=1,
+                        evidence=r_new.to_compressed_bytes(),
+                    )
+                )
                 self.redacted.append((a.request.seq, b))
             outcomes.append(RedactionOutcome(a.request.seq, ok))
-        return RedactionResult(outcomes, crypto_ms, 0.0, len(futs), finality=gather(futs) if futs else None,
-                               finality_op="baseline_redaction")
+        return RedactionResult(
+            outcomes,
+            crypto_ms,
+            0.0,
+            len(futs),
+            finality=gather(futs) if futs else None,
+            finality_op="baseline_redaction",
+        )
 
     # ------------------------------------------------------------------ audit: consistency check
     def audit(self, query: AuditQuery) -> AuditResult:
@@ -154,17 +189,27 @@ class ImprovedDCHScheme(Scheme):
             for m in self.members:
                 if m != x:
                     others *= m
-            evidence.append((b, blk["msg"] if i not in query.tamper else blk["msg"] + b"!", blk["r"],
-                             int(gmpy2.powmod(self.g, others, self.N))))
+            evidence.append(
+                (
+                    b,
+                    blk["msg"] if i not in query.tamper else blk["msg"] + b"!",
+                    blk["r"],
+                    int(gmpy2.powmod(self.g, others, self.N)),
+                )
+            )
         t1 = time.perf_counter()
         accepted = {}
         for i, (b, msg, r, wit) in enumerate(evidence):  # client: integrity, then membership
-            ok = self.dch.verify(msg, r, self.blocks[b]["h"]) and int(gmpy2.powmod(wit, _hprime(msg), self.N)) == self.acc
+            ok = (
+                self.dch.verify(msg, r, self.blocks[b]["h"])
+                and int(gmpy2.powmod(wit, _hprime(msg), self.N)) == self.acc
+            )
             accepted[i] = ok
         t2 = time.perf_counter()
         nbytes = sum(len(m) + 48 + self.N.bit_length() // 8 for _, m, _, _ in evidence)
-        return AuditResult("block consistency: redacted-or-not (Jia Sec. III-C4)", (t1 - t0) * 1000,
-                           (t2 - t1) * 1000, nbytes, accepted)
+        return AuditResult(
+            "block consistency: redacted-or-not (Jia Sec. III-C4)", (t1 - t0) * 1000, (t2 - t1) * 1000, nbytes, accepted
+        )
 
     def teardown(self) -> None:
         self.anchor.close()

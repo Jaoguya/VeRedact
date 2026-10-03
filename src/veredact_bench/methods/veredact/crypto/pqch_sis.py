@@ -33,6 +33,7 @@ the security of the threshold variant is not claimed by this implementation.
 Parameters (n, k, mbar, sigma_R, sigma_g, s, beta) come from config — they must be vetted with a lattice
 estimator before security claims are made (config marks them [CONFIRM]).
 """
+
 import dataclasses
 import hashlib
 import json
@@ -44,7 +45,7 @@ from pathlib import Path
 import numpy as np
 
 SHAMIR_P = (1 << 31) - 1  # Mersenne prime field for Shamir shares of R: every product below fits int64,
-                          # and |R z| << P/2 so R z lifts back to Z exactly
+# and |R z| << P/2 so R z lifts back to Z exactly
 
 
 @dataclass(frozen=True)
@@ -68,10 +69,11 @@ class SISParams:
 
 
 def default_params(n=256, k=16, sigma_R=1.0, sigma_g=3.0) -> SISParams:
-    """Standard MP12 sizing: mbar = n k, s >= sqrt(sigma_g^2 (s1(R)^2 + 1)) with s1(R) ~ sigma_R (sqrt(mbar)+sqrt(nk))."""
+    """Standard MP12 sizing: mbar = n k, s >= sqrt(sigma_g^2 (s1(R)^2 + 1)),
+    with s1(R) ~ sigma_R (sqrt(mbar) + sqrt(nk))."""
     mbar = n * k
     s1 = sigma_R * (np.sqrt(mbar) + np.sqrt(n * k))
-    s = float(np.ceil(1.2 * sigma_g * np.sqrt(s1 ** 2 + 1)))
+    s = float(np.ceil(1.2 * sigma_g * np.sqrt(s1**2 + 1)))
     s_dist = s
     M = mbar + n * k
     beta = float(1.1 * max(s, s_dist) * np.sqrt(M) + sigma_g * s1 * np.sqrt(n * k))
@@ -121,13 +123,13 @@ class PublicKey:
 
     def mul(self, r: np.ndarray) -> np.ndarray:
         p = self.params
-        return (self.Abar @ r[: p.mbar] + self.A2 @ r[p.mbar:]) % p.q
+        return (self.Abar @ r[: p.mbar] + self.A2 @ r[p.mbar :]) % p.q
 
     def mul_many(self, R: np.ndarray) -> np.ndarray:
         """A R mod q for M x B columns: float64 BLAS, exact while every partial sum stays below 2^53."""
         p = self.params
         if p.M * (p.q - 1) * int(np.abs(R).max()) >= (1 << 53):
-            return (self.Abar @ R[: p.mbar] + self.A2 @ R[p.mbar:]) % p.q
+            return (self.Abar @ R[: p.mbar] + self.A2 @ R[p.mbar :]) % p.q
         if getattr(self, "_A_f", None) is None:
             self._A_f = np.hstack([self.Abar, self.A2]).astype(np.float64)
         return np.rint(self._A_f @ R.astype(np.float64)).astype(np.int64) % p.q
@@ -209,8 +211,9 @@ class SISChameleonHash:
         and uncached runs are identical and the adaptation randomness (self.rng) is unaffected."""
         if self.seed is None:
             return self._dkeygen(self.rng, n_members, t)
-        key = hashlib.sha256(json.dumps([_DKG_CACHE_VERSION, self.seed, n_members, t,
-                                         dataclasses.astuple(self.p)]).encode()).hexdigest()[:24]
+        key = hashlib.sha256(
+            json.dumps([_DKG_CACHE_VERSION, self.seed, n_members, t, dataclasses.astuple(self.p)]).encode()
+        ).hexdigest()[:24]
         if key in _dkg_memo:
             return _dkg_memo[key]
         d = self.cache_dir / key if self.cache_dir else None
@@ -259,8 +262,9 @@ class SISChameleonHash:
         return PublicKey(p, Abar, A2), shares
 
     def _shamir(self, secret, n_members, t):
-        coeffs = [secret % SHAMIR_P] + [self.rng.integers(0, SHAMIR_P, secret.shape, dtype=np.int64)
-                                        for _ in range(t - 1)]
+        coeffs = [secret % SHAMIR_P] + [
+            self.rng.integers(0, SHAMIR_P, secret.shape, dtype=np.int64) for _ in range(t - 1)
+        ]
         out = {}
         for x in range(1, n_members + 1):
             acc = np.zeros_like(secret)

@@ -8,8 +8,14 @@ Usage:  python scripts/paper_reproduction.py s01_improved_dch [--quick]
 """
 
 from veredact_bench.methods.baselines.reproduce_common import Csv, cli, median_ms, scheme_config
-
-from veredact_bench.methods.baselines.s01_improved_dch.construction import ImprovedDCH, JiaDCH, SIZES, dkg, forge_jia, try_forge_improved
+from veredact_bench.methods.baselines.s01_improved_dch.construction import (
+    SIZES,
+    ImprovedDCH,
+    JiaDCH,
+    dkg,
+    forge_jia,
+    try_forge_improved,
+)
 
 
 def table2(cfg, reps):
@@ -56,9 +62,18 @@ def fig2(cfg, reps):
         jia, imp = JiaDCH(key), ImprovedDCH(key)
         jh, ih = jia.hash(m), imp.hash(m)
         kg = median_ms(lambda: dkg(t), cfg["keygen_reps"]) / t
-        out.add(t=t, scheme="DCH [Jia]", keygen_ms=kg, collision_ms=median_ms(lambda: jia.collision(m, jh.r, m2, ids), reps) / t)
-        out.add(t=t, scheme="Improved DCH", keygen_ms=kg,
-                collision_ms=median_ms(lambda: imp.collision(m, m2, ih.r, ih.h, ids), reps) / t)
+        out.add(
+            t=t,
+            scheme="DCH [Jia]",
+            keygen_ms=kg,
+            collision_ms=median_ms(lambda: jia.collision(m, jh.r, m2, ids), reps) / t,
+        )
+        out.add(
+            t=t,
+            scheme="Improved DCH",
+            keygen_ms=kg,
+            collision_ms=median_ms(lambda: imp.collision(m, m2, ih.r, ih.h, ids), reps) / t,
+        )
     out.save()
 
 
@@ -71,13 +86,19 @@ def attack():
     h = jia.hash(m)
     r1 = jia.collision(m, h.r, m1, ids)  # honest threshold redaction (published on-chain)
     r_evil = forge_jia(jia, m, h.r, m1, r1, m_evil)  # single malicious node, no trapdoor shares
-    out.add(scheme="DCH [Jia]", honest_redaction_valid=jia.verify(m, h.r, m1, r1),
-            forged_redaction_valid=jia.verify(m, h.r, m_evil, r_evil))
+    out.add(
+        scheme="DCH [Jia]",
+        honest_redaction_valid=jia.verify(m, h.r, m1, r1),
+        forged_redaction_valid=jia.verify(m, h.r, m_evil, r_evil),
+    )
     imp = ImprovedDCH(key)
     ih = imp.hash(m)
     ir1 = imp.collision(m, m1, ih.r, ih.h, ids)
-    out.add(scheme="Improved DCH", honest_redaction_valid=imp.verify(m1, ir1, ih.h),
-            forged_redaction_valid=try_forge_improved(imp, m, ih.r, m1, ir1, ih.h, m_evil))
+    out.add(
+        scheme="Improved DCH",
+        honest_redaction_valid=imp.verify(m1, ir1, ih.h),
+        forged_redaction_valid=try_forge_improved(imp, m, ih.r, m1, ir1, ih.h, m_evil),
+    )
     out.save()
 
 
@@ -85,6 +106,9 @@ if __name__ == "__main__":
     a = cli(__doc__)
     cfg = scheme_config("S1", a.quick)
     reps = cfg["reps"]
-    print("== S1 Table II"); table2(cfg, reps)
-    print("== S1 Fig. 2"); fig2(cfg, reps)
-    print("== S1 attack (Sec. IV)"); attack()
+    print("== S1 Table II")
+    table2(cfg, reps)
+    print("== S1 Fig. 2")
+    fig2(cfg, reps)
+    print("== S1 attack (Sec. IV)")
+    attack()

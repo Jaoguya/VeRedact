@@ -7,7 +7,7 @@ run and one results folder: see [`paper/MANIFEST.md`](paper/MANIFEST.md).
 ## Reproduce
 
 ```bash
-make venv build-zk test                 # Python 3.12 venv (pinned deps), Rust STARK module, test suite
+make venv build-zk test lint            # Python 3.12 venv (pinned deps), Rust STARK module, tests, ruff gate
 make smoke                              # every experiment, tiny sizes, in-process ledger (laptop, ~20 min)
 make all TIER=experiment                # the paper: all experiments + tables + figures (server only, see below)
 make tables figures TIER=experiment     # regenerate paper/tables and paper/figures from existing results/

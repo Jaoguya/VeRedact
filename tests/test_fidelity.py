@@ -1,15 +1,16 @@
 """Fidelity (negative) tests: every system rejects what its paper says it rejects, accepts what its paper
 cannot check, and its capability claims match its behaviour. Run through Scheme + registry only.
 docs/baselines/*.md list the same checks as each baseline's fidelity checklist."""
+
 import copy
 
 import pytest
 
-from veredact_bench.utils.config import load, load_all
 from veredact_bench.data.dataset import build_dataset
 from veredact_bench.evaluation.common import authorize, build_history, open_system, prepare
 from veredact_bench.methods.registry import make
 from veredact_bench.methods.scheme import AuditQuery, NotSupported, RedactionRequest
+from veredact_bench.utils.config import load, load_all
 
 FAULTS = ("sig", "zk", "policy", "stale", "replay", "absent")
 
@@ -92,6 +93,6 @@ def test_audits_detect_tampering_with_their_own_granularity(cfg, ds):
 
 
 def test_registry_knows_every_configured_system(cfg):
-    for exp, x in load_all("smoke")["experiments"].items():
+    for _exp, x in load_all("smoke")["experiments"].items():
         for key in x.get("systems", []) + [f"veredact:{v}" for v in x.get("variants", [])]:
             make(cfg, key)

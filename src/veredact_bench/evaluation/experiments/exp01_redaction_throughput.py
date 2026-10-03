@@ -17,14 +17,23 @@ final outcome, so a protocol-level rejection such as S1's one-redaction-per-bloc
 overload) drops below 1 - saturation_tolerance; its higher rates are skipped and recorded as such.
 Goodput (finalized redactions/s) is reported separately.
 """
+
 import queue
 import threading
 import time
 
 from veredact_bench.data.dataset import build_dataset
+from veredact_bench.evaluation.common import (
+    RWLock,
+    authorize,
+    capability_fields,
+    is_veredact,
+    open_system,
+    prepare,
+    revalidate,
+)
 from veredact_bench.methods.registry import system_keys
 from veredact_bench.methods.scheme import RedactionOutcome
-from veredact_bench.evaluation.common import RWLock, authorize, capability_fields, is_veredact, open_system, prepare, revalidate
 
 
 def run_point(cfg, key, rate, zipf_s, out, sweep):
@@ -41,7 +50,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     now = lambda: time.perf_counter() - t0
 
     def client(i):
-        for r in ds.trace[i::x["client_threads"]]:
+        for r in ds.trace[i :: x["client_threads"]]:
             if stop.is_set():
                 return
             delay = r.arrival_s - now()
@@ -108,10 +117,17 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             batch_no[0] += 1
             for a, o in zip(batch, res.outcomes):
                 st = stamp[a.request.seq]
-                st.update(exec_start=t_exec, exec_done=t_done, batch_size=len(batch), batch_id=batch_no[0],
-                          batch_adaptations=res.ch_adaptations, redact_crypto_ms=res.crypto_ms,
-                          redact_ledger_ms=res.ledger_ms, status="pending" if o.ok else "failed",
-                          reason=o.reason or st.get("reason", ""))
+                st.update(
+                    exec_start=t_exec,
+                    exec_done=t_done,
+                    batch_size=len(batch),
+                    batch_id=batch_no[0],
+                    batch_adaptations=res.ch_adaptations,
+                    redact_crypto_ms=res.crypto_ms,
+                    redact_ledger_ms=res.ledger_ms,
+                    status="pending" if o.ok else "failed",
+                    reason=o.reason or st.get("reason", ""),
+                )
                 if not o.ok and revalidate(a.request, o):
                     send_back(a.request)
                 if o.ok and res.finality is None:
@@ -124,6 +140,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
                     ms, _ = f.result()
                     for q in oks:
                         stamp[q].update(final=t, finality_ledger_ms=ms, status="finalized")
+
                 res.finality.add_done_callback(done)
 
     clients = [threading.Thread(target=client, args=(i,), daemon=True) for i in range(x["client_threads"])]
@@ -135,8 +152,9 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     for th in clients:
         th.join(timeout=max(0.0, window - now()) + x["drain_s"])
     deadline = time.perf_counter() + x["drain_s"]
-    while time.perf_counter() < deadline and any(v.get("status") in (None, "pending", "revalidating")
-                                                 for v in stamp.values() if "submit" in v):
+    while time.perf_counter() < deadline and any(
+        v.get("status") in (None, "pending", "revalidating") for v in stamp.values() if "submit" in v
+    ):
         time.sleep(0.05)
     stop.set()
     for _ in workers:
@@ -152,28 +170,50 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     for r in ds.trace:
         st = stamp[r.seq]
         status = st.get("status", "unfinished")
-        status = status if status in ("finalized", "rejected", "failed") else \
-            ("unfinished" if "submit" in st else "not_submitted")
+        status = (
+            status
+            if status in ("finalized", "rejected", "failed")
+            else ("unfinished" if "submit" in st else "not_submitted")
+        )
         in_window = w0 <= r.arrival_s < window
         if in_window and not r.fault:
             offered += 1
             on_time += "submit" in st and st["submit"] < window
             finalized += status == "finalized"
             decided += status in ("finalized", "rejected", "failed")
-        out.row(experiment=x["id"], sweep=sweep, system=key, rate_rps=rate, zipf_s=zipf_s, seq=r.seq, fault=r.fault,
-                arrival_s=r.arrival_s, submit_s=st.get("submit", ""), client_lag_ms=(st["submit"] - r.arrival_s) * 1000
-                if "submit" in st else "", in_window=int(in_window), status=status, reason=st.get("reason", ""),
-                auth_ms=st.get("auth_ms", ""), revalidations=st.get("revalidations", 0), batch_size=st.get("batch_size", ""),
-                batch_id=st.get("batch_id", ""), batch_adaptations=st.get("batch_adaptations", ""),
-                queue_ms=(st["exec_start"] - st["auth_done"]) * 1000 if "exec_start" in st else "",
-                redact_crypto_ms=st.get("redact_crypto_ms", ""), redact_ledger_ms=st.get("redact_ledger_ms", ""),
-                finality_ledger_ms=st.get("finality_ledger_ms", ""),
-                latency_ms=(st["final"] - st["submit"]) * 1000 if "final" in st else "",
-                setup_s=s.setup_s, **capability_fields(s))
+        out.row(
+            experiment=x["id"],
+            sweep=sweep,
+            system=key,
+            rate_rps=rate,
+            zipf_s=zipf_s,
+            seq=r.seq,
+            fault=r.fault,
+            arrival_s=r.arrival_s,
+            submit_s=st.get("submit", ""),
+            client_lag_ms=(st["submit"] - r.arrival_s) * 1000 if "submit" in st else "",
+            in_window=int(in_window),
+            status=status,
+            reason=st.get("reason", ""),
+            auth_ms=st.get("auth_ms", ""),
+            revalidations=st.get("revalidations", 0),
+            batch_size=st.get("batch_size", ""),
+            batch_id=st.get("batch_id", ""),
+            batch_adaptations=st.get("batch_adaptations", ""),
+            queue_ms=(st["exec_start"] - st["auth_done"]) * 1000 if "exec_start" in st else "",
+            redact_crypto_ms=st.get("redact_crypto_ms", ""),
+            redact_ledger_ms=st.get("redact_ledger_ms", ""),
+            finality_ledger_ms=st.get("finality_ledger_ms", ""),
+            latency_ms=(st["final"] - st["submit"]) * 1000 if "final" in st else "",
+            setup_s=s.setup_s,
+            **capability_fields(s),
+        )
     client = on_time / offered if offered else 1.0
     ratio = decided / offered if offered else 1.0
-    out.log.info(f"  {key:28s} rate={rate:<6} s={zipf_s:<4}  offered={offered / x['duration_s']:7.1f}/s  "
-          f"submitted-in-window={client:.3f}  decided/offered={ratio:.3f}  goodput={finalized / x['duration_s']:.1f}/s")
+    out.log.info(
+        f"  {key:28s} rate={rate:<6} s={zipf_s:<4}  offered={offered / x['duration_s']:7.1f}/s  "
+        f"submitted-in-window={client:.3f}  decided/offered={ratio:.3f}  goodput={finalized / x['duration_s']:.1f}/s"
+    )
     return ratio, client
 
 
@@ -186,8 +226,10 @@ def run(cfg, out):
         for rate in x["rates"]:  # rate sweep at the default skew
             ratio, client = run_point(cfg, key, rate, cfg["workload"]["zipf_s"], out, "rate")
             if client < 1 - tol:
-                out.note(f"{x['id']} {key}: requesters submitted only {client:.0%} of the {rate} req/s "
-                         "window on time — client-bound, not system-bound; higher rates skipped")
+                out.note(
+                    f"{x['id']} {key}: requesters submitted only {client:.0%} of the {rate} req/s "
+                    "window on time — client-bound, not system-bound; higher rates skipped"
+                )
                 break
             if ratio < 1 - tol:
                 out.note(f"{x['id']} {key}: saturated at {rate} req/s; higher rates skipped")

@@ -2,6 +2,7 @@
 
 Usage: python3 tools/pdf2md_pdftotext.py <dir_with_pdfs> <out_dir>
 """
+
 import re
 import subprocess
 import sys
@@ -21,7 +22,7 @@ DROP = [
     r"^DOI 10\.1109/Trustcom",
 ]
 DROP_RE = [re.compile(p) for p in DROP]
-H1 = re.compile(r"^([IVX]+)\.\s+([A-Z][A-Z .,\-’'&]+)$")          # I. INTRODUCTION
+H1 = re.compile(r"^([IVX]+)\.\s+([A-Z][A-Z .,\-’'&]+)$")  # I. INTRODUCTION
 H2 = re.compile(r"^([A-H])\.\s+([A-Z][A-Za-z ,\-’'&():]{2,80})$")  # A. Contribution
 REFS = re.compile(r"^R\s?EFERENCES$|^REFERENCES$")
 REF_ITEM = re.compile(r"^\[\d+\]\s")
@@ -54,7 +55,9 @@ def extract_by_columns(pdf, title_h=250):
     half, parts = int(w / 2), []
     for pg in range(1, pages + 1):
         top = title_h if pg == 1 else 0
-        crop = lambda x, y, W, H: pdftotext(pdf, "-f", str(pg), "-l", str(pg), "-x", str(x), "-y", str(y), "-W", str(W), "-H", str(H))
+        crop = lambda x, y, W, H: pdftotext(
+            pdf, "-f", str(pg), "-l", str(pg), "-x", str(x), "-y", str(y), "-W", str(W), "-H", str(H)
+        )
         if top:
             parts.append(crop(0, 0, int(w), top))
         parts.append(crop(0, top, half, int(h) - top))
@@ -95,7 +98,7 @@ def convert(pdf: Path, out: Path):
             for j in range(max(0, i - 3), min(len(blocks), i + 4)):
                 if j != i and len(blocks[j]) == 1 and re.fullmatch(r"[A-Z]", blocks[j][0]):
                     w = m.group(1)
-                    b[k] = blocks[j][0] + w.lower() + line[len(w):]
+                    b[k] = blocks[j][0] + w.lower() + line[len(w) :]
                     blocks[j] = []
                     break
             break
@@ -108,7 +111,7 @@ def convert(pdf: Path, out: Path):
             continue
         if drop and re.match(r"^[A-Z]{2,}", b[0]):
             w = re.match(r"^[A-Z]+", b[0]).group(0)
-            b = [drop + w.lower() + b[0][len(w):]] + b[1:]
+            b = [drop + w.lower() + b[0][len(w) :]] + b[1:]
             drop = ""
         text = ""
         for s in b:
@@ -160,7 +163,7 @@ def convert(pdf: Path, out: Path):
     if "## References" in md:
         r = md.index("## References")
         first = next((i for i, x in enumerate(md) if x.startswith("[1] ")), None)
-        if first and first > r + 1 and any(x.startswith("## ") for x in md[r + 1:first]):
+        if first and first > r + 1 and any(x.startswith("## ") for x in md[r + 1 : first]):
             md.pop(r)
             md.insert(first - 1, "## References")
     # drop-cap that pdftotext splits as "B" ... "LOCKCHAIN"

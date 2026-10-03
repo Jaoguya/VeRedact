@@ -8,6 +8,7 @@ Names match the manuscript's \\includegraphics (exp1_redaction_throughput, ...).
   Fig. 7  (a) total gas per authorization round, (b) amortized gas per redaction vs redactions per batch
 plus exp4_granularity (valid records falsely rejected vs injected fraction; Exp. 4 text).
 """
+
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
@@ -26,8 +27,12 @@ def _points(m: dict) -> dict:
     """metrics.json points -> {(axis values...): stats} with numeric axis values where possible."""
     out = {}
     for k, v in m["points"].items():
-        out[tuple(num(p.split("=", 1)[1]) if num(p.split("=", 1)[1]) is not None else p.split("=", 1)[1]
-                  for p in k.split("|"))] = v
+        out[
+            tuple(
+                num(p.split("=", 1)[1]) if num(p.split("=", 1)[1]) is not None else p.split("=", 1)[1]
+                for p in k.split("|")
+            )
+        ] = v
     return out
 
 
@@ -79,12 +84,18 @@ def fig_exp1(tier, written):
         if rate:
             style.line(a, key, [x for x, _ in rate], [v["throughput_per_s"] for _, v in rate])
             style.line(b, key, [x for x, _ in rate], [v["latency_ms"]["p95"] for _, v in rate])
-        skew = sorted((k[2], v["pqch_adaptations_per_1000"]) for k, v in pts.items()
-                      if k[0] == "skew" and v["pqch_adaptations_per_1000"] is not None)
+        skew = sorted(
+            (k[2], v["pqch_adaptations_per_1000"])
+            for k, v in pts.items()
+            if k[0] == "skew" and v["pqch_adaptations_per_1000"] is not None
+        )
         if skew:
             style.line(c, key, [x for x, _ in skew], [y for _, y in skew])
-    for ax, xl, yl in ((a, "Arrival rate (req/s)", "Throughput (red./s)"),
-                       (b, "Arrival rate (req/s)", "p95 latency (ms)"), (c, "Zipf skew $s$", "PQCH adapt. / 1,000")):
+    for ax, xl, yl in (
+        (a, "Arrival rate (req/s)", "Throughput (red./s)"),
+        (b, "Arrival rate (req/s)", "p95 latency (ms)"),
+        (c, "Zipf skew $s$", "PQCH adapt. / 1,000"),
+    ):
         ax.set_xlabel(xl)
         ax.set_ylabel(yl)
     for ax in (a, b):
@@ -115,8 +126,12 @@ def fig_exp2(tier, written):
             per_batch = sorted((k[0], v["auth_per_request_ms"]["median"]) for k, v in pts.items() if k[1] == 1)
         style.line(b, key, [x for x, _ in per_batch], [y for _, y in per_batch])
     a.set(xscale="log", yscale="log", xlabel="Batch size $m$", ylabel="Amortized per request (ms)")
-    b.set(yscale="log", xlabel="Committee size $n$ ($t=\\lfloor 2n/3\\rfloor+1$)", ylabel="Per batch (ms)",
-          title=f"VeRedact-PQ: one batch of $m$={int(m0)}")
+    b.set(
+        yscale="log",
+        xlabel="Committee size $n$ ($t=\\lfloor 2n/3\\rfloor+1$)",
+        ylabel="Per batch (ms)",
+        title=f"VeRedact-PQ: one batch of $m$={int(m0)}",
+    )
     _tag(a, "a")
     _tag(b, "b")
     _legend(a)
@@ -152,9 +167,14 @@ def fig_exp3(tier, written):
     _save(fig, "exp3_audit_efficiency", written)
 
 
-BREAKDOWN = (("response_ms", "Response + query"), ("rai_mp_ms", "RAI multiproof"),
-             ("committee_ms", "Committee approvals"), ("attest_ms", "Attestations"),
-             ("state_ms", "State + PQCH"), ("zk_ms", "PQZK"))
+BREAKDOWN = (
+    ("response_ms", "Response + query"),
+    ("rai_mp_ms", "RAI multiproof"),
+    ("committee_ms", "Committee approvals"),
+    ("attest_ms", "Attestations"),
+    ("state_ms", "State + PQCH"),
+    ("zk_ms", "PQZK"),
+)
 
 
 def fig_exp4(tier, written):
@@ -165,22 +185,30 @@ def fig_exp4(tier, written):
     for key, m in ms.items():
         pts = _points(m)
         for level in ("normal", "deep"):
-            xs = sorted((k[0], v["verify_ms"]["median"]) for k, v in pts.items()
-                        if k[1] == level and k[2] == 0 and v.get("status") == "ok")
+            xs = sorted(
+                (k[0], v["verify_ms"]["median"])
+                for k, v in pts.items()
+                if k[1] == level and k[2] == 0 and v.get("status") == "ok"
+            )
             if xs and (level == "normal" or key.startswith("veredact")):
                 style.line(a, key, [x for x, _ in xs], [y for _, y in xs], f" ({level})")
                 if level == "deep":
                     a.lines[-1].set_linestyle("--")
     a.set(xscale="log", yscale="log", xlabel="Verified records $n_Q$", ylabel="Verification time (ms)")
-    vr = [r for r in rows("exp04_verification_time", tier)
-          if r["system"] == "veredact" and r.get("status") == "ok" and num(r["inject_fraction"]) == 0]
+    vr = [
+        r
+        for r in rows("exp04_verification_time", tier)
+        if r["system"] == "veredact" and r.get("status") == "ok" and num(r["inject_fraction"]) == 0
+    ]
     if vr:
         n_max = max(int(r["n_Q"]) for r in vr)
         levels = [lv for lv in ("normal", "deep") if any(r["level"] == lv for r in vr)]
         bottom = [0.0] * len(levels)
         for col, name in BREAKDOWN:
-            h = [M.median([num(r[f"verify_{col}"]) for r in vr if r["level"] == lv and int(r["n_Q"]) == n_max])
-                 for lv in levels]
+            h = [
+                M.median([num(r[f"verify_{col}"]) for r in vr if r["level"] == lv and int(r["n_Q"]) == n_max])
+                for lv in levels
+            ]
             b.bar(levels, h, bottom=bottom, label=name, width=0.5)
             bottom = [x + y for x, y in zip(bottom, h)]
         b.set(ylabel="Verification time (ms)", title=f"VeRedact-PQ, $n_Q$ = {n_max}")

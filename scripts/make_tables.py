@@ -1,4 +1,5 @@
 """results/ -> paper/tables/*.tex (booktabs):  python scripts/make_tables.py --tier experiment"""
+
 import argparse
 
 from veredact_bench.reporting.tables import make_all

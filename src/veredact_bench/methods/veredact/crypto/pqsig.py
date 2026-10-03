@@ -5,6 +5,7 @@ Backends, selected by VRPQ_SIG_BACKEND (default: auto):
   oqs       - ML-DSA-65 via liboqs-python (the paper's stated library; needs `brew install liboqs`)
   sim       - HMAC-based stand-in with ML-DSA-65 sizes; NOT secure, for plumbing tests only
 """
+
 import hashlib
 import hmac
 import os

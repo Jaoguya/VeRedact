@@ -1,5 +1,16 @@
-from veredact_bench.methods.baselines.s27_etch.construction import (Initiator, N, adapt, gmul, hash_, keygen, keyupt, lagrange, redact_tx,
-                        verify, verify_tx)
+from veredact_bench.methods.baselines.s27_etch.construction import (
+    Initiator,
+    N,
+    adapt,
+    gmul,
+    hash_,
+    keygen,
+    keyupt,
+    lagrange,
+    redact_tx,
+    verify,
+    verify_tx,
+)
 
 
 def test_dkg_hash_key_matches_trapdoor():

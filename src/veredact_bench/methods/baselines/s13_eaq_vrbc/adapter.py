@@ -11,14 +11,25 @@ Paper workflow:
              "are these blocks intact and current?" for the challenged set as a whole: one decision,
              applied to every record of the query (it cannot reject records individually).
 """
+
 import os
 import time
 
-from veredact_bench.methods.baselines.s13_eaq_vrbc.construction import Ledger, setup as s13_setup
-
 from veredact_bench.evaluation.anchor import gather, make_anchor
-from veredact_bench.methods.scheme import (AuditQuery, AuditResult, AuthCost, Authorization, Capabilities, Dataset,
-                                   RedactionOutcome, RedactionResult, RedactionRequest, Scheme)
+from veredact_bench.methods.baselines.s13_eaq_vrbc.construction import Ledger
+from veredact_bench.methods.baselines.s13_eaq_vrbc.construction import setup as s13_setup
+from veredact_bench.methods.scheme import (
+    AuditQuery,
+    AuditResult,
+    AuthCost,
+    Authorization,
+    Capabilities,
+    Dataset,
+    RedactionOutcome,
+    RedactionRequest,
+    RedactionResult,
+    Scheme,
+)
 
 
 class EAQVRBCScheme(Scheme):
@@ -28,9 +39,16 @@ class EAQVRBCScheme(Scheme):
         self.cfg, self.b = cfg, cfg["baselines"]["S13"]
 
     def capabilities(self) -> Capabilities:
-        return Capabilities(pq_security=False, distributed_auth=False, policy_control=False, batch_redaction=False,
-                            private_verification=False, verifiable_auditing=True, state_freshness_check=True,
-                            consensus_bound_auth=False)
+        return Capabilities(
+            pq_security=False,
+            distributed_auth=False,
+            policy_control=False,
+            batch_redaction=False,
+            private_verification=False,
+            verifiable_auditing=True,
+            state_freshness_check=True,
+            consensus_bound_auth=False,
+        )
 
     def auth_cost(self) -> AuthCost:
         return AuthCost()  # key-possession check only: no signature/proof verification, no network
@@ -41,7 +59,7 @@ class EAQVRBCScheme(Scheme):
         N = self.cfg["dataset"]["leaves_per_batch"]
         self.block_of, self.txs = {}, {}
         for off in range(0, len(dataset.transactions), N):
-            chunk = dataset.transactions[off:off + N]
+            chunk = dataset.transactions[off : off + N]
             b = self.L.upload([t.payload for t in chunk])
             for pos, t in enumerate(chunk):
                 self.block_of[t.tid] = (b.idx, pos)
@@ -70,13 +88,25 @@ class EAQVRBCScheme(Scheme):
                 continue
             tag = self.L.tags[s][0].S.to_bytes(self.p.N.bit_length() // 8 + 1, "big")
             # pipelined like VeRedact's anchoring: finality is tracked by the Future, not awaited here
-            futs.append(self.anchor.submit("baseline_redaction", tid=a.request.tid.ljust(32, b"\0")[:32],
-                                           commit=self.L.blocks[s].m[:32], version=len(self.L.acc.revoked),
-                                           evidence=tag))
+            futs.append(
+                self.anchor.submit(
+                    "baseline_redaction",
+                    tid=a.request.tid.ljust(32, b"\0")[:32],
+                    commit=self.L.blocks[s].m[:32],
+                    version=len(self.L.acc.revoked),
+                    evidence=tag,
+                )
+            )
             self.redacted.append((a.request.seq, s))
             outcomes.append(RedactionOutcome(a.request.seq, True))
-        return RedactionResult(outcomes, crypto_ms, 0.0, len(futs), finality=gather(futs) if futs else None,
-                               finality_op="baseline_redaction")
+        return RedactionResult(
+            outcomes,
+            crypto_ms,
+            0.0,
+            len(futs),
+            finality=gather(futs) if futs else None,
+            finality_op="baseline_redaction",
+        )
 
     def audit(self, query: AuditQuery) -> AuditResult:
         blocks = sorted({s for _, s in self.redacted[: query.records]})
@@ -93,11 +123,19 @@ class EAQVRBCScheme(Scheme):
         t2 = time.perf_counter()
         self.L.tags.update(saved)
         (V, S), mu, w = proof
-        nbytes = 2 * (self.p.N.bit_length() // 8) + (mu.bit_length() + 7) // 8 + \
-            sum((x.bit_length() + 7) // 8 for x in (w.a, w.B, w.C, w.D, w.pi_C, w.pi_D)) + 16 * len(w.xs)
-        return AuditResult("ledger integrity + version freshness (aggregate, per challenged set)",
-                           (t1 - t0) * 1000, (t2 - t1) * 1000, nbytes,
-                           {i: ok for i in range(min(query.records, len(self.redacted)))})
+        nbytes = (
+            2 * (self.p.N.bit_length() // 8)
+            + (mu.bit_length() + 7) // 8
+            + sum((x.bit_length() + 7) // 8 for x in (w.a, w.B, w.C, w.D, w.pi_C, w.pi_D))
+            + 16 * len(w.xs)
+        )
+        return AuditResult(
+            "ledger integrity + version freshness (aggregate, per challenged set)",
+            (t1 - t0) * 1000,
+            (t2 - t1) * 1000,
+            nbytes,
+            {i: ok for i in range(min(query.records, len(self.redacted)))},
+        )
 
     def teardown(self) -> None:
         self.anchor.close()

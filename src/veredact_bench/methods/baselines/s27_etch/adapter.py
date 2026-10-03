@@ -9,13 +9,21 @@ Paper workflow, per request (Sec. VI):
   audit      not defined by the paper -> NotSupported (capability column says so; nothing synthesised).
 Instantiation: the paper's own (secp256k1, SHA-256), classical.
 """
+
 import time
 
-from veredact_bench.methods.baselines.s27_etch.construction import Initiator, keygen, redact_tx, verify_tx
-
 from veredact_bench.evaluation.anchor import gather, make_anchor
-from veredact_bench.methods.scheme import (AuthCost, Authorization, Capabilities, Dataset, RedactionOutcome,
-                                   RedactionResult, RedactionRequest, Scheme)
+from veredact_bench.methods.baselines.s27_etch.construction import Initiator, keygen, redact_tx, verify_tx
+from veredact_bench.methods.scheme import (
+    AuthCost,
+    Authorization,
+    Capabilities,
+    Dataset,
+    RedactionOutcome,
+    RedactionRequest,
+    RedactionResult,
+    Scheme,
+)
 
 
 class ETCHScheme(Scheme):
@@ -26,9 +34,16 @@ class ETCHScheme(Scheme):
         self.cfg, self.n, self.t = cfg, redactors_n or b["redactors_n"], threshold_t or b["threshold_t"]
 
     def capabilities(self) -> Capabilities:
-        return Capabilities(pq_security=False, distributed_auth=True, policy_control=False, batch_redaction=False,
-                            private_verification=False, verifiable_auditing=False, state_freshness_check=False,
-                            consensus_bound_auth=False)
+        return Capabilities(
+            pq_security=False,
+            distributed_auth=True,
+            policy_control=False,
+            batch_redaction=False,
+            private_verification=False,
+            verifiable_auditing=False,
+            state_freshness_check=False,
+            consensus_bound_auth=False,
+        )
 
     def auth_cost(self) -> AuthCost:
         return AuthCost()  # no approval step in the paper: the threshold lives in Adapt (redact)
@@ -36,8 +51,10 @@ class ETCHScheme(Scheme):
     def setup(self, dataset: Dataset) -> None:
         self.keys = keygen(self.t, self.n)  # Pedersen/Feldman DKG among redactors
         self.initiators = [Initiator() for _ in range(dataset.requesters)]
-        self.txs = {tx.tid: (self.initiators[tx.owner].create_tx(self.keys.Y, tx.payload), tx.owner)
-                    for tx in dataset.transactions}
+        self.txs = {
+            tx.tid: (self.initiators[tx.owner].create_tx(self.keys.Y, tx.payload), tx.owner)
+            for tx in dataset.transactions
+        }
         self.anchor = make_anchor(self.cfg)
         self.signers = list(self.keys.parts)[: self.t]
 
@@ -63,12 +80,19 @@ class ETCHScheme(Scheme):
             if ok:
                 self.txs[a.request.tid] = (new_tx, owner)
                 # pipelined like VeRedact's anchoring: finality is tracked by the Future, not awaited here
-                futs.append(self.anchor.submit("baseline_redaction", tid=a.request.tid.ljust(32, b"\0")[:32],
-                                               commit=new_tx.etch.r.format()[1:], version=1,
-                                               evidence=new_tx.etch.w.to_bytes(32, "big")))
+                futs.append(
+                    self.anchor.submit(
+                        "baseline_redaction",
+                        tid=a.request.tid.ljust(32, b"\0")[:32],
+                        commit=new_tx.etch.r.format()[1:],
+                        version=1,
+                        evidence=new_tx.etch.w.to_bytes(32, "big"),
+                    )
+                )
             outcomes.append(RedactionOutcome(a.request.seq, ok, reason="" if ok else "adapt verify"))
-        return RedactionResult(outcomes, crypto_ms, 0.0, adapt, finality=gather(futs) if futs else None,
-                               finality_op="baseline_redaction")
+        return RedactionResult(
+            outcomes, crypto_ms, 0.0, adapt, finality=gather(futs) if futs else None, finality_op="baseline_redaction"
+        )
 
     def teardown(self) -> None:
         self.anchor.close()

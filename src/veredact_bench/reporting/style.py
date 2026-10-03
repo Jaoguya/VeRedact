@@ -1,12 +1,13 @@
 """One visual identity for every figure: IEEE sizes, 8 pt fonts, Okabe-Ito colorblind-safe colours, and a fixed
 colour per method (variants keep VeRedact-PQ's colour and differ by line style / marker)."""
+
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-COLUMN_IN = 3.5      # IEEE single column
-DOUBLE_IN = 7.16     # IEEE double column
+COLUMN_IN = 3.5  # IEEE single column
+DOUBLE_IN = 7.16  # IEEE double column
 FONT_PT = 8
 
 # Okabe & Ito (2008) palette
@@ -26,12 +27,25 @@ METHODS = {  # key -> (label, colour, line style, marker)
 
 
 def apply():
-    plt.rcParams.update({
-        "font.size": FONT_PT, "axes.titlesize": FONT_PT, "axes.labelsize": FONT_PT, "legend.fontsize": FONT_PT - 1,
-        "xtick.labelsize": FONT_PT, "ytick.labelsize": FONT_PT, "font.family": "serif", "pdf.fonttype": 42,
-        "ps.fonttype": 42, "axes.grid": True, "grid.alpha": 0.3, "lines.linewidth": 1.2, "lines.markersize": 3.5,
-        "savefig.bbox": "tight", "savefig.pad_inches": 0.02,
-    })
+    plt.rcParams.update(
+        {
+            "font.size": FONT_PT,
+            "axes.titlesize": FONT_PT,
+            "axes.labelsize": FONT_PT,
+            "legend.fontsize": FONT_PT - 1,
+            "xtick.labelsize": FONT_PT,
+            "ytick.labelsize": FONT_PT,
+            "font.family": "serif",
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
+            "axes.grid": True,
+            "grid.alpha": 0.3,
+            "lines.linewidth": 1.2,
+            "lines.markersize": 3.5,
+            "savefig.bbox": "tight",
+            "savefig.pad_inches": 0.02,
+        }
+    )
 
 
 def label(key: str) -> str:

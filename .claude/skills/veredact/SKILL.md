@@ -12,7 +12,7 @@ VeRedact/
 ├── README.md                     the ONLY README: one command per paper table / figure, hardware, runtime
 ├── TASK.md                       progress tracker + run ledger (which run is current, where it is stored)
 ├── pyproject.toml                pinned dependencies; package in src/
-├── Makefile                      venv build-zk test validate eval smoke pilot experiment tables figures all paper-runs
+├── Makefile                      venv build-zk test lint validate eval smoke pilot experiment tables figures all paper-runs
 ├── .claude/skills/veredact/SKILL.md   this file (the only SKILL.md)
 ├── configs/                      ALL parameters (YAML, OmegaConf); every value carries a marker
 │   ├── base.yaml                 seed, security, environment, ledger, workload, output
@@ -143,7 +143,7 @@ blue / red = current (kept, colour removed). Equations are renumbered after drop
 
 ### 3.3 Run the experiments
 ```
-make venv build-zk test                    # once: Python 3.12 venv (pinned), Rust STARK module, tests
+make venv build-zk test lint               # once: Python 3.12 venv (pinned), Rust STARK module, tests, ruff
 make smoke                                 # every experiment on the smoke tier
 make eval EXP=exp02_authorization_latency TIER=pilot   # one experiment, one tier (config-gated)
 make tables figures TIER=smoke             # paper/tables, paper/figures from results/

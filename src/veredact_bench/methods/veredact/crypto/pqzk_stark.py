@@ -11,6 +11,7 @@
 The statement digest enters the Fiat-Shamir transcript, so a proof is bound to its request, state
 version and epoch (Theorem 1). Build the extension once:  make build-zk
 """
+
 import hashlib
 import secrets
 import time
@@ -37,7 +38,7 @@ class ZKParams:
     grinding: int
     depth: int
     attribute_levels: int  # requester attributes and policy thresholds lie in 1..attribute_levels
-    validity_s: int        # credential lifetime from registry setup
+    validity_s: int  # credential lifetime from registry setup
 
 
 class PolicySTARK:
@@ -53,9 +54,18 @@ class PolicySTARK:
         # policy threshold; the predicate is still proven for each request
         self._attr = [params.attribute_levels] * requesters
         self._expiry = [now + params.validity_s] * requesters
-        creds = [(self._secret[i], self.requester_element(i), self._attr[i], self._expiry[i]) for i in range(requesters)]
-        creds += [(rng.getrandbits(_FIELD_BITS), rng.getrandbits(_FIELD_BITS), rng.randint(1, params.attribute_levels),
-                   now + params.validity_s) for _ in range(size - requesters)]
+        creds = [
+            (self._secret[i], self.requester_element(i), self._attr[i], self._expiry[i]) for i in range(requesters)
+        ]
+        creds += [
+            (
+                rng.getrandbits(_FIELD_BITS),
+                rng.getrandbits(_FIELD_BITS),
+                rng.randint(1, params.attribute_levels),
+                now + params.validity_s,
+            )
+            for _ in range(size - requesters)
+        ]
         self.registry = _stark.Registry(creds)
         self.root = self.registry.root()
         self._paths = {}
@@ -64,8 +74,15 @@ class PolicySTARK:
     def requester_element(i: int) -> int:
         return int.from_bytes(hashlib.sha3_256(b"VRPQ-requester|%d" % i).digest()[:15], "big")
 
-    def prove(self, requester: int, x: bytes, threshold: int, ts_s: int, secret_override: int | None = None,
-              attribute_override: int | None = None) -> bytes:
+    def prove(
+        self,
+        requester: int,
+        x: bytes,
+        threshold: int,
+        ts_s: int,
+        secret_override: int | None = None,
+        attribute_override: int | None = None,
+    ) -> bytes:
         """A requester whose credential fails a predicate cannot build a proof: returns b"" (rejected)."""
         if requester not in self._paths:
             self._paths[requester] = self.registry.path(requester)
@@ -73,13 +90,34 @@ class PolicySTARK:
         attr = self._attr[requester] if attribute_override is None else attribute_override
         p = self.p
         try:
-            return _stark.prove(secret, self.requester_element(requester), attr, self._expiry[requester], requester,
-                                self._paths[requester], self.root, threshold, ts_s, statement_elements(x),
-                                p.queries, p.blowup, p.grinding)
+            return _stark.prove(
+                secret,
+                self.requester_element(requester),
+                attr,
+                self._expiry[requester],
+                requester,
+                self._paths[requester],
+                self.root,
+                threshold,
+                ts_s,
+                statement_elements(x),
+                p.queries,
+                p.blowup,
+                p.grinding,
+            )
         except ValueError:
             return b""
 
     def verify(self, requester: int, x: bytes, proof: bytes, threshold: int, ts_s: int) -> bool:
         p = self.p
-        return _stark.verify(proof, self.root, self.requester_element(requester), threshold, ts_s,
-                             statement_elements(x), p.queries, p.blowup, p.grinding)
+        return _stark.verify(
+            proof,
+            self.root,
+            self.requester_element(requester),
+            threshold,
+            ts_s,
+            statement_elements(x),
+            p.queries,
+            p.blowup,
+            p.grinding,
+        )

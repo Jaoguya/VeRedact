@@ -5,6 +5,7 @@ Tables, authors, abstract, algorithm and bibliography are converted here; the re
 
 Usage: python3 tools/tex2md.py overleaf/VeRedact.tex overleaf/VeRedact.md
 """
+
 import re
 import subprocess
 import sys
@@ -36,7 +37,7 @@ def arg(s, cmd):
     if i < 0:
         return None
     k = i + len(cmd) + 1
-    return s[k + 1:match_brace(s, k)]
+    return s[k + 1 : match_brace(s, k)]
 
 
 def replace_cmd(s, cmd, fn):
@@ -45,17 +46,17 @@ def replace_cmd(s, cmd, fn):
     out, pos = [], 0
     while (i := s.find(tok, pos)) >= 0:
         j = match_brace(s, i + len(tok) - 1)
-        out.append(s[pos:i] + fn(s[i + len(tok):j]))
+        out.append(s[pos:i] + fn(s[i + len(tok) : j]))
         pos = j + 1
     return "".join(out) + s[pos:]
 
 
 def strip_colour(s, colour, keep):
-    s = replace_cmd(s, "textcolor{%s}" % colour, lambda a: a if keep else "")
-    tok = "{\\color{%s}" % colour
+    s = replace_cmd(s, f"textcolor{{{colour}}}", lambda a: a if keep else "")
+    tok = f"{{\\color{{{colour}}}"
     while (i := s.find(tok)) >= 0:
         j = match_brace(s, i)
-        s = s[:i] + (s[i + len(tok):j] if keep else "") + s[j + 1:]
+        s = s[:i] + (s[i + len(tok) : j] if keep else "") + s[j + 1 :]
     return s
 
 
@@ -82,6 +83,7 @@ def inline(s):
 
 
 LABELS = {}
+
 
 # ---------------------------------------------------------------- tables
 def cell_md(c):
@@ -180,9 +182,22 @@ def algorithmic_to_text(body):
     text = replace_cmd(text, "mathcal", lambda a: a)
     text = replace_cmd(text, "mathrm", lambda a: a)
     text = replace_cmd(text, "hspace", lambda a: "")
-    for a, b in [("$", ""), ("\\gets", "←"), ("\\leftarrow", "←"), ("\\neq", "≠"), ("\\emptyset", "∅"),
-                 ("\\parallel", "‖"), ("\\in", "∈"), ("\\Omega", "Ω"), ("\\delta", "δ"), ("\\{", "{"),
-                 ("\\}", "}"), ("\\mathbf", ""), ("^{*}", "*"), ("_{", "_{")]:
+    for a, b in [
+        ("$", ""),
+        ("\\gets", "←"),
+        ("\\leftarrow", "←"),
+        ("\\neq", "≠"),
+        ("\\emptyset", "∅"),
+        ("\\parallel", "‖"),
+        ("\\in", "∈"),
+        ("\\Omega", "Ω"),
+        ("\\delta", "δ"),
+        ("\\{", "{"),
+        ("\\}", "}"),
+        ("\\mathbf", ""),
+        ("^{*}", "*"),
+        ("_{", "_{"),
+    ]:
         text = text.replace(a, b)
     return text
 
@@ -206,9 +221,9 @@ def preprocess(tex, tables):
         n += 1
         lab = re.search(r"\\label\{([^}]*)\}", m.group(1))
         if lab:
-            LABELS[lab.group(1)] = "(%d)" % n
+            LABELS[lab.group(1)] = f"({n})"
         body = re.sub(r"\\label\{[^}]*\}", "", m.group(1)).strip()
-        return "\\begin{equation*}\n" + body + "\n\\tag{%d}\n\\end{equation*}" % n
+        return "\\begin{equation*}\n" + body + f"\n\\tag{{{n}}}\n\\end{{equation*}}"
 
     tex = re.sub(r"\\begin\{equation\}(.*?)\\end\{equation\}", number, tex, flags=re.S)
 
@@ -237,15 +252,25 @@ def preprocess(tex, tables):
     def alg(m):
         cap = arg(m.group(0), "caption") or ""
         body = re.search(r"\\begin\{algorithmic\}\[1\](.*?)\\end\{algorithmic\}", m.group(0), re.S).group(1)
-        return "\n\\textbf{Algorithm 1: %s}\n\n\\begin{verbatim}\n%s\n\\end{verbatim}\n" % (
-            re.sub(r"\s+", " ", cap), algorithmic_to_text(body))
+        return "\n\\textbf{{Algorithm 1: {}}}\n\n\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n".format(
+            re.sub(r"\s+", " ", cap),
+            algorithmic_to_text(body),
+        )
 
     tex = re.sub(r"\\begin\{algorithm\}.*?\\end\{algorithm\}", alg, tex, flags=re.S)
     tex = re.sub(r"\\begin\{abstract\}", r"\\section{Abstract}", tex).replace("\\end{abstract}", "")
-    tex = re.sub(r"\\begin\{IEEEkeywords\}(.*?)\\end\{IEEEkeywords\}",
-                 lambda m: "\\textbf{Index Terms} --- " + m.group(1).strip(), tex, flags=re.S)
-    tex = re.sub(r"\\subsubsection\*\{\\textbf\{(.*?)\}\}",
-                 lambda m: "\\subsubsection{" + re.sub(r"\s+", " ", m.group(1)) + "}", tex, flags=re.S)
+    tex = re.sub(
+        r"\\begin\{IEEEkeywords\}(.*?)\\end\{IEEEkeywords\}",
+        lambda m: "\\textbf{Index Terms} --- " + m.group(1).strip(),
+        tex,
+        flags=re.S,
+    )
+    tex = re.sub(
+        r"\\subsubsection\*\{\\textbf\{(.*?)\}\}",
+        lambda m: "\\subsubsection{" + re.sub(r"\s+", " ", m.group(1)) + "}",
+        tex,
+        flags=re.S,
+    )
     tex = replace_cmd(tex, "makecell", lambda a: a.replace("\\\\", " "))
     return tex
 
@@ -273,8 +298,12 @@ def postprocess(md, tables):
     for k in reversed(range(len(tables))):  # reversed: PLACEHOLDER1 is a prefix of PLACEHOLDER10
         md = md.replace(f"TABLEPLACEHOLDER{k}", tables[k])
     md = md.replace("\\[", "[").replace("\\]", "]")
-    md = re.sub(r"\s*\$\$\\begin\{equation\*\}\s*(.*?)\s*\\end\{equation\*\}\$\$\s*",
-                lambda m: "\n\n$$\n" + m.group(1).strip() + "\n$$\n\n", md, flags=re.S)
+    md = re.sub(
+        r"\s*\$\$\\begin\{equation\*\}\s*(.*?)\s*\\end\{equation\*\}\$\$\s*",
+        lambda m: "\n\n$$\n" + m.group(1).strip() + "\n$$\n\n",
+        md,
+        flags=re.S,
+    )
     md = re.sub(r"\n{3,}", "\n\n", md)
     return md.strip() + "\n"
 
@@ -288,7 +317,10 @@ if __name__ == "__main__":
     pre = "\\documentclass{article}\n\\begin{document}\n" + preprocess(body, tables) + "\n\\end{document}\n"
     md = subprocess.run(
         ["pandoc", "-f", "latex", "-t", "gfm-tex_math_gfm+tex_math_dollars", "--wrap=none"],
-        input=pre, capture_output=True, text=True, check=True,
+        input=pre,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout
     out = front_matter(doc) + "\n" + postprocess(md, tables) + "\n" + bibliography(doc)
     open(dst, "w").write(out)

@@ -17,16 +17,24 @@ Deviations (bias direction in docs/baselines/S34-rebs.md):
     the rest of the corpus is never read by any S34 operation. Ephemeral keygen runs in a process pool.
   * Composite-order group -> prime-order BLS12-381 (construction.py header).
 """
+
 import hashlib
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor
 
-from veredact_bench.methods.baselines.s34_rebs import construction as R
-
 from veredact_bench.evaluation.anchor import gather, make_anchor
-from veredact_bench.methods.scheme import (AuthCost, Authorization, Capabilities, Dataset, RedactionOutcome,
-                                   RedactionResult, RedactionRequest, Scheme)
+from veredact_bench.methods.baselines.s34_rebs import construction as R
+from veredact_bench.methods.scheme import (
+    AuthCost,
+    Authorization,
+    Capabilities,
+    Dataset,
+    RedactionOutcome,
+    RedactionRequest,
+    RedactionResult,
+    Scheme,
+)
 
 
 class REBSScheme(Scheme):
@@ -39,9 +47,16 @@ class REBSScheme(Scheme):
         self.t = policy_threshold or b["policy_threshold"]
 
     def capabilities(self) -> Capabilities:
-        return Capabilities(pq_security=False, distributed_auth=True, policy_control=True, batch_redaction=False,
-                            private_verification=True, verifiable_auditing=False, state_freshness_check=False,
-                            consensus_bound_auth=False)
+        return Capabilities(
+            pq_security=False,
+            distributed_auth=True,
+            policy_control=True,
+            batch_redaction=False,
+            private_verification=True,
+            verifiable_auditing=False,
+            state_freshness_check=False,
+            consensus_bound_auth=False,
+        )
 
     def auth_cost(self) -> AuthCost:
         # decryption: 2t pairings + t GT exponentiations; no signature, proof or network round trip
@@ -64,7 +79,9 @@ class REBSScheme(Scheme):
         self.ch = {}
         for tid, e in zip(targets, eph):
             tx = self.by_tid[tid]
-            self.ch[tid] = R.chash(self.amc, self.attr_auth, self.policies[tx.policy], tx.payload, tx.ts, self.bits, e)[0]
+            self.ch[tid] = R.chash(self.amc, self.attr_auth, self.policies[tx.policy], tx.payload, tx.ts, self.bits, e)[
+                0
+            ]
         for r in dataset.trace:
             if r.tid in self.by_tid:
                 self._issue(r.requester, self._values_policy(r))
@@ -82,7 +99,8 @@ class REBSScheme(Scheme):
             _, sig = self.trs[requester]
             self.keys[(requester, p)] = {
                 l: R.attr_keygen(self.amc, self.attr_auth[l], self._id(requester), sig, self.policies[p].values[l])
-                for l in range(self.l)}
+                for l in range(self.l)
+            }
 
     @staticmethod
     def _id(requester: int) -> bytes:
@@ -122,12 +140,19 @@ class REBSScheme(Scheme):
                 self.ch[tid] = v2
                 r_bytes = v2.r.to_bytes((v2.r.bit_length() + 7) // 8, "big")
                 # pipelined like VeRedact's anchoring: finality is tracked by the Future, not awaited here
-                futs.append(self.anchor.submit("baseline_redaction", tid=tid.ljust(32, b"\0")[:32],
-                                               commit=hashlib.sha256(r_bytes).digest(), version=1,
-                                               evidence=r_bytes))
+                futs.append(
+                    self.anchor.submit(
+                        "baseline_redaction",
+                        tid=tid.ljust(32, b"\0")[:32],
+                        commit=hashlib.sha256(r_bytes).digest(),
+                        version=1,
+                        evidence=r_bytes,
+                    )
+                )
             outcomes.append(RedactionOutcome(a.request.seq, ok, reason="" if ok else "ChVer"))
-        return RedactionResult(outcomes, crypto_ms, 0.0, adapt, finality=gather(futs) if futs else None,
-                               finality_op="baseline_redaction")
+        return RedactionResult(
+            outcomes, crypto_ms, 0.0, adapt, finality=gather(futs) if futs else None, finality_op="baseline_redaction"
+        )
 
     def teardown(self) -> None:
         self.anchor.close()

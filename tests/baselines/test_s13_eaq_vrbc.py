@@ -2,9 +2,18 @@ import os
 
 import pytest
 
-
-from veredact_bench.methods.baselines.s13_eaq_vrbc.construction import (Accumulator, Ledger, ch_verify, nonmem_aggregate, nonmem_create, nonmem_verify,
-                        nonmem_verify_agg, setup, tag_gen, tag_verify)
+from veredact_bench.methods.baselines.s13_eaq_vrbc.construction import (
+    Accumulator,
+    Ledger,
+    ch_verify,
+    nonmem_aggregate,
+    nonmem_create,
+    nonmem_verify,
+    nonmem_verify_agg,
+    setup,
+    tag_gen,
+    tag_verify,
+)
 
 
 @pytest.fixture(scope="module")
@@ -28,7 +37,7 @@ def test_redaction_keeps_chameleon_hash(p):
 
 def test_revoked_versions_fail_freshness(p):
     L = Ledger(p)
-    for i in range(6):
+    for _i in range(6):
         L.upload([os.urandom(8)])
     _, _, hh_old = L.tags[2]
     L.redact(2, [b"new"])
@@ -40,7 +49,7 @@ def test_revoked_versions_fail_freshness(p):
 
 def test_aggregated_nonmembership_and_audit(p):
     L = Ledger(p)
-    for i in range(12):
+    for _i in range(12):
         L.upload([os.urandom(8)])
     for s in (0, 3):
         L.redact(s, [b"x%d" % s])
