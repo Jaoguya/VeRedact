@@ -130,6 +130,7 @@ class AuditResult:
     verify_ms: float  # auditor side
     evidence_bytes: int
     accepted: dict  # seq -> bool (per-record decision)
+    breakdown: dict = field(default_factory=dict)  # verify_ms split by step, where the scheme reports one
 
 
 # ----------------------------------------------------------------------------------------- the contract

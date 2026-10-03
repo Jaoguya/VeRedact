@@ -52,15 +52,23 @@ def test_sis_pqch_distributed_adapt_and_reshare(cfg):
 
 
 def test_stark_rejects_wrong_witness_statement_requester(cfg):
+    import time
+
     from veredact_bench.crypto.pqzk_stark import PolicySTARK, ZKParams
     z = cfg["security"]["pqzk"]
-    zk = PolicySTARK(ZKParams(z["queries"], z["blowup"], z["grinding_bits"], z["registry_depth"]), 4, seed=1)
-    x = os.urandom(32)
-    pi = zk.prove(1, x)
-    assert zk.verify(1, x, pi)
-    assert not zk.verify(2, x, pi)  # RequesterBound
-    assert not zk.verify(1, os.urandom(32), pi)  # statement bound by Fiat-Shamir
-    assert not zk.verify(1, x, zk.prove(1, x, secret_override=12345))  # unregistered credential
+    now = int(time.time())
+    zk = PolicySTARK(ZKParams(z["queries"], z["blowup"], z["grinding_bits"], z["registry_depth"],
+                              z["attribute_levels"], 86400), 4, seed=1, now_s=now)
+    x, thr, ts = os.urandom(32), 3, now + 10
+    pi = zk.prove(1, x, thr, ts)
+    assert zk.verify(1, x, pi, thr, ts)
+    assert not zk.verify(2, x, pi, thr, ts)  # RequesterBound
+    assert not zk.verify(1, os.urandom(32), pi, thr, ts)  # statement bound by Fiat-Shamir
+    assert not zk.verify(1, x, pi, thr + 1, ts)  # proof bound to the policy threshold
+    assert not zk.verify(1, x, pi, thr, ts + 1)  # ... and to the request time
+    assert not zk.verify(1, x, zk.prove(1, x, thr, ts, secret_override=12345), thr, ts)  # unregistered credential
+    assert zk.prove(1, x, thr, ts, attribute_override=thr - 1) == b""  # PrivatePolicy: attribute below threshold
+    assert zk.prove(1, x, thr, now + 86400) == b""  # ValidCred: expired credential
 
 
 def test_dataset_is_deterministic_and_shared(cfg):

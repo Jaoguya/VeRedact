@@ -1,6 +1,7 @@
-"""Render manuscript Figs. 3-7 from the newest run of each experiment (results/<exp>/<run_id>/rows.csv).
+"""Render manuscript Figs. 3-7 from the newest run of each experiment (results/<exp>/<run_id>/rows.csv),
+plus the table sources plot/primitives_table.csv (tab:primitives) and plot/gas_by_operation.csv (tab:gas).
 
-File names match the \\includegraphics in overleaf/VeRedact.tex. Each figure prints the run id it was drawn
+Figure panels follow the manuscript captions; file names match the \\includegraphics in the manuscript. Each figure prints the run id it was drawn
 from and the capability matrix of the systems in it (generated from the rows, i.e. from the code), so a
 figure can never be read without knowing what each system can and cannot do.
 
@@ -90,28 +91,47 @@ def main(res: Path, out: Path):
     run, rows = latest(res, "exp1")
     if rows:
         rate_rows = lambda r: r.get("sweep") == "rate" and r["in_window"] == "1" and r["status"] == "finalized"
+        # (a) throughput and (b) p95 end-to-end latency vs arrival rate; (c) PQCH adaptations per 1,000
+        # finalized redactions vs Zipf skew
         f, ax = plt.subplots(1, 3, figsize=(13, 3.6))
-        draw(ax[0], series(rows, "rate_rps", "latency_ms", where=rate_rows), "offered rate (req/s)", "p50 latency (ms)", True, True)
-        draw(ax[1], series(rows, "rate_rps", "latency_ms", where=rate_rows, agg=p95), "offered rate (req/s)", "p95 latency (ms)", True, True)
         good = defaultdict(lambda: defaultdict(int))
         for r in rows:
             if rate_rows(r):
                 good[r["system"]][(float(r["rate_rps"]), r["rep"])] += 1
         dur = json.loads((res / "exp1" / run / "manifest.json").read_text())["resolved_config"]["experiments"]["exp1"]["duration_s"]
-        draw(ax[2], {s: sorted((x, statistics.mean(v / dur for (xx, _), v in d.items() if xx == x))
+        draw(ax[0], {s: sorted((x, statistics.mean(v / dur for (xx, _), v in d.items() if xx == x))
                                for x in {k[0] for k in d}) for s, d in good.items()},
-             "offered rate (req/s)", "goodput (redactions/s)", True, True)
+             "offered rate (req/s)", "throughput (finalized redactions/s)", True, True)
+        draw(ax[1], series(rows, "rate_rps", "latency_ms", where=rate_rows, agg=p95), "offered rate (req/s)",
+             "p95 end-to-end latency (ms)", True, True)
+        adapt = defaultdict(lambda: defaultdict(dict))  # system -> (skew, rep) -> {batch_id: adaptations}
+        fin = defaultdict(lambda: defaultdict(int))
+        for r in rows:
+            if r.get("sweep") == "skew" and r["status"] == "finalized" and r["batch_id"] != "":
+                k = (float(r["zipf_s"]), r["rep"])
+                adapt[r["system"]][k][r["batch_id"]] = float(r["batch_adaptations"])
+                fin[r["system"]][k] += 1
+        per_k = {s: sorted((z, statistics.mean(1000 * sum(adapt[s][(zz, rep)].values()) / fin[s][(zz, rep)]
+                                               for (zz, rep) in d if zz == z)) for z in {k[0] for k in d})
+                 for s, d in adapt.items()}
+        draw(ax[2], per_k, "Zipf skew s", "PQCH adaptations per 1,000 redactions")
         caption(f, run, rows)
         save(f, out, "exp1_redaction_throughput.png")
 
     run, rows = latest(res, "exp2")
     if rows:
+        # (a) amortized latency per request vs batch size; (b) per-batch latency vs committee size
+        cfg = json.loads((res / "exp2" / run / "manifest.json").read_text())["resolved_config"]
+        n0, b0 = str(cfg["veredact"]["committee_n"]), str(cfg["veredact"]["fixed_batch"])
         f, ax = plt.subplots(1, 2, figsize=(10, 3.6))
-        draw(ax[0], series(rows, "committee_n", "auth_per_request_ms", where=lambda r: r["batch_size"] == "1"),
-             "committee size n (t = floor(2n/3)+1)", "authorization per request (ms)", logy=True, title="b = 1")
-        draw(ax[1], series(rows, "batch_size", "auth_per_request_ms", key="system",
-                           where=lambda r: r["system"].startswith("veredact") and r["committee_n"] == "7"),
-             "ABRRR batch size b", "amortised per request (ms)", True, True, title="n = 7")
+        draw(ax[0], series(rows, "batch_size", "auth_per_request_ms", where=lambda r: r["committee_n"] == n0
+                           and (r["system"].startswith("veredact") or r["batch_size"] == "1")),
+             "ABRRR batch size m", "amortized per request (ms)", True, True, title=f"n = {n0}")
+        # one batch: VeRedact-PQ's Phase 4 for an m = fixed_batch batch; baselines authorize one request per batch
+        per_batch = [{**r, "batch_ms": r["phase4_batch_ms"] if r["system"].startswith("veredact") else r["auth_per_request_ms"]}
+                     for r in rows if (r["batch_size"] == b0 if r["system"].startswith("veredact") else r["batch_size"] == "1")]
+        draw(ax[1], series(per_batch, "committee_n", "batch_ms"), "committee size n (t = floor(2n/3)+1)",
+             "per-batch authorization (ms)", logy=True, title=f"VeRedact-PQ m = {b0}")
         caption(f, run, rows)
         save(f, out, "exp2_authorization_latency.png")
 
@@ -128,24 +148,72 @@ def main(res: Path, out: Path):
 
     run, rows = latest(res, "exp4")
     if rows:
+        # (a) total verification time vs n_Q, normal and deep audits; (b) verification-time breakdown
         ok = [{**r, "system": f"{r['system']} ({r['level']})"} for r in rows if r.get("status") == "ok"]
+        clean = [r for r in ok if num(r["inject_fraction"]) == 0]
         f, ax = plt.subplots(1, 2, figsize=(10, 3.6))
-        draw(ax[0], series(ok, "n_Q", "verify_ms", where=lambda r: num(r["inject_fraction"]) == 0), "verified records n_Q",
-             "verification time (ms)", True, True, title="clean")
-        draw(ax[1], series(ok, "inject_fraction", "false_rejections", agg=statistics.mean), "injected fraction",
-             "valid records falsely rejected", title="granularity")
+        draw(ax[0], series(clean, "n_Q", "verify_ms"), "verified records n_Q", "verification time (ms)", True, True)
+        parts = ("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms", "zk_ms")
+        names = ("response + query", "RAI multiproof", "committee approvals", "attestations", "state + PQCH", "PQZK")
+        vr = [r for r in clean if r["system"].startswith("veredact (") and r.get("verify_response_ms") not in ("", None)]
+        n_max = max((int(r["n_Q"]) for r in vr), default=0)
+        levels = sorted({r["level"] for r in vr})
+        bottom = [0.0] * len(levels)
+        for p, nm in zip(parts, names):
+            h = [statistics.median(num(r[f"verify_{p}"]) for r in vr if r["level"] == lv and int(r["n_Q"]) == n_max)
+                 for lv in levels]
+            ax[1].bar(levels, h, bottom=bottom, label=nm)
+            bottom = [a + b for a, b in zip(bottom, h)]
+        ax[1].set_ylabel("verification time (ms)")
+        ax[1].set_title(f"VeRedact-PQ, n_Q = {n_max}", fontsize=8)
+        ax[1].legend(fontsize=6)
         caption(f, run, ok)
         save(f, out, "exp4_verification_time.png")
+        # granularity (text of Exp. 4): valid records falsely rejected vs injected fraction
+        f, ax = plt.subplots(1, 1, figsize=(5.5, 3.6))
+        draw(ax, series(ok, "inject_fraction", "false_rejections", agg=statistics.mean), "injected fraction",
+             "valid records falsely rejected")
+        caption(f, run, ok)
+        save(f, out, "exp4_granularity.png")
 
     run, rows = latest(res, "exp5")
     if rows and any(r["gas_used"] for r in rows):
-        f, ax = plt.subplots(1, 1, figsize=(5.5, 3.6))
-        draw(ax, series(rows, "batch_size", "gas_per_redaction", where=lambda r: r["zipf_s"] == rows[0]["zipf_s"]),
-             "batch size b", "gas per redaction", True, True)
+        # (a) total gas per authorization round and (b) amortized gas per redaction vs redactions per batch,
+        # one series per (system, skew); a baseline's round of m redactions costs m times its per-redaction gas
+        lab = [{**r, "system": f"{r['system']} s={r['zipf_s']}",
+                "round_gas": num(r["gas_per_redaction"]) * num(r["batch_size"])} for r in rows if r["gas_per_redaction"]]
+        f, ax = plt.subplots(1, 2, figsize=(10, 3.6))
+        draw(ax[0], series(lab, "batch_size", "round_gas"), "redactions per batch m", "total gas per round", True, True)
+        draw(ax[1], series(lab, "batch_size", "gas_per_redaction"), "redactions per batch m", "gas per redaction",
+             True, True)
         caption(f, run, rows)
         save(f, out, "exp5_gas_consumption.png")
+        by_op = defaultdict(list)
+        for r in rows:
+            if r["system"] == "veredact" and r["gas_used"]:
+                by_op[r["op"]].append(num(r["gas_used"]))
+        with open(out / "gas_by_operation.csv", "w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["run", "operation", "transactions", "median_gas", "min_gas", "max_gas"])
+            for op, g in sorted(by_op.items()):
+                w.writerow([run, op, len(g), statistics.median(g), min(g), max(g)])
     elif rows:
         print("exp5: no receipts (in_process ledger) — no gas figure drawn")
+
+
+    run, rows = latest(res, "primitives")
+    if rows:
+        groups = defaultdict(list)
+        for r in rows:
+            groups[(r["scheme"], r["symbol"], r["instantiation"])].append(num(r["ms"]))
+        with open(out / "primitives_table.csv", "w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["run", "scheme", "symbol", "instantiation", "reps", "median_ms", "mean_ms", "ci95_ms"])
+            for (sch, sym, inst), v in groups.items():
+                ci = 1.96 * statistics.stdev(v) / len(v) ** 0.5 if len(v) > 1 else 0.0
+                w.writerow([run, sch, sym, inst, len(v), f"{statistics.median(v):.4f}", f"{statistics.mean(v):.4f}",
+                            f"{ci:.4f}"])
+        print(f"primitives: {len(groups)} operations -> {out / 'primitives_table.csv'}")
 
 
 if __name__ == "__main__":

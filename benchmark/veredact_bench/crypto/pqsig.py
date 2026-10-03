@@ -46,6 +46,13 @@ class MLDSA65Pqcrypto(SignatureScheme):
         return KeyPair(pk, sk)
 
     def sign(self, sk, msg):
+        # FIPS 204 signing repeats rejection sampling until it succeeds; this binding caps the loop and raises,
+        # so a (rare) exhausted attempt is retried with fresh hedged randomness, as the standard prescribes
+        for _ in range(8):
+            try:
+                return self._m.sign(sk, msg)
+            except ValueError:
+                continue
         return self._m.sign(sk, msg)
 
     def verify(self, pk, msg, sig):

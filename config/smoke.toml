@@ -42,7 +42,7 @@ nist_level = 3
 signature = "ML-DSA-65"
 hash = "SHA3-256"              # [DERIVED] manuscript: H, H1, H2, H_A = domain-separated SHA3-256
 prf = "HMAC-SHA3-256"          # [DERIVED] manuscript
-prf_key_bits = 256             # [DERIVED] Phase 1: K_idx, K_A in {0,1}^{2 lambda}, lambda = 128
+prf_key_bits = 256             # [DERIVED] Phase 1: K_idx, K_A in {0,1}^lambda, lambda = 256
 
 [security.pqch]
 # [CONFIRM] SIS chameleon hash with MP12 gadget trapdoor (benchmark/veredact_bench/crypto/pqch_sis.py).
@@ -62,6 +62,9 @@ blowup = 8                     #            16 bits grinding ~ 128-bit conjectur
 grinding_bits = 16
 registry_depth = 7             # [DERIVED] (depth + 1) must be a power of two (AIR trace length); 2^15
                                # = 32,768 credential slots >= dataset.requesters
+attribute_levels = 8           # [PROPOSED] PrivatePolicy: requester attribute and policy threshold in 1..8,
+                               # proven as attribute - threshold in [0, 2^32) (32-bit range proof in the AIR)
+credential_validity_days = 365 # [PROPOSED] ValidCred: expiry = registry setup + 365 d, proven expiry > ts_r
 
 [environment]
 # [PROPOSED] AWS EC2 host, one instance for the whole comparison (machine-to-machine variance must not be
@@ -112,6 +115,8 @@ B_max = 256                    # [DERIVED] manuscript Table VII
 T_max_ms = 500                 # [DERIVED] manuscript Table VII
 fixed_batch = 64               # [DERIVED] manuscript Exp. 1 Fixed-Batch variant [64]
 rli_shards = 16                # [DERIVED] manuscript Table VII S = [16]
+rli_buckets = 64               # [PROPOSED] logical lookup buckets B per SA-RLI shard (Phase 2 Step 4,
+                               # bid_i = H_2(tau_i) mod B); manuscript gives no value
 rai_shards = 16                # [DERIVED] manuscript Table VII S_A = [16]
 vps_workers = 8                # [PROPOSED] parallel VPS validation workers (<= vcpus / 2)
 
@@ -144,6 +149,10 @@ policy_threshold = 5           # [PROPOSED] t of the (t, l) LSSS threshold polic
                                # policy decryption and committee approval need the same number of parties
 
 # ----------------------------------------------------------------------------- experiments
+[experiments.primitives]
+# Per-operation timings for the manuscript's primitive table (VeRedact-PQ and the baselines' own primitives).
+reps = 5                          # [PROPOSED] repetitions per primitive (median and 95% CI reported from the rows)
+
 [experiments.exp1]
 # Redaction latency & throughput (Phases 3-5, submission -> finalized checkpoint). Manuscript Fig. 3.
 systems = ["veredact", "S1", "S13", "S27", "S34"]

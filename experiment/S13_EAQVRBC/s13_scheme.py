@@ -356,13 +356,22 @@ class Ledger:
         self.tags[b.idx] = tag_gen(self.p, b.idx, b.h())
         return b
 
-    def redact(self, s: int, txs_new: list[bytes]):
-        """Update: revoke the old tag in the accumulator, redact, issue a new tag."""
-        _, _, hh = self.tags[s]
+    def redact(self, s: int, txs_new: list[bytes]) -> bool:
+        """Redaction + Update (Sec. III-B): the Miner checks the current tag, revokes it in the accumulator; the
+        SM computes the collision; the Auditee verifies the CH equation; a new tag is issued and checked by
+        the Auditee. False (nothing replaced) if any check fails."""
+        t_old, _, hh = self.tags[s]
+        if not tag_verify(self.p, s, self.blocks[s].h(), t_old):
+            return False
+        nb = redact_block(self.p, self.blocks[s], txs_new)
+        if not ch_verify(self.p, nb):
+            return False
+        t_new = tag_gen(self.p, s, nb.h())
+        if not tag_verify(self.p, s, nb.h(), t_new[0]):
+            return False
         self.acc.revoke(self.p.H1(s, hh))
-        self.blocks[s] = redact_block(self.p, self.blocks[s], txs_new)
-        self.txs[s] = txs_new
-        self.tags[s] = tag_gen(self.p, s, self.blocks[s].h())
+        self.blocks[s], self.txs[s], self.tags[s] = nb, txs_new, t_new
+        return True
 
     # ---- Query ----
     def query_prove(self, s: int):

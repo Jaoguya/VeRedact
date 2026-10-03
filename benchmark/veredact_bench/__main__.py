@@ -1,6 +1,6 @@
 """CLI. Every experiment is gated on validate-config; there is no way to run one on an invalid config.
 
-    python -m veredact_bench run exp1 [exp2 ...|all] --config config/smoke.toml
+    python -m veredact_bench run primitives|exp1 [exp2 ...|all] --config config/smoke.toml
     python -m veredact_bench capabilities            # capability matrix, generated from the code
 """
 import argparse
@@ -63,7 +63,7 @@ def main():
     ap = argparse.ArgumentParser(prog="veredact_bench", description="VeRedact-PQ evaluation harness")
     sub = ap.add_subparsers(required=True)
     r = sub.add_parser("run", help="run experiments (gated by validate-config)")
-    r.add_argument("experiments", nargs="+", choices=["exp1", "exp2", "exp3", "exp4", "exp5", "all"])
+    r.add_argument("experiments", nargs="+", choices=["primitives", "exp1", "exp2", "exp3", "exp4", "exp5", "all"])
     r.add_argument("--config", default="config/smoke.toml")
     r.set_defaults(fn=cmd_run)
     c = sub.add_parser("capabilities", help="print the capability matrix generated from Scheme.capabilities()")

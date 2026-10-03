@@ -1,6 +1,7 @@
 # VeRedact-PQ experiments — rules, boundaries, systems
 
-How the evaluation in `overleaf/VeRedact.tex` Sec. Evaluation is produced. Same method as the conference
+How the evaluation in `overleaf/VeRedact-2.tex` Sec. Evaluation is produced (the manuscript is final; text it
+needs goes to `overleaf/newchange.md`). Same method as the conference
 artefact (ZK-Redact): real execution, one config, one dataset, one contract for every system.
 
 ## 0. Rules (enforced, not aspirational)
@@ -48,6 +49,9 @@ authorization timer. The registry (`veredact_bench/registry.py`) is the only pla
 VeRedact-PQ primitives are all real: ML-DSA-65 (liboqs on the server), SIS chameleon hash with MP12 gadget
 trapdoor and dealerless t-of-n distribution (`crypto/pqch_sis.py`), winterfell STARK over a Rescue-Prime
 credential registry (`benchmark/pqzk_stark`, 128-bit conjectured soundness), SHA3-256 / HMAC-SHA3-256.
+The STARK proves the manuscript's R_P: credential membership (revocation = removal from the registry) and
+expiry > ts_r (ValidCred), leaf bound to the requester (RequesterBound), and attribute ≥ the policy
+threshold bound in C_P (PrivatePolicy), the last two predicates as 32-bit range proofs in the AIR.
 
 ### Capability matrix (generated: `make capabilities`)
 
@@ -69,14 +73,16 @@ Where this differs from manuscript Table I, the code is right and the table must
 
 | Exp | Fig. | Systems (config) | What is measured | Notes |
 |:--|:--|:--|:--|:--|
+| primitives | tab:primitives | VeRedact-PQ + each baseline's own primitives | per-operation time, `reps` repetitions, fresh inputs | VeRedact-PQ on the protocol's own Crypto facade; baselines on their construction modules at `[baselines.*]` parameters |
 | 1 | 3 | all five + 3 variants | open-loop, real time: per-request latency submit → finalized, goodput, per-stage times | client threads prove at arrival; VPS worker pool; ABRRR batcher (B_e\* from λ̂, T_max); stale requests returned for revalidation (manuscript Phases 4/5); saturation = decided/offered < 1 − tol stops the rate sweep; load-generator shortfall recorded separately |
-| 2 | 4 | veredact, re_zk, S1, S34 | Phase 3 per request + Phase 4 per batch; baselines' own authorization | committee axis maps to each system's own distribution parameter (S1 nodes, S34 policy attributes); baselines have no batch axis (b = 1). S13 (key possession) and S27 (threshold only inside Adapt) define no authorization step |
+| 2 | 4 | veredact, re_zk, S1, S34 | Phase 3 per request + Phase 4 per batch, split into attestation / freshness / commitment / committee; baselines' own authorization | committee axis maps to each system's own distribution parameter (S1 nodes, S34 policy attributes); baselines have no batch axis (b = 1). S13 (key possession) and S27 (threshold only inside Adapt) define no authorization step |
 | 3 | 5 | veredact, per_record_evidence, S13, S1 | audit response generation time + size vs n_Q, records per batch | n_Q above a system's history is recorded `unreachable` (S1: one redaction per block) |
-| 4 | 6 | veredact, S13, S1 | auditor verification time; normal/deep; injected modified/substituted/stale records | per-record decisions written; S13's aggregate decision shows as false rejections |
+| 4 | 6 | veredact, S13, S1 | auditor verification time split by step (Fig. 6(b)); normal/deep; injected modified/substituted/stale records | per-record decisions written; S13's aggregate decision shows as false rejections |
 | 5 | 7, VIII | all five | gas from Besu receipts per on-chain transaction | anchor receipt log; no receipts on the in-process ledger (refused in the experiment tier) |
 
-Outputs: `results/<exp>/<run_id>/rows.csv` + `manifest.json`; figures `plot/exp{1..5}_*.png`
-(`make plots`). Each baseline's own paper evaluation: `make paper-runs` → `results/S*_*.csv`.
+Outputs: `results/<exp>/<run_id>/rows.csv` + `manifest.json`; figures `plot/exp{1..5}_*.png` (panels as in
+the manuscript captions) plus `plot/exp4_granularity.png`, and the table sources `plot/primitives_table.csv`
+and `plot/gas_by_operation.csv` (`make plots`). Each baseline's own paper evaluation: `make paper-runs` → `results/S*_*.csv`.
 
 ## 4. Known measurement limits
 
@@ -90,6 +96,9 @@ Outputs: `results/<exp>/<run_id>/rows.csv` + `manifest.json`; figures `plot/exp{
   holding the transaction is observed (one block watcher, `ledger.receipt_poll_ms`). None of the baseline
   papers requires one transaction per block, so serialising them would be a strawman. Besu's pool admits
   thousands of in-flight transactions from the one sender (`config/aws.toml [besu].tx_pool*`).
+- **Setup reuse.** Data-owner keys and their ML-DSA signatures over the seeded commitments D_i are made
+  once per process and reused by every setup (Exp. 1 re-runs setup per point); the PBN verifies each
+  signature when it is first made. Setup is untimed, so no measured number changes.
 - **Committee key reuse.** The SIS-PQCH DKG (untimed setup, 5 s at n = 4, ~5 min at n = 32 with 134 MB
   shares) runs once per (seed, n, t, lattice parameters) and is cached in `benchmark/.cache/pqch_dkg/`
   (gitignored), as a committee runs DKG once per epoch. All points and repetitions of a run therefore share

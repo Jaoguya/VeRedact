@@ -26,8 +26,8 @@ def test_redaction_keeps_chameleon_hash(p):
     L = Ledger(p)
     b = L.upload([b"a", b"b"])
     ch = b.ch
-    L.redact(0, [b"a", b"B"])
-    L.redact(0, [b"a", b"C"])  # redacting an already-redacted block uses the ephemeral trapdoor
+    assert L.redact(0, [b"a", b"B"])
+    assert L.redact(0, [b"a", b"C"])  # redacting an already-redacted block uses the ephemeral trapdoor
     assert L.blocks[0].ch == ch and ch_verify(p, L.blocks[0])
 
 

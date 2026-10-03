@@ -8,7 +8,7 @@ CONFIG ?= config/smoke.toml
 PY     := benchmark/.venv/bin/python
 
 .PHONY: venv build-zk validate-config test fidelity-check smoke pilot experiments \
-        exp1 exp2 exp3 exp4 exp5 capabilities plots paper-runs clean-results
+        primitives exp1 exp2 exp3 exp4 exp5 capabilities plots paper-runs clean-results
 
 venv:
 	python3.12 -m venv benchmark/.venv
@@ -29,7 +29,7 @@ test:
 fidelity-check:                  ## negative tests: each system rejects exactly what its paper can reject
 	cd benchmark && .venv/bin/python -m pytest -q tests/test_fidelity.py
 
-exp1 exp2 exp3 exp4 exp5: validate-config
+primitives exp1 exp2 exp3 exp4 exp5: validate-config
 	$(PY) -m veredact_bench run $@ --config $(CONFIG)
 
 smoke:

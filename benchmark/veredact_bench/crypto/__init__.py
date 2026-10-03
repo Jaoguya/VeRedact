@@ -26,7 +26,8 @@ class Crypto:
                                                   sigma_g=ch["sigma_g"]), seed=cfg["meta"]["seed"],
                                    cache_dir=REPO_ROOT / "benchmark" / ".cache" / "pqch_dkg")
         z = sec["pqzk"]
-        self.zk = PolicySTARK(ZKParams(z["queries"], z["blowup"], z["grinding_bits"], z["registry_depth"]),
+        self.zk = PolicySTARK(ZKParams(z["queries"], z["blowup"], z["grinding_bits"], z["registry_depth"],
+                                       z["attribute_levels"], z["credential_validity_days"] * 86400),
                               requesters, cfg["meta"]["seed"])
         self.counts: Counter = Counter()
         self._count_lock = threading.Lock()
@@ -83,13 +84,13 @@ class Crypto:
             return self.sig.verify(pk, msg, sig)
 
     # ---- STARK -------------------------------------------------------------------------------------
-    def zk_prove(self, requester, x, secret_override=None):
+    def zk_prove(self, requester, x, threshold, ts_s, secret_override=None):
         with self._op("T_ZP"):
-            return self.zk.prove(requester, x, secret_override)
+            return self.zk.prove(requester, x, threshold, ts_s, secret_override)
 
-    def zk_verify(self, requester, x, proof):
+    def zk_verify(self, requester, x, proof, threshold, ts_s):
         with self._op("T_ZV"):
-            return self.zk.verify(requester, x, proof)
+            return self.zk.verify(requester, x, proof, threshold, ts_s)
 
     # ---- PQCH (SIS / MP12, distributed) -------------------------------------------------------------
     def ch_hash(self, pk, msg, r):

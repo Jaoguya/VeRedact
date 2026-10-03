@@ -13,7 +13,8 @@ class Tx:
     PID: str
     ts: int
     owner: int
-    sigma: bytes = b""
+    sigma: bytes = b""   # data-owner ML-DSA signature over H(TID || D_i || DT || PID || ts)
+    C_orig: bytes = b""  # provenance commitment H(TID || D_i || sigma_i)
     I: bytes = b""
     D: bytes = b""
     Tag: bytes = b""
@@ -70,6 +71,7 @@ class ValidatedRequest:  # VR_i
     alpha: bytes
     req: Request = None  # supporting evidence (off-ledger evidence store)
     t_submit: float = 0.0
+    receipt: tuple = ()  # (ts_rc, rc_i): VPS admission receipt returned to the requester
 
 
 @dataclass

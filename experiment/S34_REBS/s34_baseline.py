@@ -117,7 +117,8 @@ class REBSScheme(Scheme):
             k_tr, _ = self.trs[a.request.requester]
             t0 = time.perf_counter()
             v2 = R.chcld(self.amc, k_tr, a.handle, self.ch[tid], a.request.new_payload)
-            ok = R.chver(self.amc, a.request.new_payload, v2)
+            ok = R.chver(self.amc, a.request.new_payload, v2)  # ChCld step 4: the TR checks before broadcasting
+            ok = ok and R.chver(self.amc, a.request.new_payload, v2)  # the AVNs validate it for consensus
             crypto_ms += (time.perf_counter() - t0) * 1000
             adapt += 1
             if ok:

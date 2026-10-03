@@ -14,6 +14,9 @@ from ..scheme import AuditQuery
 from .exp3 import histories, query_rows
 
 KINDS = ("modified", "substituted", "stale")
+# Fig. 6(b): response signature + query binding, RAI multiproof, committee approvals, attestations,
+# state-transition and PQCH checks, PQZK (VeRedact-PQ reports these; baselines leave them empty)
+BREAKDOWN = ("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms", "zk_ms")
 
 
 def run(cfg, out):
@@ -34,6 +37,6 @@ def run(cfg, out):
                     inject_fraction=spec["f"], injected=len(t), verify_ms=res.verify_ms, retrieval_ms=res.retrieval_ms,
                     detected=sum(1 for i in t if not acc.get(i, False)),
                     false_rejections=sum(1 for i, ok in acc.items() if not ok and i not in t),
-                    semantics=res.semantics)
+                    semantics=res.semantics, **{f"verify_{k}": res.breakdown.get(k, "") for k in BREAKDOWN})
         print(f"  {key:28s} history={counts}", flush=True)
         s.teardown()

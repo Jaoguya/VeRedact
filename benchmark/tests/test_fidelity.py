@@ -93,5 +93,5 @@ def test_audits_detect_tampering_with_their_own_granularity(cfg, ds):
 
 def test_registry_knows_every_configured_system(cfg):
     for exp, x in cfg["experiments"].items():
-        for key in x["systems"] + [f"veredact:{v}" for v in x.get("variants", [])]:
+        for key in x.get("systems", []) + [f"veredact:{v}" for v in x.get("variants", [])]:
             make(cfg, key)

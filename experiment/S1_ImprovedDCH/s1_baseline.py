@@ -6,7 +6,8 @@ hash covers everything except r; acc is an RSA accumulator over the headers of r
 [1] replaces Jia's DCH with Improved DCH and extends the header field to curr_hash&rand (Sec. V-B).
 
   authorize  Sec. III-C3 steps 1-3: t full nodes each (a) check via acc that block B was not redacted
-             before (Jia's chain allows ONE redaction per block — a real limit, reported as rejections),
+             before — a non-membership witness built once by the initiating node, verified by every
+             approver (Jia's chain allows ONE redaction per block — a real limit, reported as rejections),
              (b) verify the signatures of tx and tx' (ECDSA secp256k1).
   redact     step 3-5: threshold Collision over the new header content (t parties, Improved DCH),
              txreq anchored on the ledger, acc <- acc^{prime(header')}.
@@ -69,7 +70,7 @@ class ImprovedDCHScheme(Scheme):
         nums = rsa.generate_private_key(public_exponent=65537, key_size=self.acc_bits).private_numbers()
         self.N = nums.public_numbers.n
         self.g = pow(3, 2, self.N)
-        self.acc, self.members = self.g, []  # primes of redacted headers
+        self.acc, self.members, self.u = self.g, [], 1  # acc = g^u, u = product of redacted-header primes
         N_leaves = self.cfg["dataset"]["leaves_per_batch"]
         self.blocks, self.block_of, self.sig = [], {}, {}
         prev = b"genesis"
@@ -95,8 +96,15 @@ class ImprovedDCHScheme(Scheme):
         new_sig = owner.sign(req.new_payload)  # the new transaction tx' is signed by its creator (untimed)
         blk = self.blocks[b]
         t0 = time.perf_counter()
+        if blk["redacted"]:  # membership in acc (Jia: one redaction per block) -> rejected
+            return Authorization(req, False, (time.perf_counter() - t0) * 1000, reason="block already redacted")
+        # "not yet redacted" is shown against acc by a non-membership witness (a, B): a*u + b*x = 1, B = g^b,
+        # checked as acc^a * B^x = g; the initiating node P builds it once, every approving node verifies it
+        x = _hprime(blk["msg"])
+        g_, a_, b_ = gmpy2.gcdext(self.u, x)
+        B = gmpy2.powmod(self.g, b_, self.N)
         for _ in range(self.t):  # each approving full node
-            if blk["redacted"]:  # checked through acc membership (Jia: one redaction per block)
+            if gmpy2.powmod(self.acc, a_, self.N) * gmpy2.powmod(B, x, self.N) % self.N != self.g:
                 return Authorization(req, False, (time.perf_counter() - t0) * 1000, reason="block already redacted")
             pk = owner.public_key
             if not (pk.verify(self.sig[req.tid], blk["payloads"][pos]) and pk.verify(new_sig, req.new_payload)):
@@ -123,6 +131,7 @@ class ImprovedDCHScheme(Scheme):
             ok = self.dch.verify(msg_new, r_new, blk["h"])
             x = _hprime(msg_new)
             self.acc = int(gmpy2.powmod(self.acc, x, self.N))
+            self.u *= x
             crypto_ms += (time.perf_counter() - t0) * 1000
             if ok:
                 blk.update(payloads=payloads, msg=msg_new, r=r_new, redacted=True)

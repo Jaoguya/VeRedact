@@ -2,10 +2,12 @@
 //! from Python in-process (PyO3), so no subprocess cost lands inside a timed region.
 //!
 //! Python API:
-//!   Registry(credentials: list[(secret:int, requester:int)])  .root() -> (int, int)   .path(index) -> bytes
-//!   prove(secret, requester, index, path_bytes, statement: (int,int), queries, blowup, grinding) -> bytes
-//!   verify(proof, root: (int,int), requester, statement: (int,int), queries, blowup, grinding) -> bool
-//!   rescue_leaf(secret, requester) -> (int, int)
+//!   Registry(credentials: list[(secret, requester, attribute, expiry)])  .root() -> (int, int)
+//!                                                                          .path(index) -> bytes
+//!   prove(secret, requester, attribute, expiry, index, path_bytes, root, threshold, ts,
+//!         statement: (int,int), queries, blowup, grinding) -> bytes   (ValueError if a predicate fails)
+//!   verify(proof, root, requester, threshold, ts, statement, queries, blowup, grinding) -> bool
+//!   rescue_leaf(secret, requester, attribute, expiry) -> (int, int)
 //! Field: f128 (winterfell); vector commitments: SHA3-256 (post-quantum hash, as in the manuscript).
 
 mod helpers;
@@ -21,7 +23,7 @@ use winterfell::{
     AcceptableOptions, BatchingMethod, FieldExtension, Proof, ProofOptions, Prover,
 };
 
-use policy_air::{PolicyAir, PolicyProver, PublicInputs};
+use policy_air::{PolicyAir, PolicyProver, PublicInputs, RANGE_BITS};
 use rescue::{Hash, Rescue128};
 
 type H = Sha3_256<BaseElement>;
@@ -36,12 +38,12 @@ fn options(queries: usize, blowup: usize, grinding: u32) -> ProofOptions {
 }
 
 #[pyfunction]
-fn rescue_leaf(secret: u128, requester: u128) -> (u128, u128) {
-    let h = Rescue128::digest(&[el(secret), el(requester)]).to_elements();
+fn rescue_leaf(secret: u128, requester: u128, attribute: u128, expiry: u128) -> (u128, u128) {
+    let h = Rescue128::digest(&[el(secret), el(requester), el(attribute), el(expiry)]).to_elements();
     (h[0].as_int(), h[1].as_int())
 }
 
-/// Credential registry: Rescue-Prime Merkle tree over Rescue(secret, requester) leaves.
+/// Credential registry: Rescue-Prime Merkle tree over Rescue(secret, requester, attribute, expiry) leaves.
 #[pyclass]
 struct Registry {
     tree: MerkleTree<Rescue128>,
@@ -50,7 +52,7 @@ struct Registry {
 #[pymethods]
 impl Registry {
     #[new]
-    fn new(credentials: Vec<(u128, u128)>) -> PyResult<Self> {
+    fn new(credentials: Vec<(u128, u128, u128, u128)>) -> PyResult<Self> {
         // The AIR spends one 8-step Rescue cycle per tree level plus one for the leaf, and the trace
         // length must be a power of two, so (depth + 1) must be a power of two: depth 7, 15, 31, ...
         let n = credentials.len();
@@ -59,7 +61,10 @@ impl Registry {
             return Err(PyValueError::new_err(
                 "registry size must be 2^depth with depth + 1 a power of two (2^7, 2^15, 2^31)"));
         }
-        let leaves: Vec<Hash> = credentials.iter().map(|(s, r)| Rescue128::digest(&[el(*s), el(*r)])).collect();
+        let leaves: Vec<Hash> = credentials
+            .iter()
+            .map(|(s, r, a, x)| Rescue128::digest(&[el(*s), el(*r), el(*a), el(*x)]))
+            .collect();
         let tree = MerkleTree::new(leaves).map_err(|e| PyValueError::new_err(format!("{e:?}")))?;
         Ok(Registry { tree })
     }
@@ -100,17 +105,28 @@ fn decode_path(bytes: &[u8]) -> PyResult<Vec<Hash>> {
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn prove<'py>(
-    py: Python<'py>, secret: u128, requester: u128, index: usize, path: &[u8], root: (u128, u128),
-    statement: (u128, u128), queries: usize, blowup: usize, grinding: u32,
+    py: Python<'py>, secret: u128, requester: u128, attribute: u128, expiry: u128, index: usize, path: &[u8],
+    root: (u128, u128), threshold: u128, ts: u128, statement: (u128, u128), queries: usize, blowup: usize,
+    grinding: u32,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let branch = decode_path(path)?;
+    let in_range = |a: u128, b: u128| a >= b && a - b < (1u128 << RANGE_BITS);
+    if !in_range(attribute, threshold) {
+        return Err(PyValueError::new_err("PrivatePolicy not satisfied: attribute below threshold"));
+    }
+    if !in_range(expiry, ts + 1) {
+        return Err(PyValueError::new_err("ValidCred not satisfied: credential expired"));
+    }
     let pub_inputs = PublicInputs {
         registry_root: [el(root.0), el(root.1)],
         requester: el(requester),
+        threshold: el(threshold),
+        ts: el(ts),
         statement: [el(statement.0), el(statement.1)],
     };
     let prover = PolicyProver::<H>::new(options(queries, blowup, grinding), pub_inputs);
-    let trace = prover.build_trace([el(secret), el(requester)], &branch, index);
+    let diffs = [(attribute - threshold) as u64, (expiry - ts - 1) as u64];
+    let trace = prover.build_trace([el(secret), el(requester), el(attribute), el(expiry)], &branch, index, diffs);
     let proof = py
         .allow_threads(|| prover.prove(trace))
         .map_err(|e| PyValueError::new_err(format!("prover: {e:?}")))?;
@@ -119,12 +135,14 @@ fn prove<'py>(
 
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
-fn verify(py: Python<'_>, proof: &[u8], root: (u128, u128), requester: u128, statement: (u128, u128),
-          queries: usize, blowup: usize, grinding: u32) -> bool {
+fn verify(py: Python<'_>, proof: &[u8], root: (u128, u128), requester: u128, threshold: u128, ts: u128,
+          statement: (u128, u128), queries: usize, blowup: usize, grinding: u32) -> bool {
     let Ok(proof) = Proof::from_bytes(proof) else { return false };
     let pub_inputs = PublicInputs {
         registry_root: [el(root.0), el(root.1)],
         requester: el(requester),
+        threshold: el(threshold),
+        ts: el(ts),
         statement: [el(statement.0), el(statement.1)],
     };
     let acceptable = AcceptableOptions::OptionSet(vec![options(queries, blowup, grinding)]);

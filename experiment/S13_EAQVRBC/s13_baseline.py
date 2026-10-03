@@ -3,8 +3,9 @@
 Paper workflow:
   authorize  NO per-request protocol: redaction authority is the System Manager's trapdoor possession.
              We measure exactly that key-possession check and synthesise nothing (Exp. 2: lower bound).
-  redact     per request (block-level CH): Update phase — revoke the old tag in the RSA accumulator,
-             double-trapdoor CH collision for the block, new identity-based tag; one ledger write.
+  redact     per request (block-level CH): Redaction + Update — check the old tag, double-trapdoor CH
+             collision for the block, Auditee CH verification, new identity-based tag and its check,
+             revoke the old tag in the RSA accumulator; one ledger write.
   audit      Audit phase: challenge over the queried blocks -> aggregated tags + aggregated
              non-membership witness (Alg. 2, NI-SimPoE) -> AuditVerify (Alg. 3). The protocol answers
              "are these blocks intact and current?" for the challenged set as a whole: one decision,
@@ -65,8 +66,11 @@ class EAQVRBCScheme(Scheme):
             t0 = time.perf_counter()
             txs = list(self.L.txs[s])
             txs[pos] = a.request.new_payload
-            self.L.redact(s, txs)  # revoke old tag, CH collision, new tag
+            ok = self.L.redact(s, txs)  # old-tag check, CH collision + verify, new tag + check, revocation
             crypto_ms += (time.perf_counter() - t0) * 1000
+            if not ok:
+                outcomes.append(RedactionOutcome(a.request.seq, False, reason="tag/CH check failed"))
+                continue
             tag = self.L.tags[s][0].S.to_bytes(self.p.N.bit_length() // 8 + 1, "big")
             # pipelined like VeRedact's anchoring: finality is tracked by the Future, not awaited here
             futs.append(self.anchor.submit("baseline_redaction", tid=a.request.tid.ljust(32, b"\0")[:32],

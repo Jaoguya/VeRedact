@@ -15,8 +15,10 @@ adapter: `s1_baseline.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `s1
 
 ## Boundaries
 
-- `authorize`: t approving nodes, each (a) checks via the accumulator that the block was not redacted
-  before, (b) verifies the ECDSA signatures of tx and tx'. tx' is signed by its creator before the timer.
+- `authorize`: the initiating node builds a non-membership witness (a, B) of the block's header prime
+  against acc (a·u + b·x = 1, B = g^b); t approving nodes each (a) verify it (acc^a · B^x = g), i.e. the block
+  was not redacted before, (b) verify the ECDSA signatures of tx and tx'. tx' is signed by its creator before
+  the timer.
 - `redact`: threshold `Collision` over the new header content with t parties, `Verify`, accumulator
   update `acc ← acc^{H_prime(header')}`, one ledger write.
 - `audit`: witness `g^{∏ other primes}` built by the service; the client checks Improved DCH and

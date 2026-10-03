@@ -17,8 +17,9 @@ The manuscript calls it "VRBC [13]".
 ## Boundaries
 
 - `authorize`: key-possession check only (the paper's model) — the Exp. 2 lower bound.
-- `redact`: revoke the old tag in the RSA accumulator, double-trapdoor CH collision for the block, new
-  identity-based tag, one ledger write.
+- `redact`: Redaction + Update (Sec. III-B): the Miner checks the current tag, the SM computes the
+  double-trapdoor CH collision, the Auditee verifies the CH equation, a new identity-based tag is issued and
+  checked, the old tag is revoked in the RSA accumulator; one ledger write.
 - `audit`: challenge over the distinct blocks of the queried records; proof generation (service) and
   AuditVerify (auditor) timed separately. Tampering corrupts each affected block's tag once.
 

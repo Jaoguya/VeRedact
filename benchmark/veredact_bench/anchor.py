@@ -18,8 +18,6 @@ from concurrent.futures import Future
 
 from .config import REPO_ROOT
 
-SIG_BYTES = 3309  # ML-DSA-65 signature carried as calldata where the op anchors a PQ-signed object
-
 
 class _Metered:
     """Every anchor keeps a receipt log [(op, ledger_ms, gas_used)] filled as receipts arrive, so Exp. 5
@@ -164,9 +162,9 @@ class BesuAnchor(_Metered):
         cp = lambda b, vb: (b.to_bytes(32, "big"), f.get("mr", r(32)), r(32), f.get("rli", r(32)), 1,
                             f.get("epoch", 1), vb, int(time.time()), b"\0" * 32)
         if op == "policy_register":
-            h = self._send(self.reg.functions.registerPolicy(f["pid"], f["commit"], 1, 0, r(SIG_BYTES)))
+            h = self._send(self.reg.functions.registerPolicy(f["pid"], f["commit"], 1, 0, f["sig"]))
         elif op == "committee_register":
-            h = self._send(self.reg.functions.registerCommittee(f["epoch"], f["members"], f["n"], f["t"], r(SIG_BYTES)))
+            h = self._send(self.reg.functions.registerCommittee(f["epoch"], f["members"], f["n"], f["t"], f["sig"]))
         elif op == "batch_checkpoint":
             self._ver[f["b"]] = 0
             h = self._send(self.reg.functions.anchorCheckpoint(f["b"], cp(f["b"], 0), f["sig"]))

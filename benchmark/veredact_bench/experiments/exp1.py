@@ -35,6 +35,7 @@ def run_point(cfg, key, rate, zipf_s, rep, out, sweep):
     s = open_system(cfg, key, ds)
     lock, admit, validated, revalq = RWLock(), queue.Queue(), queue.Queue(), queue.Queue()
     stamp = {r.seq: {} for r in ds.trace}
+    batch_no = [0]  # executor-side batch counter (rows of one batch share batch_id / batch_adaptations)
     stop = threading.Event()
     t0 = time.perf_counter() + 0.5  # clients start preparing now; arrivals are relative to t0
     now = lambda: time.perf_counter() - t0
@@ -104,9 +105,11 @@ def run_point(cfg, key, rate, zipf_s, rep, out, sweep):
             with lock.write():
                 res = s.redact(batch)
             t_done = now()
+            batch_no[0] += 1
             for a, o in zip(batch, res.outcomes):
                 st = stamp[a.request.seq]
-                st.update(exec_start=t_exec, exec_done=t_done, batch_size=len(batch), redact_crypto_ms=res.crypto_ms,
+                st.update(exec_start=t_exec, exec_done=t_done, batch_size=len(batch), batch_id=batch_no[0],
+                          batch_adaptations=res.ch_adaptations, redact_crypto_ms=res.crypto_ms,
                           redact_ledger_ms=res.ledger_ms, status="pending" if o.ok else "failed",
                           reason=o.reason or st.get("reason", ""))
                 if not o.ok and revalidate(a.request, o):
@@ -161,6 +164,7 @@ def run_point(cfg, key, rate, zipf_s, rep, out, sweep):
                 arrival_s=r.arrival_s, submit_s=st.get("submit", ""), client_lag_ms=(st["submit"] - r.arrival_s) * 1000
                 if "submit" in st else "", in_window=int(in_window), status=status, reason=st.get("reason", ""),
                 auth_ms=st.get("auth_ms", ""), revalidations=st.get("revalidations", 0), batch_size=st.get("batch_size", ""),
+                batch_id=st.get("batch_id", ""), batch_adaptations=st.get("batch_adaptations", ""),
                 queue_ms=(st["exec_start"] - st["auth_done"]) * 1000 if "exec_start" in st else "",
                 redact_crypto_ms=st.get("redact_crypto_ms", ""), redact_ledger_ms=st.get("redact_ledger_ms", ""),
                 finality_ledger_ms=st.get("finality_ledger_ms", ""),

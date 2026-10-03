@@ -64,7 +64,7 @@ class VeRedactPQ:
             R.x = self._statement(R, tx, bt.v)
             # fault "zk": the requester lacks a valid credential -> a proof over a non-registered witness
             forged = int.from_bytes(os.urandom(15), "big") if tamper == "zk" else None
-            R.proof = c.zk_prove(requester, R.x, forged)
+            R.proof = c.zk_prove(requester, R.x, L.policies[tx.PID].threshold, R.ts_r // 1000, forged)
         sk = L.requesters[requester].sk if tamper != "sig" else L.requesters[(requester + 1) % len(L.requesters)].sk
         R.sigma_R = c.sign(sk, self._hR(R))
         return R
@@ -107,8 +107,8 @@ class VeRedactPQ:
             return Rejection("stale state", "policy")
         if R.v_b != bt.v:  # honest request overtaken by a redaction of its batch: returned for revalidation
             return Rejection("stale state", "freshness")
-        # Step 4: PQZK private policy
-        if R.x != self._statement(R, tx, bt.v) or not c.zk_verify(R.ID_r, R.x, R.proof):
+        # Step 4: PQZK private policy (threshold from the authenticated policy, ts_r from the signed request)
+        if R.x != self._statement(R, tx, bt.v) or not c.zk_verify(R.ID_r, R.x, R.proof, pol.threshold, R.ts_r // 1000):
             return Rejection("PQZK", "zk")
         # Step 5: validated-request commitment + attestation
         with self._admit:
@@ -119,6 +119,9 @@ class VeRedactPQ:
         alpha = c.sign(L.vps.sk, c.H(RID, C_VR, L.e))
         vr = ValidatedRequest(RID, C_VR, tx.b, tx.pos, tx.PID, bt.v, tx.e_i, L.e, R.sigma_R, h_proof, alpha, R, t_submit)
         self.evidence[RID] = {"R": R, "x": R.x, "proof": R.proof}
+        # admission to Q_e: signed receipt rc_i = Sign(sk_V, H(RID || H(R_i) || ts_rc)) returned to the requester
+        ts_rc = int(time.time() * 1000)
+        vr.receipt = (ts_rc, c.sign(L.vps.sk, c.H(RID, self._hR(R), ts_rc)))
         return vr
 
     # ============================================================ Phase 4 (ABRRR + committee)
@@ -135,21 +138,34 @@ class VeRedactPQ:
         return min(self.B_max, max(self.B_min, math.ceil(b_hat)))
 
     def authorize(self, batch: list[ValidatedRequest]):
+        """Phase 4. self.last_breakdown (ms): attestation verification (+ C_VR reconstruction, Re-ZK proof
+        checks), state freshness, batch commitment, committee signing + verification."""
         L, c = self.L, self.c
+        bd = {"attest_ms": 0.0, "fresh_ms": 0.0, "commit_ms": 0.0, "committee_ms": 0.0}
+        self.last_breakdown = bd
         eligible = []
         for vr in batch:  # Step 2: attestation + freshness
-            if not c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha):
+            t0 = time.perf_counter()
+            ok = c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)
+            if ok:  # the supporting evidence must reconstruct C_VR (requester, policy, PQZK-proof hash)
+                ev, tx = self.evidence[vr.RID], L.txs[vr.req.TID]
+                h_proof = c.H(ev["proof"])
+                ok = h_proof == vr.h_proof and vr.C_VR == c.H(vr.RID, self._hR(vr.req), tx.I, self._D_at_validation(vr),
+                                                             L.policies[vr.PID].C_P, vr.b, vr.pos, vr.v_b, vr.e_i, h_proof)
+            if ok and self.rezk:  # Re-ZK variant: re-verify the PQZK proof
+                ok = c.zk_verify(vr.req.ID_r, ev["x"], ev["proof"], L.policies[vr.PID].threshold, vr.req.ts_r // 1000)
+            t1 = time.perf_counter()
+            bd["attest_ms"] += (t1 - t0) * 1000
+            if not ok:
                 continue
-            if self.rezk:  # Re-ZK variant: re-verify the PQZK proof
-                ev = self.evidence[vr.RID]
-                if not c.zk_verify(vr.req.ID_r, ev["x"], ev["proof"]):
-                    continue
             tx = L.txs[vr.req.TID]
-            if (tx.D, L.batches[vr.b].v, tx.e_i) != (self._D_at_validation(vr), vr.v_b, vr.e_i) or vr.e != L.e:
-                continue
-            eligible.append(vr)
+            fresh = (tx.D, L.batches[vr.b].v, tx.e_i) == (self._D_at_validation(vr), vr.v_b, vr.e_i) and vr.e == L.e
+            bd["fresh_ms"] += (time.perf_counter() - t1) * 1000
+            if fresh:
+                eligible.append(vr)
         if not eligible:
             return None
+        t2 = time.perf_counter()
         eligible.sort(key=lambda v: v.RID)
         leaves = [c.H(v.RID, v.C_VR, v.h_proof, v.alpha, v.b, v.v_b, v.e_i, v.e) for v in eligible]
         tree = MerkleTree(leaves)
@@ -158,11 +174,14 @@ class VeRedactPQ:
         ts = int(time.time())
         C_B = c.H(BID, L.e, len(eligible), tree.root, ts)
         msg = c.H(C_B, L.e)
+        t3 = time.perf_counter()
+        bd["commit_ms"] = (t3 - t2) * 1000
         approvals = []
         for k in range(L.t):  # Step 4: t distinct PQ signatures (+ verification)
             sig = c.sign(L.committee[k].sk, msg)
             if c.verify(L.committee[k].pk, msg, sig):
                 approvals.append((k, sig))
+        bd["committee_ms"] = (time.perf_counter() - t3) * 1000
         if len(approvals) < L.t:
             return None
         auth = BatchAuth(BID, C_B, tree.root, approvals, L.e, ts, eligible, leaves,
@@ -179,8 +198,16 @@ class VeRedactPQ:
     # ============================================================ Phase 5 (Algorithm 1)
     def execute(self, auth: BatchAuth):
         L, c = self.L, self.c
+        # Step 1: verify Auth_e^B (t committee approvals over H(C_B || e)) and every PBRP_i^auth (eta_i in R_e^VR)
+        msg = c.H(auth.C_B, auth.e)
+        if len({k for k, _ in auth.approvals}) < L.t or not all(
+                c.verify(L.committee[k].pk, msg, sig) for k, sig in auth.approvals):
+            return []
         by_batch: dict[int, list] = {}
-        for vr in auth.members:
+        for i, vr in enumerate(auth.members):
+            c.counts["T_H"] += len(auth.proofs[vr.RID]) + 1
+            if not verify_proof(auth.R_VR, auth.leaves[i], i, auth.proofs[vr.RID]):
+                continue
             by_batch.setdefault(vr.b, []).append(vr)
         prepared, finalized, chains = [], [], {}
         for b, reqs in by_batch.items():
@@ -207,10 +234,16 @@ class VeRedactPQ:
                     continue
                 bt, grp = L.batches[b], chain[level]
                 old_root, old_r = bt.tree.root, bt.r
-                changes = {}
+                changes, old = {}, {}
                 for vr in grp:
                     tx = L.txs[vr.req.TID]
+                    old[tx.pos] = c.H(tx.I, tx.D)  # L_i = H(I_i || D_i)
                     changes[tx.pos] = c.H(tx.I, vr.req.D_new)  # L_i' = H(I_i || D_i')
+                # BIMC: verify the old leaves' compact multiproof MP_b^multi against MR_b, then update
+                ok, ops = verify_multiproof(old_root, old, bt.tree.multiproof(sorted(old)), len(bt.tree.levels) - 1)
+                c.counts["T_H"] += ops
+                if not ok:
+                    raise RuntimeError(f"BIMC multiproof failed for batch {b}")
                 c.counts["T_H"] += bt.tree.update(changes)
                 jobs.append((b, grp, old_root, old_r, bt.tree.root))
             R_old = np.stack([j[3] for j in jobs], axis=1)
@@ -265,14 +298,24 @@ class VeRedactPQ:
             L.rai.put(tau, self.rai_entry(rr))
         R = L.rai.finalize()
         c.counts["T_H"] += L.rai.last_hash_ops
-        cp = c.H(L.e, R, L.rai.snapshot, int(time.time()))  # CP_e^A
+        ts = int(time.time())
+        cp = c.H(L.e, R, L.rai.snapshot, ts)  # CP_e^A
+        self.rai_checkpoint = (L.e, R, L.rai.snapshot, ts, cp)  # as anchored on the PBN
         self.pending_anchor.append(L.anchor.submit("rai_checkpoint", epoch=L.e, cp=cp))
         return cp
 
-    def audit(self, records: list[RedactionRecord], qtype="authorization"):
-        """Build Resp_j^A for a resolved record set R_{Q_j} (query resolution done by the caller)."""
+    def make_query(self, qtype: str, n: int):
+        """Auditor side: Q_j^A and its PQ signature sigma_j^A (outside both audit timers)."""
         L, c = self.L, self.c
-        Q = c.H("Q", qtype, len(records), os.urandom(8))
+        Q = c.H("Q", qtype, n, L.e, os.urandom(16), int(time.time() * 1000))  # QID, qtype, scope, e_j, n_j, ts_j
+        return Q, c.sign(L.auditor.sk, Q)
+
+    def audit(self, records: list[RedactionRecord], Q: bytes, sigma_Q: bytes):
+        """Build Resp_j^A for a resolved record set R_{Q_j} (query resolution done by the caller). The service
+        first verifies the registered auditor's signature on Q_j^A."""
+        L, c = self.L, self.c
+        if not c.verify(L.auditor.pk, Q, sigma_Q):
+            raise PermissionError("audit query not signed by a registered auditor")
         by_shard: dict[int, list] = {}
         for rr in records:
             tau = rr.pbrp["tau_A"]
@@ -304,13 +347,24 @@ class VeRedactPQ:
         tau = rr.pbrp["tau_A"]
         return self.c.H(tau, rr.RID, rr.BID, rr.PID, rr.e, rr.v_b, rr.v_b_new, rr.h_pbrp, rr.ts_red)
 
-    def verify_audit(self, resp: AuditResponse, deep=False, state_transition=True):
-        """AuditVerify: returns {RID: accepted}; each record is accepted or rejected individually."""
+    def verify_audit(self, resp: AuditResponse, Q: bytes, deep=False, state_transition=True):
+        """AuditVerify: returns {RID: accepted}; each record is accepted or rejected individually.
+        self.last_breakdown (ms): response signature + query binding + RAI checkpoint, RAI multiproof,
+        committee approvals, request membership + attestations, state transition (incl. PQCH), PQZK."""
         L, c = self.L, self.c
         body = resp.body
-        if not c.verify(L.audit_svc.pk, c.H(body["Q"], len(body["records"]), body["R_RAI"], body["v_A"]), resp.sigma):
+        bd = dict.fromkeys(("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms", "zk_ms"), 0.0)
+        self.last_breakdown = bd
+        t0 = time.perf_counter()
+        e, R_cp, v_cp, ts_cp, cp = self.rai_checkpoint
+        ok_resp = (body["Q"] == Q and (body["R_RAI"], body["v_A"]) == (R_cp, v_cp) and c.H(e, R_cp, v_cp, ts_cp) == cp
+                   and c.verify(L.audit_svc.pk, c.H(body["Q"], len(body["records"]), body["R_RAI"], body["v_A"]),
+                                resp.sigma))
+        bd["response_ms"] = (time.perf_counter() - t0) * 1000
+        if not ok_resp:
             return {rr.RID: False for rr in resp.records}
         # RAI multiproof (hash-based)
+        t0 = time.perf_counter()
         by_shard = {}
         for rr in resp.records:
             s = L.rai.sid(rr.pbrp["tau_A"])
@@ -319,27 +373,38 @@ class VeRedactPQ:
             tree = L.rai.shards[s].tree
             _, ops = verify_multiproof(tree.root, leaves, tree.multiproof(list(leaves)), len(tree.levels) - 1)
             c.counts["T_H"] += ops
+        bd["rai_mp_ms"] = (time.perf_counter() - t0) * 1000
         # shared batch evidence once per BID (per record for the Per-Record variant)
         checked = {}
         result = {}
         for rr in resp.records:
+            t0 = time.perf_counter()
             key = rr.BID if not self.per_record else (rr.BID, rr.RID)
             if key not in checked:
                 auth = self.auths[rr.BID]
                 msg = c.H(auth.C_B, auth.e)
                 checked[key] = all(c.verify(L.committee[k].pk, msg, s) for k, s in auth.approvals)
             ok = checked[key]
+            t1 = time.perf_counter()
             p = rr.pbrp
             ok &= verify_proof(self.auths[rr.BID].R_VR, p["eta"], self.auths[rr.BID].members.index(p["vr"]), p["MP_B"])
             c.counts["T_H"] += len(p["MP_B"]) + 1
             vr = p["vr"]
             ok &= c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)  # normal audit: alpha_i
+            t2 = time.perf_counter()
             if state_transition:
                 c.counts["T_H"] += 2  # L_i, L_i' recomputation
                 ok &= c.ch_verify(L.pk_ch, p["CH"], p["MR_new"], p["r_new"])  # r_b' as recorded in A_b'
+            t3 = time.perf_counter()
             if deep:
                 ev = self.evidence[rr.RID]
-                ok &= c.zk_verify(vr.req.ID_r, ev["x"], ev["proof"]) and c.H(ev["proof"]) == vr.h_proof
+                ok &= c.zk_verify(vr.req.ID_r, ev["x"], ev["proof"], L.policies[vr.PID].threshold,
+                                  vr.req.ts_r // 1000) and c.H(ev["proof"]) == vr.h_proof
+            t4 = time.perf_counter()
+            bd["committee_ms"] += (t1 - t0) * 1000
+            bd["attest_ms"] += (t2 - t1) * 1000
+            bd["state_ms"] += (t3 - t2) * 1000
+            bd["zk_ms"] += (t4 - t3) * 1000
             # H(PBRP_i) must bind the returned transition (catches modified D_i' / substituted evidence)
             ok &= self.pbrp_digest(rr.RID, rr.BID, p["I"], rr.D_old, rr.D_new, p["b"], p["pos"], rr.v_b, rr.v_b_new,
                                    p["MR"], p["MR_new"]) == rr.h_pbrp

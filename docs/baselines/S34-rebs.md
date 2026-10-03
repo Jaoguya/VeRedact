@@ -17,7 +17,8 @@ adapter: `s34_baseline.py` (`REBSScheme`, key `S34`) · own evaluation: `s34_run
 - `authorize`: the TR decrypts `Info_Trap` with its attribute keys: one multi-pairing over 2t pairs plus a
   GT multi-exponentiation; succeeds only if its attribute VALUES satisfy the hidden policy (checked by
   `h_Trap`). A policy fault = TR whose keys were issued for another policy's values.
-- `redact`: `ChCld` (d = e⁻¹ mod φ(n·ñ), r̃ = (h·H(Tx')^{−t})^d) → `ChVer` → one ledger write.
+- `redact`: `ChCld` (d = e⁻¹ mod φ(n·ñ), r̃ = (h·H(Tx')^{−t})^d) → `ChVer` by the TR (ChCld step 4) →
+  `ChVer` by the AVNs for consensus → one ledger write.
 
 ## Instantiation and deviations
 

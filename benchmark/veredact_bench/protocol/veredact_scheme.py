@@ -43,10 +43,10 @@ class VeRedactScheme(Scheme):
                             consensus_bound_auth=False)
 
     def auth_cost(self) -> AuthCost:
-        # per request at the VPS: requester ML-DSA verify + STARK verify + attestation signature;
-        # Phase 4 adds (1 attestation verify) per request and t signatures + t verifications per BATCH.
+        # per request at the VPS: requester ML-DSA verify + STARK verify + attestation and admission-receipt
+        # signatures; Phase 4 adds (1 attestation verify) per request and t signatures + t verifications per BATCH.
         return AuthCost(signature_verifications=2, proof_verifications=1 + (1 if self.variant == "re_zk" else 0),
-                        signatures_generated=1, consensus_blocks=0, round_trips=0)
+                        signatures_generated=2, consensus_blocks=0, round_trips=0)
 
     # ------------------------------------------------------------------ setup (untimed)
     def setup(self, dataset: Dataset) -> None:
@@ -109,14 +109,15 @@ class VeRedactScheme(Scheme):
         rng = random.Random(self.cfg["meta"]["seed"])
         if query.tamper:  # Exp. 4 fault injection on copies of the returned records
             recs = [self._tamper(r, query.tamper.get(i), rng) for i, r in enumerate(recs)]
+        Q, sigma_Q = self.p.make_query("authorization+state", len(recs))  # auditor signs Q_j^A (untimed)
         t0 = time.perf_counter()
-        resp = self.p.audit(recs)
+        resp = self.p.audit(recs, Q, sigma_Q)
         t1 = time.perf_counter()
-        accepted = self.p.verify_audit(resp, deep=query.deep)
+        accepted = self.p.verify_audit(resp, Q, deep=query.deep)
         t2 = time.perf_counter()
         return AuditResult("redaction provenance (authorization + state transition)", (t1 - t0) * 1000,
                            (t2 - t1) * 1000, resp.nbytes,
-                           {i: accepted[r.RID] for i, r in enumerate(recs)})
+                           {i: accepted[r.RID] for i, r in enumerate(recs)}, dict(self.p.last_breakdown))
 
     def _tamper(self, rr, kind, rng):
         if not kind:

@@ -1,7 +1,8 @@
 # Paper conformance — manuscript vs. implementation
 
-Where `overleaf/VeRedact.tex` (mirrored in `VeRedact.md`) and the code disagree. The code is not changed
-to match the text where the text is wrong; the text must change. Line numbers refer to `overleaf/VeRedact.md`.
+Where the manuscript (`overleaf/VeRedact-2.tex`, mirrored in `VeRedact.md`) and the code disagree. The
+manuscript is final (2026-10-03): the code follows it wherever it is right, and every text change it still
+needs is in `overleaf/newchange.md` with line numbers. Line numbers below refer to the older `VeRedact.md`.
 
 ## 1. Baselines (decision taken: the four papers held in `Scheme/`) — applied to the .tex 2026-10-01
 
@@ -35,18 +36,19 @@ to match the text where the text is wrong; the text must change. Line numbers re
 | 1555 | "experiments … using identical PQ primitives across schemes" | **fixed 2026-10-01** (text now: own classical primitives at ~128-bit). Was **false as built**: baselines run their own classical primitives at 128-bit. A "PQ-adapted" RSA accumulator, CHET or pairing ABE is not defined by those papers and would be synthesised (rule 8). Decision needed — TASK.md D2 |
 | Exp. 4 | "PQ-adapted and original classical instantiations" | **fixed 2026-10-01**: text now says original classical only |
 | Phase 4 (l. 620) / Phase 5 (l. 746) | stale requests "returned for revalidation" | implemented as: the requester re-proves against the current state and resubmits. Because the PQZK statement binds `v_b`, revalidation **cannot** reuse the old proof — the text should say the requester re-proves |
-| PQCH | "[TBD: confirm construction]" | SIS chameleon hash, MP12 gadget trapdoor, dealerless t-of-n; in distributed mode the perturbation is spherical, which leaks R statistically over many adaptations — must be fixed or stated (TASK.md D4) |
-| Phase 4 (l. 576) | ABRRR B̂_e = f(λ_e, \|Q_e\|, T_max), f undefined | f = λ_e·T_max; \|Q_e\| enters as the close condition (\|Q_e\| ≥ B_e\*), not inside f — adding it to f would make size-based closing impossible. The text should define f |
-| SA-RLI / RAI | Cuckoo filters CF_s per shard | exact membership sets (`ds/index.py`): no false positives, so a lookup never takes the filter-miss path a real Cuckoo filter would; negligible cost difference, state it or implement Cuckoo filters |
-| PQZK | PrivatePolicy predicates | the STARK proves registry membership of the requester's credential + requester binding + statement binding; attribute predicates are **not** encoded (TASK.md D5) |
+| PQCH | "[TBD: confirm construction]" | SIS chameleon hash, MP12 gadget trapdoor, dealerless t-of-n — fill text in `newchange.md` B3; in distributed mode the perturbation is spherical, which leaks R statistically over many adaptations — must be fixed or stated (TASK.md D4) |
+| Phase 4 (l. 576) | ABRRR B̂_e = f(λ_e, \|Q_e\|, T_max), f undefined | f = λ_e·T_max; \|Q_e\| enters as the close condition (\|Q_e\| ≥ B_e\*), not inside f — adding it to f would make size-based closing impossible. Text fix: `newchange.md` A4 |
+| SA-RLI / RAI | Cuckoo filters CF_s per shard | **implemented 2026-10-03** (`ds/cuckoo.py`): 16-bit fingerprints, synchronized with the finalized snapshot; positives and unsynchronized negatives take the authenticated lookup |
+| PQZK | PrivatePolicy predicates | **implemented 2026-10-03**: attribute ≥ policy threshold and expiry > ts_r proven as 32-bit range proofs in the AIR, besides membership + requester + statement binding |
+| Phases 3–6 | admission receipt rc_i, C_VR reconstruction, Auth_e^B check before execution, BIMC multiproof check, auditor-signed queries | **implemented 2026-10-03**; the extra rc_i signature and Auth check are not in Table IV — `newchange.md` A1–A3 |
 | Exp. 1 | rates up to 5,000 req/s | on one c7i.4xlarge the requester load generator shares the host; a client-bound point is recorded and stops the sweep (docs/experiments.md §4) |
 
 ## 4. Open manuscript issues (carried over)
 
 | # | Issue | Where |
 |:--|:--|:--|
-| 1 | Stray `\section{Evaluation} skeleton in VedRedact.tex)` prints a duplicate heading | `VeRedact.tex` ~l. 2592 |
-| 2 | ref [1] and ref [30] are the same paper | bibliography |
+| 1 | ~~Stray `\section{Evaluation} skeleton` heading~~ now a comment in `VeRedact-2.tex` | — |
+| 2 | ref [1] and ref [30] are the same paper | bibliography — `newchange.md` A6 |
 | 3 | ~~"VRBC [13]" used as the name~~ fixed 2026-10-01: now "Zhang et al. [13]" | Table I, Sec. Evaluation |
 | 4 | Every checkpoint carries a 3,309-B ML-DSA-65 signature; Exp. 5 will show VeRedact-PQ's per-redaction gas above hash-only baselines at small batches — the text must expect it | Exp. 5 |
 

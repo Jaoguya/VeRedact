@@ -2,8 +2,8 @@
 
 Boundary: admission -> authorization decision. Requester-side preparation is outside the timer.
   VeRedact-PQ   per request: Phase 3 (authorize); per batch of b: Phase 4 (authorize_batch: attestation +
-                freshness + R_e^VR + t committee ML-DSA signatures). Reported separately and as
-                phase3 + phase4/b per request.
+                C_VR reconstruction + freshness + R_e^VR + t committee ML-DSA signatures). Reported
+                separately, as phase3 + phase4/b per request, and Phase 4 split into its four steps.
   baselines     their own per-request authorization; they have no batch axis, so they run at b = 1 only.
 committee_n sweeps each system's own distribution parameter (registry.make, t = floor(2n/3)+1).
 Valid requests only (fault_fraction = 0): Exp. 2 measures the cost of saying yes.
@@ -11,6 +11,10 @@ Valid requests only (fault_fraction = 0): Exp. 2 measures the cost of saying yes
 from ..dataset import build_dataset
 from ..registry import distribution_param, system_keys
 from .common import auth_cost_fields, authorize, capability_fields, is_veredact, open_system, prepare
+
+# Phase 4 per batch, split as in the manuscript: attestation verification, state-freshness checking,
+# batch-commitment construction, committee signing and verification
+BREAKDOWN = ("attest_ms", "fresh_ms", "commit_ms", "committee_ms")
 
 
 def run(cfg, out):
@@ -33,12 +37,14 @@ def run(cfg, out):
                     for r in reqs:
                         a = authorize(s, r, prepare(s, r))
                         auths.append(a)
-                    ph4 = ""
+                    ph4, bd = "", dict.fromkeys(BREAKDOWN, "")
                     if is_veredact(s):
                         _, ph4 = s.authorize_batch(auths)
+                        bd = {k: s.p.last_breakdown[k] for k in BREAKDOWN}
                     for a in auths:
                         out.row(**common, batch_size=b, rep=rep, seq=a.request.seq, auth_ok=int(a.ok), reason=a.reason,
                                 phase3_ms=a.crypto_ms, phase4_batch_ms=ph4,
+                                **{f"phase4_{k}": v for k, v in bd.items()},
                                 auth_per_request_ms=a.crypto_ms + (ph4 / b if ph4 != "" else 0.0))
             print(f"  {key:28s} n={n:<3} batch axis {batch_axis} x {reps} reps", flush=True)
             s.teardown()
