@@ -1,7 +1,7 @@
 # S27 — Liu et al. [27], ETCH (robust threshold redaction)
 
-Paper: `Scheme/S27_Liu2026_ETCH/` · crypto: `experiment/S27_ETCH/s27_scheme.py` ·
-adapter: `s27_baseline.py` (`ETCHScheme`, key `S27`) · own evaluation: `s27_run.py` (Figs. 4–6).
+Paper: `Scheme/S27_Liu2026_ETCH/` · construction: `src/veredact_bench/methods/baselines/s27_etch/construction.py` ·
+adapter: `adapter.py` (`ETCHScheme`, key `S27`) · own evaluation: `reproduce.py` (Figs. 4–6).
 
 ## Role per experiment
 
@@ -23,7 +23,7 @@ adapter: `s27_baseline.py` (`ETCHScheme`, key `S27`) · own evaluation: `s27_run
 | Item | Paper | Here | Bias |
 |:--|:--|:--|:--|
 | curve / hash | secp256k1 / SHA-256 | same (paper's own Sec. VII-B instantiation) | none |
-| network | CA rounds over a network | in-process; `s27_run.py` Fig. 6 adds `adapt_rounds × RTT` for the paper's own figure only | for S27 in Exp. 1 (no RTT inside one host) |
+| network | CA rounds over a network | in-process; `reproduce.py` Fig. 6 adds `adapt_rounds × RTT` for the paper's own figure only | for S27 in Exp. 1 (no RTT inside one host) |
 | ledger writes | one per redaction | one per redaction, **pipelined** (finality tracked, not awaited), exactly like VeRedact-PQ's anchoring | neutral — removes a harness-imposed one-block-per-redaction cap |
 
 ## Not implemented
@@ -35,4 +35,4 @@ not on the redaction path.
 
 - [x] rejects a nonexistent target; accepts policy/zk faults (no such checks in the paper)
 - [x] `audit` raises `NotSupported`; `verifiable_auditing` capability is false
-- [x] Adapt with t shares verifies; with t−1 it does not; KeyUpt keeps the hash key (`s27_test.py`)
+- [x] Adapt with t shares verifies; with t−1 it does not; KeyUpt keeps the hash key (`tests/baselines/test_s27_etch.py`)

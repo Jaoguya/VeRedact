@@ -1,7 +1,7 @@
 # S1 — Li et al. [1], Improved DCH on Jia et al.'s redactable chain
 
-Paper: `Scheme/S1_Li2025_ImprovedDCH/` · crypto: `experiment/S1_ImprovedDCH/s1_scheme.py` ·
-adapter: `s1_baseline.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `s1_run.py` (Table II, Fig. 2, attack).
+Paper: `Scheme/S1_Li2025_ImprovedDCH/` · construction: `src/veredact_bench/methods/baselines/s01_improved_dch/construction.py` ·
+adapter: `adapter.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `reproduce.py` (Table II, Fig. 2, attack).
 
 ## Role per experiment
 
@@ -37,9 +37,9 @@ adapter: `s1_baseline.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `s1
 ## Not implemented
 
 Nothing S1 defines is omitted from the redaction/audit path. The collision attack on Jia's DCH is
-reproduced separately (`s1_run.py`, `S1_attack.csv`).
+reproduced separately (`reproduce.py`, `results/reproduction/S1/attack.csv`).
 
-## Fidelity checklist (`benchmark/tests/test_fidelity.py`, `experiment/S1_ImprovedDCH/s1_test.py`)
+## Fidelity checklist (`tests/test_fidelity.py`, `tests/baselines/test_s01_improved_dch.py`)
 
 - [x] rejects a nonexistent target; accepts policy/zk faults (no such checks in the paper)
 - [x] exactly one redaction per touched block

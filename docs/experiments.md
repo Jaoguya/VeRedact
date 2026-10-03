@@ -9,21 +9,21 @@ artefact (ZK-Redact): real execution, one config, one dataset, one contract for 
 | # | Rule | Enforced by |
 |:--|:--|:--|
 | 1 | **Real execution only.** No simulated timings, analytical cost models, busy-waits or extrapolation. Every number comes from running the code. | code review; there is no simulator in the repo |
-| 2 | **No hardcoded parameters.** Every value is in `config/{smoke,pilot,experiment}.toml` (comparison) or `config/schemes.toml [schemes.S*.reproduction]` (each paper's own figures). | `validate_config` key-set check; no `cfg.get(key, default)` |
-| 3 | **No magic numbers.** Every config value carries a marker and a rationale: `[DERIVED]` `[METHOD]` `[PROPOSED]` `[MEASURED]` `[CONFIRM]`. | review; `grep -n CONFIRM config/experiment.toml` |
+| 2 | **No hardcoded parameters.** Every value is in `configs/` (composed per run: base + dataset + methods + experiment + tier; comparison) or `configs/methods/<scheme>.yaml` `reproduction` (each paper's own figures). | `validate_config` key-set check; no `cfg.get(key, default)` |
+| 3 | **No magic numbers.** Every config value carries a marker and a rationale: `[DERIVED]` `[METHOD]` `[PROPOSED]` `[MEASURED]` `[CONFIRM]`. | review; `grep -rn CONFIRM configs/` |
 | 4 | **One dataset, one trace, one config for all systems.** `dataset.build_dataset` is seeded; its digest (`dataset_id`) is in every manifest. | `results.RunWriter` |
 | 5 | **Reproducible.** Seed, resolved config, git commit + dirty flag, environment fingerprint (CPU, cores, signature backend) recorded per run; rows are per request, never pre-aggregated. | `results.RunWriter` |
 | 6 | **Crypto time and ledger time are never summed.** Separate columns (`*_crypto_ms`, `*_ledger_ms`, `finality_ledger_ms`). | `scheme.RedactionResult` |
 | 7 | **Capabilities beside every number.** Each row carries `cap_*` columns reported by the implementation; every figure prints them. | `Scheme.capabilities()`, `plot.caption` |
 | 8 | **Nothing synthesised.** An operation a paper does not define raises `NotSupported` and is recorded as such (S27/S34 audit). | `scheme.NotSupported` |
 | 9 | **Equal security.** Baselines at 128-bit classical (RSA ≥ 3072, BLS12-381); VeRedact-PQ at NIST level 3. The experiment tier refuses weaker parameters, the in-process ledger, and any ML-DSA backend but liboqs. | `validate_config`, `__main__.cmd_run` |
-| 10 | **Fidelity tests.** Each system must reject exactly what its paper can reject. | `benchmark/tests/test_fidelity.py`, `make fidelity-check` |
+| 10 | **Fidelity tests.** Each system must reject exactly what its paper can reject. | `tests/test_fidelity.py`, `make test` |
 
 Config tiers have identical keys: `smoke` (laptop, minutes, in-process ledger) → `pilot` (server, Besu,
 resolve sweep bounds, measure variance) → `experiment` (paper numbers). `make validate-config CONFIG=…`
 gates every run; the CLI refuses an invalid config.
 
-## 1. The contract (`benchmark/veredact_bench/scheme.py`)
+## 1. The contract (`src/veredact_bench/methods/scheme.py`)
 
 | Method | Boundary | Timed |
 |:--|:--|:--|
@@ -40,15 +40,15 @@ authorization timer. The registry (`veredact_bench/registry.py`) is the only pla
 
 | Key | System | Implementation | Boundaries |
 |:--|:--|:--|:--|
-| `veredact` (+ `:per_request` `:fixed_batch` `:no_bimc` `:re_zk` `:per_record_evidence`) | VeRedact-PQ | `benchmark/veredact_bench/protocol/` | this file |
-| `S1` | Li et al. [1] Improved DCH on Jia's chain | `experiment/S1_ImprovedDCH/s1_baseline.py` | `docs/baselines/S1-improved-dch.md` |
-| `S13` | Zhang et al. [13] EAQ-VRBC | `experiment/S13_EAQVRBC/s13_baseline.py` | `docs/baselines/S13-eaq-vrbc.md` |
-| `S27` | Liu et al. [27] ETCH | `experiment/S27_ETCH/s27_baseline.py` | `docs/baselines/S27-etch.md` |
-| `S34` | J. Xue et al. [34] REBS | `experiment/S34_REBS/s34_baseline.py` | `docs/baselines/S34-rebs.md` |
+| `veredact` (+ `:per_request` `:fixed_batch` `:no_bimc` `:re_zk` `:per_record_evidence`) | VeRedact-PQ | `src/veredact_bench/methods/veredact/` | this file |
+| `S1` | Li et al. [1] Improved DCH on Jia's chain | `src/veredact_bench/methods/baselines/s01_improved_dch/adapter.py` | `docs/baselines/S1-improved-dch.md` |
+| `S13` | Zhang et al. [13] EAQ-VRBC | `src/veredact_bench/methods/baselines/s13_eaq_vrbc/adapter.py` | `docs/baselines/S13-eaq-vrbc.md` |
+| `S27` | Liu et al. [27] ETCH | `src/veredact_bench/methods/baselines/s27_etch/adapter.py` | `docs/baselines/S27-etch.md` |
+| `S34` | J. Xue et al. [34] REBS | `src/veredact_bench/methods/baselines/s34_rebs/adapter.py` | `docs/baselines/S34-rebs.md` |
 
 VeRedact-PQ primitives are all real: ML-DSA-65 (liboqs on the server), SIS chameleon hash with MP12 gadget
 trapdoor and dealerless t-of-n distribution (`crypto/pqch_sis.py`), winterfell STARK over a Rescue-Prime
-credential registry (`benchmark/pqzk_stark`, 128-bit conjectured soundness), SHA3-256 / HMAC-SHA3-256.
+credential registry (`native/pqzk_stark`, 128-bit conjectured soundness), SHA3-256 / HMAC-SHA3-256.
 The STARK proves the manuscript's R_P: credential membership (revocation = removal from the registry) and
 expiry > ts_r (ValidCred), leaf bound to the requester (RequesterBound), and attribute ≥ the policy
 threshold bound in C_P (PrivatePolicy), the last two predicates as 32-bit range proofs in the AIR.
@@ -69,20 +69,25 @@ threshold bound in C_P (PrivatePolicy), the last two predicates as 32-bit range 
 Where this differs from manuscript Table I, the code is right and the table must change
 (`docs/paper-conformance.md` §2).
 
-## 3. Experiments (`benchmark/veredact_bench/experiments/`)
+## 3. Experiments (`src/veredact_bench/evaluation/experiments/`, configs `configs/experiments/<id>.yaml`)
 
 | Exp | Fig. | Systems (config) | What is measured | Notes |
 |:--|:--|:--|:--|:--|
-| primitives | tab:primitives | VeRedact-PQ + each baseline's own primitives | per-operation time, `reps` repetitions, fresh inputs | VeRedact-PQ on the protocol's own Crypto facade; baselines on their construction modules at `[baselines.*]` parameters |
+| exp00_primitives | tab:primitives | VeRedact-PQ + each baseline's own primitives | per-operation time, `samples_per_point` calls, fresh inputs | VeRedact-PQ on the protocol's own Crypto facade; baselines on their construction modules at `[baselines.*]` parameters |
 | 1 | 3 | all five + 3 variants | open-loop, real time: per-request latency submit → finalized, goodput, per-stage times | client threads prove at arrival; VPS worker pool; ABRRR batcher (B_e\* from λ̂, T_max); stale requests returned for revalidation (manuscript Phases 4/5); saturation = decided/offered < 1 − tol stops the rate sweep; load-generator shortfall recorded separately |
 | 2 | 4 | veredact, re_zk, S1, S34 | Phase 3 per request + Phase 4 per batch, split into attestation / freshness / commitment / committee; baselines' own authorization | committee axis maps to each system's own distribution parameter (S1 nodes, S34 policy attributes); baselines have no batch axis (b = 1). S13 (key possession) and S27 (threshold only inside Adapt) define no authorization step |
 | 3 | 5 | veredact, per_record_evidence, S13, S1 | audit response generation time + size vs n_Q, records per batch | n_Q above a system's history is recorded `unreachable` (S1: one redaction per block) |
 | 4 | 6 | veredact, S13, S1 | auditor verification time split by step (Fig. 6(b)); normal/deep; injected modified/substituted/stale records | per-record decisions written; S13's aggregate decision shows as false rejections |
 | 5 | 7, VIII | all five | gas from Besu receipts per on-chain transaction | anchor receipt log; no receipts on the in-process ledger (refused in the experiment tier) |
 
-Outputs: `results/<exp>/<run_id>/rows.csv` + `manifest.json`; figures `plot/exp{1..5}_*.png` (panels as in
-the manuscript captions) plus `plot/exp4_granularity.png`, and the table sources `plot/primitives_table.csv`
-and `plot/gas_by_operation.csv` (`make plots`). Each baseline's own paper evaluation: `make paper-runs` → `results/S*_*.csv`.
+Rows 1–5 above are `exp01_redaction_throughput` … `exp05_gas_consumption`. One run per configuration point
+(no repetitions): Exp. 1 statistics come from every request of the run, Exp. 2–4 from `samples_per_point`
+batches / queries inside it.
+
+Outputs: `results/<experiment>/<method>/<tier>/` with `rows.csv`, `metrics.json`, `config_resolved.yaml`,
+`run_info.json`, `run.log` (a finished method is skipped unless `--force`); `make tables figures` writes
+`paper/tables/*.tex` and `paper/figures/*.pdf` (mapping: `paper/MANIFEST.md`). Each baseline's own paper
+evaluation: `make paper-runs` → `results/reproduction/<S id>/*.csv`.
 
 ## 4. Known measurement limits
 
@@ -95,13 +100,13 @@ and `plot/gas_by_operation.csv` (`make plots`). Each baseline's own paper evalua
   VeRedact-PQ and all four baselines hand back a finality Future; Exp. 1 latency ends when the block
   holding the transaction is observed (one block watcher, `ledger.receipt_poll_ms`). None of the baseline
   papers requires one transaction per block, so serialising them would be a strawman. Besu's pool admits
-  thousands of in-flight transactions from the one sender (`config/aws.toml [besu].tx_pool*`).
+  thousands of in-flight transactions from the one sender (`configs/aws.toml [besu].tx_pool*`).
 - **Setup reuse.** Data-owner keys and their ML-DSA signatures over the seeded commitments D_i are made
   once per process and reused by every setup (Exp. 1 re-runs setup per point); the PBN verifies each
   signature when it is first made. Setup is untimed, so no measured number changes.
 - **Committee key reuse.** The SIS-PQCH DKG (untimed setup, 5 s at n = 4, ~5 min at n = 32 with 134 MB
-  shares) runs once per (seed, n, t, lattice parameters) and is cached in `benchmark/.cache/pqch_dkg/`
-  (gitignored), as a committee runs DKG once per epoch. All points and repetitions of a run therefore share
+  shares) runs once per (seed, n, t, lattice parameters) and is cached in `.cache/pqch_dkg/`
+  (gitignored), as a committee runs DKG once per epoch. All points of a run therefore share
   one committee key per committee size; adaptation cost does not depend on the key's values. DKG draws from
   its own random stream, so a cache hit changes no other randomness.
 

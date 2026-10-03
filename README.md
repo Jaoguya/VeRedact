@@ -1,31 +1,71 @@
-# VeRedact-PQ
+# VeRedact-PQ — evaluation code
 
 **Scalable Post-Quantum Redaction with Multi-Party Authorization and Verifiable Auditing**
-(SIIT, Thammasat University).
+(SIIT, Thammasat University). Every table and figure in the manuscript traces to one config, one script
+run and one results folder: see [`paper/MANIFEST.md`](paper/MANIFEST.md).
+
+## Reproduce
+
+```bash
+make venv build-zk test                 # Python 3.12 venv (pinned deps), Rust STARK module, test suite
+make smoke                              # every experiment, tiny sizes, in-process ledger (laptop, ~20 min)
+make all TIER=experiment                # the paper: all experiments + tables + figures (server only, see below)
+make tables figures TIER=experiment     # regenerate paper/tables and paper/figures from existing results/
+```
+
+One command per paper artifact (`TIER=experiment` for the paper's numbers):
+
+| Paper item | Command | Output |
+|:--|:--|:--|
+| Table: primitive timings | `make eval EXP=exp00_primitives` then `make tables` | `paper/tables/tab_primitives.tex` |
+| Fig. 3 redaction latency / throughput | `make eval EXP=exp01_redaction_throughput` then `make figures` | `paper/figures/exp1_redaction_throughput.pdf` |
+| Fig. 4 authorization latency | `make eval EXP=exp02_authorization_latency` then `make figures` | `paper/figures/exp2_authorization_latency.pdf` |
+| Fig. 5 audit efficiency | `make eval EXP=exp03_audit_efficiency` then `make figures` | `paper/figures/exp3_audit_efficiency.pdf` |
+| Fig. 6 verification time | `make eval EXP=exp04_verification_time` then `make figures` | `paper/figures/exp4_verification_time.pdf` |
+| Fig. 7 gas, table: gas per operation | `make eval EXP=exp05_gas_consumption` then `make tables figures` | `paper/figures/exp5_gas_consumption.pdf`, `paper/tables/tab_gas.tex` |
+| Significance of headline comparisons | `make tables` | `paper/tables/tab_significance.tex` |
+| Each baseline's own published figures | `make paper-runs` | `results/reproduction/<S id>/*.csv` |
+
+A finished (experiment, method, tier) is skipped on re-run; `make eval ... FORCE=--force` re-runs it.
+The experiment tier refuses to run without Besu and the liboqs ML-DSA-65 backend, so it runs on the server:
+
+```bash
+deploy/aws/provision_ec2.sh                     # once: EC2 instance, bootstrap (liboqs, Rust, venv, tests)
+deploy/aws/launch_run.sh smoke                  # first run on Besu
+deploy/aws/launch_run.sh pilot                  # sets the [CONFIRM] values that need measurements
+deploy/aws/launch_run.sh experiment             # the paper's run (detached; idle watchdog powers off)
+deploy/aws/fetch_results.sh                     # copies results/ and paper/ back
+deploy/aws/teardown_ec2.sh
+```
+
+## Hardware and runtime
+
+| Tier | Machine | Ledger | Runtime |
+|:--|:--|:--|:--|
+| smoke | any laptop (tested: Apple M-series, macOS) | in-process | ~20 min |
+| pilot | AWS EC2 c7i.4xlarge (16 vCPU, 32 GiB), Ubuntu 24.04, ap-southeast-1 | 7-validator Besu QBFT | ~3–5 h |
+| experiment | same instance | same | ~2–4 h (one run per point; Exp. 1 dominates) |
+
+Per experiment on the experiment tier (estimate, to be replaced by `run_info.json` runtimes after the run):
+exp00 minutes · exp01 ~1.5–2.5 h · exp02 ~0.5 h · exp03 + exp04 ~0.5–1 h · exp05 ~0.5 h.
+
+## Layout
 
 | Folder | Contents |
 |:--|:--|
-| `overleaf/` | Final manuscript `VeRedact-2.tex` (never edited here), its generated Markdown `VeRedact.md`, and `newchange.md` — text changes still to paste in Overleaf |
-| `Scheme/` | Baseline papers, one folder per scheme numbered by manuscript reference: S1 = [1] Li (Improved DCH), S13 = [13] EAQ-VRBC, S27 = [27] Liu (ETCH), S34 = [34] J. Xue (REBS) |
-| `config/` | `smoke.toml` / `pilot.toml` / `experiment.toml` — every experiment parameter, identical keys, one tier per scale; `schemes.toml` — scheme metadata + each paper's own evaluation parameters; `aws.toml` — server |
-| `benchmark/` | Harness: VeRedact-PQ protocol (Phases 1–6), real PQ primitives (ML-DSA-65, SIS chameleon hash, winterfell STARK in `pqzk_stark/`), Scheme contract, registry, primitive-timing and Exp. 1–5 runners, contracts, tests |
-| `experiment/` | One folder per baseline: its construction (`s<ref>_scheme.py`), its Scheme adapter (`s<ref>_baseline.py`), its own paper's evaluation (`s<ref>_run.py`), tests |
+| `configs/` | `base.yaml` (shared), `datasets/`, `methods/` (VeRedact-PQ + 4 baselines), `experiments/` (one per paper experiment), `tiers/` (smoke / pilot / experiment scale), `aws.toml` (server) |
+| `src/veredact_bench/` | `data/` · `methods/` (one `Scheme` interface: VeRedact-PQ and the baselines) · `metrics/` (pure, tested) · `evaluation/` (runners, results writer, ledger backends) · `reporting/` (tables, figures) · `utils/` (config, seed, logging, validation) |
+| `native/pqzk_stark/` | Rust winterfell STARK for the PQZK policy relation |
+| `contracts/` | Solidity contracts anchored on Besu |
+| `scripts/` | thin entry points: `run_eval.py`, `make_tables.py`, `make_figures.py`, `validate_config.py`, `capabilities.py`, `paper_reproduction.py` |
+| `results/` | raw outputs `results/<experiment>/<method>/<tier>/` (gitignored) |
+| `paper/` | generated `tables/*.tex`, `figures/*.pdf`, and `MANIFEST.md` |
+| `tests/` | metrics, config gating, results layout, fidelity of every method, baseline constructions, a tiny end-to-end run |
+| `data/` | README only: the dataset is generated from the seed |
 | `deploy/` | AWS provisioning + launch + idle watchdog, server bootstrap, Besu QBFT network, tier runner |
-| `results/` | `results/<exp>/<run_id>/rows.csv` + `manifest.json`; `results/S*_*.csv` from the paper runners |
-| `plot/` | Figures rendered from the newest runs, plus `primitives_table.csv` and `gas_by_operation.csv` |
-| `tools/` | PDF→Markdown, TeX→Markdown and tidy scripts |
-| `docs/` | `experiments.md` (rules, boundaries, systems), `baselines/*.md` (per baseline), `paper-conformance.md` (manuscript vs code), `aws-runbook.md` |
+| `Scheme/` | the four baseline papers (PDF, full text, summary) |
+| `overleaf/` | final manuscript `VeRedact-2.tex` (never edited here), generated `VeRedact.md`, `newchange.md` (text changes still to paste) |
+| `docs/` | `experiments.md` (rules, boundaries), `baselines/*.md`, `paper-conformance.md`, `aws-runbook.md` |
+| `tools/` | PDF→Markdown and TeX→Markdown converters |
 
-Status and open decisions: [`TASK.md`](TASK.md). File placement and workflows:
-[`.claude/skills/veredact/SKILL.md`](.claude/skills/veredact/SKILL.md).
-
-```bash
-make venv build-zk test       # local setup (Python 3.12 + Rust), unit + fidelity tests
-make smoke                    # primitives + every experiment on config/smoke.toml (laptop, in-process ledger)
-make primitives               # primitive timings only (manuscript tab:primitives)
-make capabilities plots       # capability matrix from the code; figures from the newest runs
-make paper-runs               # each baseline's own paper evaluation (quick)
-```
-
-Server (costs money): `deploy/aws/provision_ec2.sh` once, then `deploy/aws/launch_run.sh smoke`, `pilot` and,
-after the pilot, `deploy/aws/launch_run.sh experiment` — see `docs/aws-runbook.md` and the tracker in `TASK.md`.
+Status and open decisions: [`TASK.md`](TASK.md). File placement rules: [`.claude/skills/veredact/SKILL.md`](.claude/skills/veredact/SKILL.md).

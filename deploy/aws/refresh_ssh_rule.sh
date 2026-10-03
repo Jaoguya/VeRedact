@@ -4,7 +4,7 @@
 # Usage: deploy/aws/refresh_ssh_rule.sh      (called by provision_ec2.sh and launch_run.sh)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-eval "$(python3 deploy/aws/aws_config.py)"
+eval "$(.venv/bin/python deploy/aws/aws_config.py)"
 A=(aws --profile "$AWS_PROFILE" --region "$AWS_REGION")
 CIDR="$AWS_SSH_CIDR"
 [[ "$CIDR" == auto ]] && CIDR="$(curl -fsS https://checkip.amazonaws.com)/32"

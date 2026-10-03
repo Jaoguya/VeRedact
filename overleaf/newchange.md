@@ -52,10 +52,10 @@ affected if the references are renumbered; the baseline numbers [1], [13], [27],
 
 ## B. Now — `[TBD]` values the code already fixes
 
-### B1. Line 2834 — size and language of the implementation (count on 2026-10-03: 5,943 Python + 1,019 Rust + 119 Solidity lines)
+### B1. Line 2834 — size and language of the implementation (count after the restructure, 2026-10-03: ~6,900 Python + 1,019 Rust + 119 Solidity lines)
 Find: `\textbf{[TBD]} lines of \textbf{[TBD: language]} code`
 ```latex
-approximately 7,100 lines of Python, Rust, and Solidity code
+approximately 8,000 lines of Python, Rust, and Solidity code
 ```
 
 ### B2. Line 2846 — STARK library
@@ -70,7 +70,7 @@ Find: `\textbf{[TBD: confirm construction]}.`
 using a gadget-based lattice trapdoor with dealerless $t$-of-$n$ Shamir sharing of the trapdoor.
 ```
 
-### B4. Line 2836 — operating system (fixed by `config/aws.toml`)
+### B4. Line 2836 — operating system (fixed by `configs/aws.toml`)
 Find: `running Ubuntu \textbf{[TBD]}.`
 ```latex
 running Ubuntu 24.04.
@@ -81,13 +81,35 @@ running Ubuntu 24.04.
 $T_E^{c}$ & RSA-3072 exponentiation~\cite{ref13} & [TBD] \\
 ```
 
-## C. After the full run — fill from `plot/` (never from the papers)
+## D. From the evaluation-code restructure (2026-10-03)
+
+### D1. Lines 2867–2868 — one run per configuration point (author decision 2026-10-03), not 30 runs
+Find: `used, and all reported results represent the mean of 30 independent runs` … `with 95\% confidence intervals.`
+```latex
+used. Each configuration point is executed once; reported values are medians (and 95th percentiles for
+latency) over all requests or samples of that run, with 95\% confidence intervals of the mean.
+```
+
+### D2. Line 2928 — Table "Default Experimental Parameters"
+Find: `Repetitions & 30 runs, 95\% confidence interval \\`
+```latex
+Runs & 1 per point; 30 samples per point (Exp.~2--4) \\
+```
+
+### D3. Optional — vector figures. The code writes each figure as both `.png` (current names) and `.pdf`
+(`paper/figures/`). To use the vector version, change the extension in lines 2962, 3022, 3067, 3112, 3159:
+Find: `{exp1_redaction_throughput.png}` (and the four others)
+```latex
+{exp1_redaction_throughput.pdf}
+```
+
+## C. After the full run — fill from `paper/` and `results/` (never from the papers)
 
 | Line(s) | What | Source |
 |:--|:--|:--|
-| 2835-2836 | CPU, cores, clock; RAM | `results/*/<run>/manifest.json` → environment (c7i.4xlarge: 16 vCPU, 32 GiB) |
-| 2838 | netem delay | `config/experiment.toml` `[ledger].netem_delay_ms` (now 10, marked CONFIRM) |
-| 2852 | number of Besu validators | `config/experiment.toml` `[ledger].validators` (now 7, marked CONFIRM) |
-| 2889-2904 | primitive timings | `plot/primitives_table.csv` (median, 95% CI) |
-| 3195-3200 | gas per contract operation | `plot/gas_by_operation.csv` |
-| Exp. 1-4 result paragraphs | rewrite against the measured figures | `plot/exp1..exp4_*.png` (the manuscript's own NOTE at Exp. 1) |
+| 2835-2836 | CPU, cores, clock; RAM | `results/<exp>/<method>/experiment/run_info.json` → environment (c7i.4xlarge: 16 vCPU, 32 GiB) |
+| 2838 | netem delay | `configs/base.yaml` `ledger.netem_delay_ms` (now 10, marked CONFIRM) |
+| 2852 | number of Besu validators | `configs/base.yaml` `ledger.validators` (now 7, marked CONFIRM) |
+| 2889-2904 | primitive timings | `paper/tables/tab_primitives.tex` (median ± 95% CI) — paste the rows |
+| 3195-3200 | gas per contract operation | `paper/tables/tab_gas.tex` |
+| Exp. 1-4 result paragraphs | rewrite against the measured figures | `paper/figures/exp1..exp4_*.pdf` and `paper/tables/tab_significance.tex` (the manuscript's own NOTE at Exp. 1) |

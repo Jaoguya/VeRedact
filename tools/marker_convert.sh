@@ -8,7 +8,7 @@
 #   <pdf>                    original (renamed only if it would collide)
 #   S<ref>_fulltext.md         marker full text, tidied
 #   S<ref>_figures/            figures extracted by marker
-# Afterwards: write S<ref>_summary.md, add [schemes.S<ref>] to config/schemes.toml (see SKILL.md).
+# Afterwards: write S<ref>_summary.md, add configs/methods/s<ref>_<short>.yaml (see SKILL.md).
 #
 # Needs: ~/.venvs/marker (pip install marker-pdf) with the local auto-close patch, and llama.cpp
 # (brew install llama.cpp). ~10 pages take ~25-30 min on an 8 GB Apple-silicon Mac.

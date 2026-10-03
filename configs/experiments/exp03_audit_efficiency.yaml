@@ -1,0 +1,9 @@
+# Experiment 3 — audit efficiency, service side. Fig. 5.
+experiment:
+  id: exp03_audit_efficiency
+  paper: [fig:exp3_audit]
+  systems: [veredact, S13, S1]  # only systems with an audit/consistency path
+  variants: [per_record_evidence]
+  n_Q: [10, 100, 1000, 10000]                # [DERIVED] manuscript
+  records_per_batch: [1, 4, 16, 64]          # [DERIVED] manuscript 1 .. [64]
+  samples_per_point: 30         # [PROPOSED] audit queries per (system, records per batch, n_Q) in the one run

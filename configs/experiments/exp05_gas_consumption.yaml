@@ -1,0 +1,8 @@
+# Experiment 5 — blockchain gas (Besu receipts only). Fig. 7 and tab:gas.
+experiment:
+  id: exp05_gas_consumption
+  paper: [fig:exp5_gas, tab:gas]
+  systems: [veredact, S1, S13, S27, S34]
+  batch_sizes: [1, 8, 32, 64, 128, 256]
+  zipf_sweep: [0.0, 0.8]
+  requests_per_point: 1024      # [METHOD] multiple of max(batch_sizes) so every batch size forms full batches

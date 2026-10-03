@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # One-time setup of an Ubuntu 24.04 experiment server (run as root; provision_ec2.sh does this over SSH).
 # Installs: Docker + compose, Python 3.12 venv, liboqs (ML-DSA-65, the paper's backend), tc/netem, Rust +
-# maturin (builds the winterfell STARK module benchmark/pqzk_stark), clones the repo, creates
-# benchmark/.venv and runs the unit + fidelity tests.
+# maturin (builds the winterfell STARK module native/pqzk_stark), clones the repo, creates
+# .venv (pinned versions from pyproject.toml) and runs the test suite.
 #
 # Env: REPO_URL, REPO_BRANCH, REMOTE_DIR  (defaults below)
 set -euo pipefail
@@ -33,7 +33,7 @@ fi
 # ---- repository + venv ----------------------------------------------------------------------
 if [[ -d "$REMOTE_DIR/.git" ]]; then
   git -C "$REMOTE_DIR" pull --ff-only
-elif [[ ! -f "$REMOTE_DIR/config/experiment.toml" ]]; then   # nothing synced from the laptop: clone
+elif [[ ! -f "$REMOTE_DIR/configs/base.yaml" ]]; then   # nothing synced from the laptop: clone
   git clone --branch "$REPO_BRANCH" "$REPO_URL" "$REMOTE_DIR"
 fi
 chown -R "$RUN_USER:$RUN_USER" "$REMOTE_DIR"
@@ -41,14 +41,13 @@ sudo -u "$RUN_USER" bash -lc "
   set -euo pipefail
   command -v cargo >/dev/null || curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
   source \$HOME/.cargo/env
-  cd '$REMOTE_DIR/benchmark'
+  cd '$REMOTE_DIR'
   python3.12 -m venv .venv
-  .venv/bin/pip install -q -U pip maturin
-  .venv/bin/pip install -q -r requirements.txt
-  .venv/bin/pip install -q 'liboqs-python @ git+https://github.com/open-quantum-safe/liboqs-python@$LIBOQS_VERSION' web3 py-solc-x
-  .venv/bin/pip install -q -e .
-  (cd pqzk_stark && ../.venv/bin/maturin develop --release -q)   # same build as make build-zk / launch_run.sh
-  VRPQ_SIG_BACKEND=oqs .venv/bin/python -c 'from veredact_bench.crypto.pqsig import load_pqsig; print(\"signature backend:\", load_pqsig(\"oqs\").name)'
-  .venv/bin/python -m pytest -q tests ../experiment
+  .venv/bin/pip install -q -U pip
+  .venv/bin/pip install -q -e '.[dev,server]'
+  .venv/bin/pip install -q 'liboqs-python @ git+https://github.com/open-quantum-safe/liboqs-python@$LIBOQS_VERSION'
+  (cd native/pqzk_stark && ../../.venv/bin/maturin develop --release -q)   # same build as make build-zk / launch_run.sh
+  VRPQ_SIG_BACKEND=oqs .venv/bin/python -c 'from veredact_bench.methods.veredact.crypto.pqsig import load_pqsig; print(\"signature backend:\", load_pqsig(\"oqs\").name)'
+  .venv/bin/python -m pytest -q
 "
 echo "bootstrap complete: $REMOTE_DIR  (log out/in once so the docker group applies)"

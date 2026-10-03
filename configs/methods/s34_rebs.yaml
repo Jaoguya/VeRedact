@@ -1,0 +1,27 @@
+# Scheme [34] — J. Xue et al.: REBS (methods/baselines/s34_rebs/)
+schemes:
+  S34:
+    key: xue2025_rebs
+    label: J. Xue et al. [34] (REBS)
+    ref: 34
+    authors: J. Xue, L. Liu, F. Li, X. Jing, W. Zhang, X. Zhang, Y. Zhou
+    title: Attribute-Based Policy-Hiding Redactable Blockchain With Authorizable Verification for Energy Internet
+    venue: IEEE IoT Journal 12(15), 2025
+    doi: 10.1109/JIOT.2025.3569699
+    folder: Scheme/S34_Xue2025_REBS
+    implementation: veredact_bench.methods.baselines.s34_rebs.adapter:REBSScheme
+    boundaries: docs/baselines/S34-rebs.md
+    reproduction:               # reproduce.py — the paper's own Figs. 3 and 7
+      rsa_bits: 1024            # [DERIVED] paper Sec. VII: RSA-1024 (reproduction, not the 3072-bit comparison)
+      attributes_sweep: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]   # [DERIVED] Fig. 3 x-axis
+      comm_attributes_sweep: [10, 20, 30, 40, 50]                   # [DERIVED] Fig. 7 x-axis
+      update_dt: 60             # [PROPOSED] TimeUpdate increment (its cost is independent of the value)
+      reps: 100                 # [DERIVED] paper: "repeated 100 times"
+      quick: {attributes_sweep: [10, 20], comm_attributes_sweep: [10, 20], reps: 3}
+
+baselines:
+  S34:
+    rsa_bits: 3072              # [DERIVED] 128-bit classical (paper: RSA-1024)
+    pairing: BLS12-381          # [DERIVED] prime-order translation of the paper's composite-order group
+    policy_attributes: 10       # [PROPOSED] attributes l in the LSSS policy (paper sweeps 10..100)
+    policy_threshold: 5         # [PROPOSED] t of the (t, l) policy; = veredact.committee_t

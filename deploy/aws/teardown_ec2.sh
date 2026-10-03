@@ -3,7 +3,7 @@
 # Usage: deploy/aws/teardown_ec2.sh [stop|terminate]
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-eval "$(python3 deploy/aws/aws_config.py)"
+eval "$(.venv/bin/python deploy/aws/aws_config.py)"
 ACTION=${1:-stop}
 IID=$(cut -d' ' -f1 deploy/aws/.instance)
 case "$ACTION" in

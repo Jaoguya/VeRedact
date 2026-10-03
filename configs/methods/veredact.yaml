@@ -1,0 +1,19 @@
+# VeRedact-PQ (the proposed method) — methods/veredact/ (protocol Phases 1-6 on real PQ primitives)
+schemes:
+  veredact:
+    label: VeRedact-PQ
+    ref: 0
+    implementation: veredact_bench.methods.veredact.protocol.veredact_scheme:VeRedactScheme
+    variants: [per_request, fixed_batch, no_bimc, re_zk, per_record_evidence]   # manuscript ablations
+
+veredact:
+  committee_n: 7                # [DERIVED] manuscript Table VII n = [7]
+  committee_t: 5                # [DERIVED] t = floor(2n/3) + 1 = 5, BFT-style majority
+  B_min: 8                      # [DERIVED] manuscript Table VII
+  B_max: 256                    # [DERIVED] manuscript Table VII
+  T_max_ms: 500                 # [DERIVED] manuscript Table VII
+  fixed_batch: 64               # [DERIVED] manuscript Exp. 1 Fixed-Batch variant [64]
+  rli_shards: 16                # [DERIVED] manuscript Table VII S = [16]
+  rli_buckets: 64               # [PROPOSED] logical lookup buckets B per SA-RLI shard (bid_i = H_2(tau_i) mod B)
+  rai_shards: 16                # [DERIVED] manuscript Table VII S_A = [16]
+  vps_workers: 8                # [PROPOSED] parallel VPS validation workers (<= vcpus / 2)

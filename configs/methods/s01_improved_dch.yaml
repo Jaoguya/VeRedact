@@ -1,0 +1,26 @@
+# Scheme [1] — Li, Shen, Wu: Improved DCH on Jia et al.'s redactable chain (methods/baselines/s01_improved_dch/)
+schemes:
+  S1:
+    key: li2025_dch
+    label: Li et al. [1] (Improved DCH)
+    ref: 1
+    authors: C. Li, Q. Shen, Z. Wu
+    title: Redactable Blockchain From Decentralized Chameleon Hash Functions, Revisited
+    venue: IEEE Trans. Computers 74(6), 2025
+    doi: 10.1109/TC.2025.3544878
+    folder: Scheme/S1_Li2025_ImprovedDCH
+    implementation: veredact_bench.methods.baselines.s01_improved_dch.adapter:ImprovedDCHScheme
+    boundaries: docs/baselines/S1-improved-dch.md
+    reproduction:               # reproduce.py — the paper's own Table II / Fig. 2
+      t_default: 5              # [PROPOSED] Table II participant count (the paper reports per participant)
+      t_sweep: [5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45]   # [DERIVED] Fig. 2 x-axis 5..45
+      reps: 1000                # [PROPOSED] median over reps for sub-ms operations
+      keygen_reps: 20           # [PROPOSED] DKG is O(t^2) and seconds long at t = 45
+      quick: {t_sweep: [5, 9, 13], reps: 20, keygen_reps: 3}
+
+baselines:
+  S1:
+    threshold_t: 5              # [DERIVED] = veredact.committee_t so threshold cost is compared at equal t
+    nodes_n: 7                  # [DERIVED] = veredact.committee_n
+    pairing: BLS12-381          # [DERIVED] >= 128-bit classical security (paper used PBC Type A/E/F, <128-bit)
+    accumulator_rsa_bits: 3072  # [DERIVED] Jia chain RSA accumulator at 128-bit: 3072

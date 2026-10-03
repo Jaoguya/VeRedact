@@ -1,0 +1,9 @@
+# Experiment 2 — transaction authorization latency (Phase 4). Fig. 4.
+experiment:
+  id: exp02_authorization_latency
+  paper: [fig:exp2_auth]
+  systems: [veredact, S1, S34]  # S13: key possession only; S27: threshold enforced inside Adapt, no approval step
+  variants: [re_zk]
+  committee_sizes: [4, 7, 10, 16, 32]        # [DERIVED] manuscript; t = floor(2n/3)+1
+  batch_sizes: [1, 8, 32, 64, 128, 256]      # [DERIVED] manuscript
+  samples_per_point: 30         # [PROPOSED] authorization batches per (system, n, m) in the one run

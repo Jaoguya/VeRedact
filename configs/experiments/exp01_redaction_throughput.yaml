@@ -1,0 +1,14 @@
+# Experiment 1 — redaction latency and throughput (Phases 3-5, submission -> finalized checkpoint). Fig. 3.
+experiment:
+  id: exp01_redaction_throughput
+  paper: [fig:exp1_redaction]
+  systems: [veredact, S1, S13, S27, S34]
+  variants: [per_request, fixed_batch, no_bimc]
+  rates: [100, 250, 500, 1000, 2000, 5000]   # [DERIVED] manuscript [100] .. [5,000] req/s
+  zipf_sweep: [0.0, 0.4, 0.8, 1.2]           # [DERIVED] manuscript Exp. 1
+  zipf_rate: 1000               # [CONFIRM] fixed rate for the skew sweep (below every system's saturation: from the pilot)
+  duration_s: 60                # [PROPOSED] steady-state window per point
+  warmup_s: 10                  # [METHOD] discarded before measuring
+  client_threads: 4             # [PROPOSED] requester threads that sign + prove; the achieved rate is recorded
+  saturation_tolerance: 0.10    # [PROPOSED] saturated when decided/offered < 1 - tol; higher rates are skipped
+  drain_s: 30                   # [PROPOSED] wait for in-flight requests after the window; the rest are recorded

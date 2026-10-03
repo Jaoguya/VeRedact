@@ -1,0 +1,32 @@
+# Scheme [13] — Zhang et al.: EAQ-VRBC (methods/baselines/s13_eaq_vrbc/)
+schemes:
+  S13:
+    key: eaq_vrbc2025
+    label: Zhang et al. [13] (EAQ-VRBC)
+    ref: 13
+    authors: X. Zhang, Z. Cai, K. Chen, G. Ha, C. Jia
+    title: "Efficient Auditing and Querying in Verifiable Redactable Blockchain: A Lightweight VDS Protocol with Integrity Verification"
+    venue: IEEE TrustCom 2025
+    doi: 10.1109/Trustcom66490.2025.00062
+    folder: Scheme/S13_Zhang2025_EAQ-VRBC
+    implementation: veredact_bench.methods.baselines.s13_eaq_vrbc.adapter:EAQVRBCScheme
+    boundaries: docs/baselines/S13-eaq-vrbc.md
+    reproduction:               # reproduce.py — the paper's own Figs. 4-9
+      rsa_bits: 2048            # [DERIVED] the paper's instantiation (reproduction, not the 3072-bit comparison)
+      miners: 4                 # [DERIVED] paper setup
+      l_bits: 256               # [DERIVED] paper setup
+      challenged: [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]   # [DERIVED] Figs. 4/5 x-axis
+      audit_txs_per_block: 4    # [PROPOSED] block size for the audit ledger (paper does not state it)
+      query_index: [100, 300, 700, 1500, 3100, 6300, 12700, 25500, 51100]   # [DERIVED] Figs. 6/7 x-axis
+      query_txs_per_block: 1    # [PROPOSED] one tx per block isolates the index-depth effect
+      txs_per_block: [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]  # [DERIVED] Figs. 8/9 x-axis
+      revoked: 50               # [PROPOSED] revocation-list size (paper does not state it)
+      reps: 30                  # [PROPOSED]
+      quick: {challenged: [50, 100], query_index: [100, 300], txs_per_block: [50, 100], reps: 5}
+
+baselines:
+  S13:
+    rsa_bits: 3072              # [DERIVED] 128-bit classical (NIST SP 800-57); the paper used 2048 (112-bit)
+    l_bits: 256                 # [PROPOSED] H1 output length (odd l-bit values, no hash-to-prime)
+    miners: 7                   # [DERIVED] = dataset.organisations
+    revoked_initial: 0          # [METHOD] revocation list grows with the trace, not pre-seeded

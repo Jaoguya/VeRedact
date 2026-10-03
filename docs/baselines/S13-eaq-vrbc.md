@@ -1,7 +1,7 @@
 # S13 — Zhang et al. [13], EAQ-VRBC
 
-Paper: `Scheme/S13_Zhang2025_EAQ-VRBC/` · crypto: `experiment/S13_EAQVRBC/s13_scheme.py` ·
-adapter: `s13_baseline.py` (`EAQVRBCScheme`, key `S13`) · own evaluation: `s13_run.py` (Figs. 4–9).
+Paper: `Scheme/S13_Zhang2025_EAQ-VRBC/` · construction: `src/veredact_bench/methods/baselines/s13_eaq_vrbc/construction.py` ·
+adapter: `adapter.py` (`EAQVRBCScheme`, key `S13`) · own evaluation: `reproduce.py` (Figs. 4–9).
 The manuscript calls it "VRBC [13]".
 
 ## Role per experiment
@@ -27,7 +27,7 @@ The manuscript calls it "VRBC [13]".
 
 | Item | Paper | Here | Bias |
 |:--|:--|:--|:--|
-| RSA modulus | 2048 (112-bit) | 3072 (`rsa_bits`, 128-bit) in the comparison; 2048 in `s13_run.py` | against S13 (slower), required for equal security |
+| RSA modulus | 2048 (112-bit) | 3072 (`rsa_bits`, 128-bit) in the comparison; 2048 in `reproduce.py` | against S13 (slower), required for equal security |
 | primes | safe primes | standard RSA primes (equations unchanged) | for S13 (faster keygen, untimed) |
 | H1 | odd l-bit values | same; non-coprime factors peeled (Alg. 1) | neutral |
 | aggregation | recursive pairwise | balanced tree (same result, O(c log c) instead of O(c²)) | for S13 |
@@ -35,10 +35,10 @@ The manuscript calls it "VRBC [13]".
 
 ## Not implemented
 
-Query phase is reproduced in `s13_run.py` only (the comparison audits redaction records, not index queries).
+Query phase is reproduced in `reproduce.py` only (the comparison audits redaction records, not index queries).
 
 ## Fidelity checklist
 
 - [x] rejects a nonexistent target
 - [x] a tampered record makes the whole query fail (aggregate decision), no false accept
-- [x] Alg. 2/3 verify for honest sets; non-membership fails for revoked tags (`s13_test.py`)
+- [x] Alg. 2/3 verify for honest sets; non-membership fails for revoked tags (`tests/baselines/test_s13_eaq_vrbc.py`)

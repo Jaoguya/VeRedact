@@ -1,0 +1,6 @@
+# Manuscript tab:primitives — execution time of each cryptographic primitive (VeRedact-PQ + baselines' own).
+experiment:
+  id: exp00_primitives
+  paper: [tab:primitives]
+  systems: [veredact, S1, S13, S27, S34]
+  samples_per_point: 100        # [PROPOSED] timings per primitive in the one run (median + 95% CI over them)

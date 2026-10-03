@@ -1,7 +1,7 @@
 # S34 — J. Xue et al. [34], REBS (attribute-based policy-hiding redaction)
 
-Paper: `Scheme/S34_Xue2025_REBS/` · crypto: `experiment/S34_REBS/s34_scheme.py` ·
-adapter: `s34_baseline.py` (`REBSScheme`, key `S34`) · own evaluation: `s34_run.py` (Figs. 3, 7).
+Paper: `Scheme/S34_Xue2025_REBS/` · construction: `src/veredact_bench/methods/baselines/s34_rebs/construction.py` ·
+adapter: `adapter.py` (`REBSScheme`, key `S34`) · own evaluation: `reproduce.py` (Figs. 3, 7).
 
 ## Role per experiment
 
@@ -26,7 +26,7 @@ adapter: `s34_baseline.py` (`REBSScheme`, key `S34`) · own evaluation: `s34_run
 |:--|:--|:--|:--|
 | group | composite order N = p1p2p3 (SS512, Charm) | prime-order BLS12-381 (dual-system → prime-order translation; every decryption equation kept) | for S34 (prime-order pairings are faster) |
 | Trap encryption | Trap · e(g,g)^s in GT | Trap ⊕ KDF(e(g,g)^s) with `h_Trap` check (GT is not a message space for bytes) | neutral |
-| RSA | 1024 | 3072 in the comparison (`rsa_bits`); 1024 in `s34_run.py` | against S34, required for equal security |
+| RSA | 1024 | 3072 in the comparison (`rsa_bits`); 1024 in `reproduce.py` | against S34, required for equal security |
 | AVNs | one per attribute (attribute i keyed by AVN_i's (ε_i, η_i), Lewko–Waters MA-ABE) | same: l attributes → l AVNs, so the AVN count is `policy_attributes`, not a separate parameter | none |
 | AttrKeyGen | once per identity | at setup (and lazily, untimed, for identities first seen at run time) | for S34 (one-off Sig_AMC checks untimed) |
 | CHash | per transaction at creation | materialised only for trace-targeted transactions (other transactions are never touched); ephemeral RSA keygen in a process pool | neutral (setup, untimed) |
@@ -38,7 +38,7 @@ adapter: `s34_baseline.py` (`REBSScheme`, key `S34`) · own evaluation: `s34_run
 Delegate (AVN join/leave via re-encryption) — not exercised by any VeRedact experiment; Fig. 3(e) is
 therefore not reproduced. Policy threshold is a (t, l) Vandermonde LSSS (the paper's threshold policies).
 
-## Fidelity checklist (`s34_test.py`, `test_fidelity.py`)
+## Fidelity checklist (`tests/baselines/test_s34_rebs.py`, `test_fidelity.py`)
 
 - [x] authorised TR recovers Trap and redacts; ChVer holds on the new content, hash unchanged
 - [x] t−1 attributes, or wrong attribute values → Trap not recovered

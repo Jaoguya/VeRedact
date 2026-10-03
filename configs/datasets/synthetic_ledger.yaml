@@ -1,0 +1,11 @@
+# Synthetic enterprise ledger (manuscript Sec. Experimental Setup). Nothing is downloaded: the corpus and
+# the request trace are generated from meta.seed by veredact_bench.data.dataset (see data/README.md).
+dataset:
+  name: synthetic_ledger
+  base_transactions: 100000     # [DERIVED] manuscript Table VII: ledger size 10^5
+  payload_min_bytes: 256        # [DERIVED] manuscript: payloads 256 B to 4 KB
+  payload_max_bytes: 4096
+  leaves_per_batch: 256         # [DERIVED] manuscript Table VII: N = [256]
+  requesters: 100               # [PROPOSED] registered requesters (<= 2^registry_depth)
+  policies: 10                  # [PROPOSED] redaction policies
+  organisations: 7              # [DERIVED] = ledger.validators (one validator per organisation)

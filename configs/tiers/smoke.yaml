@@ -1,0 +1,30 @@
+# Tier "smoke": laptop, minutes, in-process ledger. Plumbing check only: numbers are never reported.
+meta:
+  tier: smoke
+security:
+  pqch: {n: 64}
+  pqzk: {registry_depth: 7}
+ledger:
+  backend: in_process
+dataset:
+  base_transactions: 4096
+  requesters: 16
+workload:
+  total_requests: 200
+baselines:
+  S1: {accumulator_rsa_bits: 1024}
+  S13: {rsa_bits: 1024}
+  S34: {rsa_bits: 1024}
+experiments:
+  exp00_primitives: {samples_per_point: 5}
+  exp01_redaction_throughput:
+    rates: [50, 100]
+    zipf_rate: 50
+    duration_s: 3
+    warmup_s: 1
+    client_threads: 2
+    drain_s: 5
+  exp02_authorization_latency: {committee_sizes: [4, 7], batch_sizes: [1, 8], samples_per_point: 2}
+  exp03_audit_efficiency: {n_Q: [10, 50], records_per_batch: [1, 8], samples_per_point: 2}
+  exp04_verification_time: {n_Q: [10, 50], samples_per_point: 2}
+  exp05_gas_consumption: {batch_sizes: [1, 8, 32], requests_per_point: 64}

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Start a local Hyperledger Besu QBFT network in Docker (manuscript: Besu + QBFT, Solidity anchoring).
-#   - N validators (config/aws.toml [besu].validators), block period, chain id, funded dev account
+#   - N validators (configs/base.yaml ledger.validators), block period, chain id, funded dev account
 #   - inter-node latency with tc netem on each container's host-side veth ([besu].netem_delay_ms)
 #   - JSON-RPC of validator 1 on localhost:[besu].rpc_port
 # Usage: deploy/besu/start_besu_network.sh          (Linux host with Docker; run on the AWS server)
 #        deploy/besu/stop_besu_network.sh
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-eval "$(python3 deploy/aws/aws_config.py)"
+eval "$(.venv/bin/python deploy/aws/aws_config.py)"
 NET=deploy/besu/.network          # generated, gitignored
 N=$BESU_VALIDATORS
 rm -rf "$NET" && mkdir -p "$NET"

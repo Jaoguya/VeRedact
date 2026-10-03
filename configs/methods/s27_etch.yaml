@@ -1,0 +1,29 @@
+# Scheme [27] — Liu, Zhou, Zhao: ETCH (methods/baselines/s27_etch/)
+schemes:
+  S27:
+    key: liu2026_etch
+    label: Liu et al. [27] (ETCH)
+    ref: 27
+    authors: Z. Liu, B. Zhou, Y. Zhao
+    title: Enhancing Redactable Blockchain With Robust and Efficient Threshold Redaction
+    venue: IEEE TDSC 23(2), 2026
+    doi: 10.1109/TDSC.2025.3634512
+    folder: Scheme/S27_Liu2026_ETCH
+    implementation: veredact_bench.methods.baselines.s27_etch.adapter:ETCHScheme
+    boundaries: docs/baselines/S27-etch.md
+    reproduction:               # reproduce.py — the paper's own Figs. 4-6
+      t_sweep: [3, 9, 15, 21, 27, 33]          # [DERIVED] Fig. 4 x-axis
+      redactors_sweep: [5, 10, 15, 20, 25, 30, 33]   # [DERIVED] Fig. 6 x-axis
+      rtt_ms: [20, 50, 100, 200, 300]          # [DERIVED] Fig. 6 series
+      adapt_rounds: 2           # [DERIVED] ETCH.Adapt has two CA rounds (Sec. V)
+      reps: 1000                # [PROPOSED]
+      keygen_reps: 20           # [PROPOSED] DKG is seconds long at t = 33
+      fig5_tx_bytes: 630        # [DERIVED] paper Table VI transaction size
+      fig5_sha256_reps: 10000   # [PROPOSED] SHA-256 is ~1 us: 10x the reps of ETCH for a stable median
+      quick: {t_sweep: [3, 9, 15], redactors_sweep: [5, 10, 15], reps: 20, keygen_reps: 2, fig5_sha256_reps: 200}
+
+baselines:
+  S27:
+    threshold_t: 5              # [DERIVED] = veredact.committee_t
+    redactors_n: 7              # [DERIVED] = veredact.committee_n
+    curve: secp256k1            # [DERIVED] the paper's own instantiation (Sec. VII-B)

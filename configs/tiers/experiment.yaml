@@ -1,0 +1,3 @@
+# Tier "experiment": the paper's numbers. Nothing is overridden: base + dataset + methods + experiment as written.
+meta:
+  tier: experiment

@@ -1,0 +1,85 @@
+# =============================================================================
+# VeRedact-PQ evaluation — shared settings (every method, every experiment)
+# =============================================================================
+# A run's config = base.yaml + datasets/<meta.dataset>.yaml + methods/*.yaml + experiments/<id>.yaml,
+# then tiers/<tier>.yaml on top (scale overrides only). The fully resolved config is saved next to every
+# result (config_resolved.yaml). A numeric literal in code is a defect: every value lives in configs/.
+#
+# Markers (every value carries one):
+#   [DERIVED]  follows necessarily from a stated fact or constraint (usually the manuscript)
+#   [METHOD]   follows from the measurement methodology
+#   [PROPOSED] defensible engineering choice, reasoning given
+#   [CONFIRM]  needs the author's decision (grep -rn CONFIRM configs/)
+# =============================================================================
+
+meta:
+  config_version: "2.0.0"
+  dataset: synthetic_ledger     # configs/datasets/<name>.yaml
+  # [METHOD] One seed drives dataset generation, request-trace order, committee selection, audit challenges
+  # and fault injection; the same seed is used for every method so they see the same data and trace.
+  # One run per configuration point (author decision 2026-10-03): no repetitions; statistics come from
+  # the per-request / per-sample rows of that run.
+  seed: 20260929
+
+security:
+  # [DERIVED] Manuscript Sec. Experimental Setup: NIST post-quantum security level 3 -> ML-DSA-65 (FIPS 204).
+  nist_level: 3
+  signature: ML-DSA-65
+  hash: SHA3-256                # [DERIVED] manuscript: H, H1, H2, H_A = domain-separated SHA3-256
+  prf: HMAC-SHA3-256            # [DERIVED] manuscript
+  prf_key_bits: 256             # [DERIVED] Phase 1: K_idx, K_A in {0,1}^lambda, lambda = 256
+  pqch:
+    # [CONFIRM] SIS chameleon hash with MP12 gadget trapdoor (methods/veredact/crypto/pqch_sis.py). n and k must
+    # be checked with a lattice estimator for level 3 before any security claim; the values here size the cost.
+    n: 256                      # [CONFIRM] SIS rows
+    k: 16                       # [CONFIRM] q = 2^16
+    sigma_R: 1.0                # [PROPOSED] trapdoor width: ternary-like R, MP12 s1(R) ~ sigma (sqrt(mbar)+sqrt(nk))
+    sigma_g: 3.0                # [PROPOSED] gadget sampling width >= omega(sqrt(log n)) (MP12 §4)
+  pqzk:
+    # [DERIVED] Manuscript: transparent hash-based STARK (Phase 1 Step 6). winterfell 0.13 (native/pqzk_stark),
+    # SHA3-256 commitments, f128 field with quadratic extension.
+    queries: 42                 # [PROPOSED] 42 queries x log2(blowup 8) = 126 bits query security +
+    blowup: 8                   #            16 bits grinding ~ 128-bit conjectured soundness (ethSTARK)
+    grinding_bits: 16
+    registry_depth: 15          # [DERIVED] (depth + 1) must be a power of two (AIR trace length); 2^15 slots
+    attribute_levels: 8         # [PROPOSED] PrivatePolicy: attribute and policy threshold in 1..8, proven as
+                                #            attribute - threshold in [0, 2^32) (32-bit range proof in the AIR)
+    credential_validity_days: 365  # [PROPOSED] ValidCred: expiry = registry setup + 365 d, proven expiry > ts_r
+
+environment:
+  # [PROPOSED] One AWS EC2 host for the whole comparison (machine-to-machine variance must not be confounded
+  # with the comparison). 7 Besu validators (~1 vCPU each) + load generator leave >= 8 vCPUs for the system
+  # under test at veredact.vps_workers = 8.
+  instance_type: c7i.4xlarge
+  vcpus: 16
+  region: ap-southeast-1
+
+ledger:
+  # [METHOD] besu = Hyperledger Besu QBFT (manuscript). in_process = in-memory ledger for smoke runs only;
+  # its ledger time is NOT consensus cost and validation refuses it in the experiment tier.
+  backend: besu
+  validators: 7                 # [CONFIRM] manuscript: "[TBD]-validator Hyperledger Besu network"; one per org
+  block_period_s: 2             # [PROPOSED] Besu QBFT default blockperiodseconds
+  netem_delay_ms: 10            # [CONFIRM] manuscript: "[TBD] ms using Linux tc netem"
+  rpc_url: http://127.0.0.1:8545
+  receipt_poll_ms: 50           # [METHOD] block-watcher poll: finality resolution 50 ms << block period
+  receipt_timeout_s: 600        # [PROPOSED] give up on a transaction not mined within 10 min (a fault, not a result)
+  tx_gas_limit: 30000000        # [PROPOSED] per-transaction gas cap; gasUsed is what Exp. 5 reports
+
+workload:
+  total_requests: 10000         # [METHOD] >= 100 samples in the top percentile at p99
+  target_distribution: zipf     # [DERIVED] manuscript: Zipf targets over transaction batches
+  zipf_s: 0.8                   # [DERIVED] manuscript Table VII default s = [0.8]
+  arrival: poisson              # [DERIVED] manuscript: Poisson arrivals, rate varied per experiment
+  bursty_on_s: 2.0              # [PROPOSED] on/off phases for ABRRR adaptation (manuscript "bursty")
+  bursty_off_s: 2.0
+  bursty_peak_factor: 4.0
+
+output:
+  dir: results                  # results/<experiment id>/<method>/<tier>/
+  per_request_rows: true        # [METHOD] never pre-aggregate: rows.csv keeps every request / sample
+  record_resolved_config: true
+  record_seed: true
+  record_git_commit: true
+  record_environment: true
+  allow_published_numbers_in_tables: false   # [METHOD] every table number comes from this code

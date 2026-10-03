@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Launch (or reuse) the experiment server described in config/aws.toml and bootstrap it.
+# Launch (or reuse) the experiment server described in configs/aws.toml and bootstrap it.
 #
 # Usage:  deploy/aws/provision_ec2.sh            # launch + wait + copy this checkout + bootstrap
-#         SYNC=git deploy/aws/provision_ec2.sh   # clone config/aws.toml [repo] from GitHub instead
+#         SYNC=git deploy/aws/provision_ec2.sh   # clone configs/aws.toml [repo] from GitHub instead
 #         DRY_RUN=1 deploy/aws/provision_ec2.sh  # print the AWS calls only
 # Needs:  AWS CLI v2 with a working profile (aws sts get-caller-identity --profile <p> must succeed).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-eval "$(python3 deploy/aws/aws_config.py)"
+eval "$(.venv/bin/python deploy/aws/aws_config.py)"
 A=(aws --profile "$AWS_PROFILE" --region "$AWS_REGION")
 run() { if [[ "${DRY_RUN:-0}" == 1 ]]; then echo "+ $*"; else "$@"; fi; }
 
@@ -64,7 +64,7 @@ scp -i "$KEY_FILE" -o StrictHostKeyChecking=accept-new deploy/server/bootstrap_s
 if [[ "${SYNC:-local}" == local ]]; then   # default: ship this working tree (uncommitted changes included)
   "${SSH[@]}" "sudo mkdir -p $REPO_REMOTE_DIR && sudo chown $AWS_SSH_USER $REPO_REMOTE_DIR"
   rsync -az --delete -e "ssh -i $KEY_FILE -o StrictHostKeyChecking=accept-new" \
-    --exclude .git --exclude .venv --exclude __pycache__ --exclude target --exclude '/results/*' --exclude '/plot/*' \
+    --exclude .git --exclude .venv --exclude __pycache__ --exclude target --exclude '/results/*' --exclude .cache \
     --exclude deploy/aws/.instance --exclude deploy/besu/.network ./ "$AWS_SSH_USER@$IP:$REPO_REMOTE_DIR/"
 fi                                           # SYNC=git: clone REPO_URL@REPO_BRANCH instead
 "${SSH[@]}" "sudo REPO_URL=$REPO_URL REPO_BRANCH=$REPO_BRANCH REMOTE_DIR=$REPO_REMOTE_DIR bash /tmp/bootstrap_server.sh"

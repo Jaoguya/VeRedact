@@ -1,65 +1,69 @@
 # TASK — full-experiment tracker
 
 Updated 2026-10-03. The manuscript (`overleaf/VeRedact-2.tex`) is final: it is never edited here; text it
-needs goes to `overleaf/newchange.md`. Update the **Progress** table as each step finishes.
+needs goes to `overleaf/newchange.md`. Update §1 and the run ledger (§1.1) as each step finishes.
 
 ## 1. Progress
 
 Rule: when a step finishes, set **Status** to `done <date>` and write in **Result stored at** the exact path
-(run id) it produced. `results/` and `plot/` are gitignored: they exist only on the machine that ran them
-(this laptop or the EC2 instance) and are **not on GitHub**; `deploy/aws/fetch_results.sh` copies the
-server's `results/` and `plot/` into this checkout.
+it produced. `results/` is gitignored: it exists only on the machine that ran it (this laptop or the EC2
+instance) and is **not on GitHub**; `paper/` (generated tables + figures) is committed.
+`deploy/aws/fetch_results.sh` copies the server's `results/` and `paper/` into this checkout.
 
 | # | Step | Command | Status | Result stored at |
 |:-:|:--|:--|:--|:--|
-| 1 | Code aligned with the final manuscript | — | **done** 2026-10-03 | commit `c86a97d` on GitHub `main` (what changed: §3) |
-| 2 | Tests | `make test` | **done** 2026-10-03 | console only: 21 + 15 passed |
-| 3 | Local smoke (laptop, in-process ledger) | `make smoke` + `make plots` | **done** 2026-10-03 | laptop: run ids in §1.1 (smoke 2026-10-03); figures `plot/exp{1..4}_*.png`, `plot/primitives_table.csv` (no gas figure: in-process ledger) |
-| 4 | Start the server | `deploy/aws/provision_ec2.sh` | to do | instance id → `deploy/aws/.instance` (gitignored) |
-| 5 | Server smoke (Besu + liboqs + STARK build) | `deploy/aws/launch_run.sh smoke` | to do | server: `results/<exp>/<run_id>/`, log `results/logs/smoke_*.log` |
-| 6 | Pilot | `deploy/aws/launch_run.sh pilot` | to do | server: `results/<exp>/<run_id>/`, log `results/logs/pilot_*.log` |
-| 7 | Full experiment | `deploy/aws/launch_run.sh experiment` | to do | server: `results/<exp>/<run_id>/`, log `results/logs/experiment_*.log` (§1.1) |
-| 8 | Fetch results + figures | `deploy/aws/fetch_results.sh` | to do | laptop: `results/`, `plot/*.png`, `plot/primitives_table.csv`, `plot/gas_by_operation.csv` |
-| 9 | Stop paying | `deploy/aws/teardown_ec2.sh` | to do | — (the idle watchdog powers off after 30 min idle anyway) |
-| 10 | Fill the manuscript from the run | `overleaf/newchange.md` §C | to do | `overleaf/newchange.md` (GitHub) |
+| 1 | Code aligned with the final manuscript | — | **done** 2026-10-03 | commit `c86a97d` (what changed: §3) |
+| 2 | Restructure to the IEEE evaluation-code layout (option B: YAML configs, `src/`, one run per point) | — | **done** 2026-10-03 | this commit (what changed: §3.2) |
+| 3 | Tests | `make test` | **done** 2026-10-03 | console only: 44 passed |
+| 4 | Local smoke from a fresh `.venv` (laptop, in-process ledger) | `make all TIER=smoke FORCE=--force` | **done** 2026-10-03 (11 min, no errors) | laptop: `results/<exp>/<method>/smoke/` (§1.1); `paper/tables/*.tex`, `paper/figures/*.pdf` (smoke numbers, not for the paper) |
+| 5 | Start the server | `deploy/aws/provision_ec2.sh` | to do | instance id → `deploy/aws/.instance` (gitignored) |
+| 6 | Server smoke (Besu + liboqs + STARK build) | `deploy/aws/launch_run.sh smoke` | to do | server: `results/<exp>/<method>/smoke/`, log `results/logs/smoke_*.log` |
+| 7 | Pilot | `deploy/aws/launch_run.sh pilot` | to do | server: `results/<exp>/<method>/pilot/`, log `results/logs/pilot_*.log` |
+| 8 | Full experiment | `deploy/aws/launch_run.sh experiment` | to do | server: `results/<exp>/<method>/experiment/`, log `results/logs/experiment_*.log` |
+| 9 | Fetch results + paper artifacts | `deploy/aws/fetch_results.sh` | to do | laptop: `results/`, `paper/tables/*.tex`, `paper/figures/*.pdf` |
+| 10 | Stop paying | `deploy/aws/teardown_ec2.sh` | to do | — (the idle watchdog powers off after 30 min idle anyway) |
+| 11 | Fill the manuscript from the run | `overleaf/newchange.md` §C | to do | `overleaf/newchange.md` |
 
 ### 1.1 Run ledger
 
-Every run writes `results/<exp>/<run_id>/rows.csv` (one row per request/operation) and `manifest.json`
-(resolved config, seed, git commit, environment). Only rows marked **current** may feed figures or tables.
+Every run writes `results/<experiment>/<method>/<tier>/`: `rows.csv` (per request / sample), `metrics.json`,
+`config_resolved.yaml`, `run_info.json` (git commit, dirty flag, hardware, library versions, runtime),
+`run.log`. A folder with `metrics.json` is finished and is skipped on re-run unless `--force`.
+Mapping to the manuscript: `paper/MANIFEST.md`.
 
-| Date | Tier | Machine | Experiment | Run id (`results/<exp>/…`) | Status |
+| Date | Tier | Machine | Experiments | Location | Status |
 |:--|:--|:--|:--|:--|:--|
-| 2026-10-03 | smoke | laptop | primitives | `primitives/20261003-190228` | **current** (smoke) |
-| 2026-10-03 | smoke | laptop | exp1 | `exp1/20261003-190229` | **current** (smoke) |
-| 2026-10-03 | smoke | laptop | exp2 | `exp2/20261003-192016` | **current** (smoke) |
-| 2026-10-03 | smoke | laptop | exp3 | `exp3/20261003-192024` | **current** (smoke) |
-| 2026-10-03 | smoke | laptop | exp4 | `exp4/20261003-192128` | **current** (smoke) |
-| 2026-10-03 | smoke | laptop | exp5 | `exp5/20261003-192150` | **current** (smoke; no gas: in-process ledger) |
-| 2026-10-03 | smoke | laptop | primitives, exp1 | `primitives/20261003-185719`, `…185736`, `exp1/20261003-185737` | superseded (code changed during the run; exp1 aborted) |
-| 2026-09-29 | smoke | laptop | exp1–exp5 | `exp*/20260929-*` | superseded (code before 2026-10-03) |
-| — | experiment | EC2 | primitives (tab:primitives) | (fill in after step 7) | to do |
-| — | experiment | EC2 | exp1 (Fig. 3) | (fill in after step 7) | to do |
-| — | experiment | EC2 | exp2 (Fig. 4) | (fill in after step 7) | to do |
-| — | experiment | EC2 | exp3 (Fig. 5) | (fill in after step 7) | to do |
-| — | experiment | EC2 | exp4 (Fig. 6) | (fill in after step 7) | to do |
-| — | experiment | EC2 | exp5 (Fig. 7, tab:gas) | (fill in after step 7) | to do |
+| 2026-10-03 | smoke | laptop | exp00_primitives | `results/exp00_primitives/<method>/smoke/` — S1, S13, S27, S34, veredact | **current** (smoke) |
+| 2026-10-03 | smoke | laptop | exp01_redaction_throughput | `results/exp01_redaction_throughput/<method>/smoke/` — S1, S13, S27, S34, veredact, veredact-fixed_batch, veredact-no_bimc, veredact-per_request | **current** (smoke) |
+| 2026-10-03 | smoke | laptop | exp02_authorization_latency | `results/exp02_authorization_latency/<method>/smoke/` — S1, S34, veredact, veredact-re_zk | **current** (smoke) |
+| 2026-10-03 | smoke | laptop | exp03_audit_efficiency | `results/exp03_audit_efficiency/<method>/smoke/` — S1, S13, veredact, veredact-per_record_evidence | **current** (smoke) |
+| 2026-10-03 | smoke | laptop | exp04_verification_time | `results/exp04_verification_time/<method>/smoke/` — S1, S13, veredact | **current** (smoke) |
+| 2026-10-03 | smoke | laptop | exp05_gas_consumption | `results/exp05_gas_consumption/<method>/smoke/` — S1, S13, S27, S34, veredact | **current** (smoke (no gas: in-process ledger)) |
+| — | pilot | EC2 | all six | `results/<exp>/<method>/pilot/` | to do |
+| — | experiment | EC2 | exp00_primitives | `results/exp00_primitives/<method>/experiment/` | to do |
+| — | experiment | EC2 | exp01_redaction_throughput | `results/exp01_redaction_throughput/<method>/experiment/` | to do |
+| — | experiment | EC2 | exp02_authorization_latency | `results/exp02_authorization_latency/<method>/experiment/` | to do |
+| — | experiment | EC2 | exp03_audit_efficiency | `results/exp03_audit_efficiency/<method>/experiment/` | to do |
+| — | experiment | EC2 | exp04_verification_time | `results/exp04_verification_time/<method>/experiment/` | to do |
+| — | experiment | EC2 | exp05_gas_consumption | `results/exp05_gas_consumption/<method>/experiment/` | to do |
+| 2026-09-29 – 2026-10-03 | smoke | laptop | old layout | `results/{exp1..exp5,primitives}/<run_id>/`, `results/S*_*.csv` | superseded (before the restructure; never used for the paper) |
 
-Plotting always uses the newest run of each experiment; check that it is the one marked current here.
-
-## 2. Decisions still yours (before step 7)
+## 2. Decisions still yours (before step 8)
 
 | # | Decision | Now | Recommendation |
 |:--|:--|:--|:--|
 | D3a | `ledger.validators` | 7 [CONFIRM] | keep 7 (one per organisation); the manuscript's "[TBD]-validator" takes this value |
 | D3b | `ledger.netem_delay_ms` | 10 [CONFIRM] | keep 10 unless the paper should model a WAN |
-| D3c | `experiments.exp1.zipf_rate` | 1000 [CONFIRM] | set from the pilot: below the lowest baseline saturation rate |
-| D3d | `meta.repetitions` | 30 [CONFIRM] | keep 30: the final manuscript states 30 runs |
+| D3c | `exp01_redaction_throughput.zipf_rate` | 1000 [CONFIRM] | set from the pilot: below the lowest baseline saturation rate |
+| D3d | repetitions | **decided 2026-10-03: one run per point** | manuscript text fix in `newchange.md` D1–D2 |
+| D8 | new dependencies `scipy` (significance tests) and `ruff` (lint/format gate) | not added | the significance test is hand-written and tested; `ruff` would make the brief's lint gate checkable |
 | D4 | SIS-PQCH distributed perturbation is spherical → statistical leakage of R over many adaptations | open | state as a limitation, or implement the distributed Genise–Micciancio perturbation (cost rises) |
 | D6 | SIS n = 256, q = 2^16 not checked with a lattice estimator for NIST level 3 | open | run the estimator before claiming level 3 for PQCH; does not change timings already measured |
 | D7 | Exp. 1 load generator shares the host with VPS, committee and 7 Besu validators | open | watch the pilot for "client-bound" notes; if they appear, add a client instance |
 
-## 3. What changed for the full run (2026-10-03)
+## 3. What changed (2026-10-03)
+
+### 3.1 Code aligned with the final manuscript
 
 | Area | Change | Why (final manuscript) |
 |:--|:--|:--|
@@ -73,7 +77,7 @@ Plotting always uses the newest run of each experiment; check that it is the one
 | Baseline [1] | "not redacted" proven with an RSA-accumulator non-membership witness per approving node | [1] Sec. III-C3 |
 | Baseline [13] | Update checks: old tag, CH collision, new tag | [13] Sec. III-B Redaction/Update |
 | Baseline [34] | ChVer by the redactor and by the AVNs | [34] Sec. V-C ChCld step 4 |
-| Primitives | new `make primitives` → tab:primitives, VeRedact-PQ and baseline primitives | tab:primitives |
+| Primitives | new primitive-timing experiment (now `exp00_primitives`) → tab:primitives, VeRedact-PQ and baseline primitives | tab:primitives |
 | Figures | panels follow the captions (Fig. 3 throughput/p95/adaptations, Fig. 4 amortized/per-batch, Fig. 6 breakdown, Fig. 7 total/amortized gas) | figure captions |
 | Laptop backend | pqcrypto ML-DSA signing retried when its rejection-sampling cap is hit (FIPS 204 loops until success) | sporadic test failure |
 | Setup cost | data-owner keys and signatures cached per process (seeded salts) | Exp. 1 re-runs setup per point: saves ≈ 13 h |
@@ -81,21 +85,37 @@ Plotting always uses the newest run of each experiment; check that it is the one
 Manuscript text the code now differs from: `overleaf/newchange.md` §A (cost-table cells for rc_i and the
 Phase 5 Auth check, f in ABRRR, Docker wording) and §B ([TBD]s the code already fixes).
 
+### 3.2 Restructure to the IEEE evaluation-code layout (option B)
+
+| Area | Before | Now |
+|:--|:--|:--|
+| Configs | `config/{smoke,pilot,experiment}.toml` + `schemes.toml` | `configs/base.yaml`, `datasets/`, `methods/`, `experiments/expNN_*.yaml`, `tiers/` (OmegaConf composition; resolved config saved per run) |
+| Code | `benchmark/veredact_bench/`, `experiment/S*/` | `src/veredact_bench/{data,methods,metrics,evaluation,reporting,utils}`; baselines in `methods/baselines/<method>/` |
+| Entry points | `python -m veredact_bench run …` | `scripts/run_eval.py`, `make_tables.py`, `make_figures.py`, `validate_config.py`, `capabilities.py`, `paper_reproduction.py` |
+| Repetitions | 30 per point | one run per point (author decision); Exp. 2–4 take `samples_per_point` measurements inside it |
+| Results | `results/<exp>/<run_id>/{rows.csv,manifest.json}` | `results/<experiment>/<method>/<tier>/{rows.csv,metrics.json,config_resolved.yaml,run_info.json,run.log}`; skip-if-done, `--force` |
+| Metrics | inline in plotting | `metrics/` pure functions + tests (percentile, CI, rates, Mann–Whitney U) |
+| Paper artifacts | `plot/*.png`, `plot/*.csv` | `paper/figures/*.pdf` (+ .png; IEEE column width, 8 pt, Okabe–Ito colours), `paper/tables/*.tex` (booktabs, best bold), `paper/MANIFEST.md` |
+| Logging | `print` | `logging`, one `run.log` per results folder |
+| Rust / contracts / tests | `benchmark/pqzk_stark`, `benchmark/contracts`, `benchmark/tests` + `experiment/*/s*_test.py` | `native/pqzk_stark`, `contracts/`, `tests/` (+ `tests/baselines/`) |
+| Dependencies | `benchmark/requirements.txt` (unpinned) | root `pyproject.toml`, pinned; `omegaconf` added (approved) |
+
 ## 4. Run time and cost (estimate)
 
-| Experiment | Points | Estimate |
+One run per point (2026-10-03), so the experiment tier is much shorter than the earlier 30-repetition estimate:
+
+| Experiment | Points (one run each) | Estimate |
 |:--|:--|:--|
-| primitives | 25 operations × 100 reps | minutes |
-| exp1 | 8 systems/variants × 30 reps × ≤ 10 points × ≈ 90 s | ≈ 60 h |
-| exp2 | 4 × 5 committee sizes × 6 batch sizes × 30 reps | ≈ 1–2 h |
-| exp3 + exp4 | 10 histories × n_Q up to 10^4 × 30 reps | ≈ 4–6 h |
-| exp5 | 5 systems × 2 skews × 6 batch sizes, Besu receipts | ≈ 1–2 h |
+| exp00_primitives | 25 operations × 100 samples | minutes |
+| exp01_redaction_throughput | 8 systems/variants × ≤ 10 points × ≈ 100 s (window + drain + setup) | ≈ 1.5–2.5 h |
+| exp02_authorization_latency | 4 × 5 committee sizes × 6 batch sizes × 30 samples | ≈ 0.5 h |
+| exp03 + exp04 | 10 histories × n_Q up to 10^4 × 30 samples | ≈ 0.5–1 h |
+| exp05_gas_consumption | 5 systems × 2 skews × 6 batch sizes, Besu receipts | ≈ 0.5 h |
 
-c7i.4xlarge in ap-southeast-1 ≈ US$ 0.9/h → ≈ US$ 60–70 for the experiment tier. Exp. 1 dominates; a lower
-`meta.repetitions` is the only large saving, and the manuscript states 30.
+c7i.4xlarge in ap-southeast-1 ≈ US$ 0.9/h → ≈ US$ 3–5 for the experiment tier (plus the pilot). The
+estimate is replaced by the measured `runtime_s` in each `run_info.json` after the run.
 
-## 5. Docs synced (2026-10-03, approved)
+## 5. Docs
 
-`docs/experiments.md`, `docs/paper-conformance.md`, `docs/baselines/S1-, S13-, S34-*.md`, `README.md` and the
-skill file describe the code above; the superseded `overleaf/New changes.tex` was removed (its role is now
-`overleaf/newchange.md`).
+`README.md`, `docs/*.md`, `docs/baselines/*.md`, the skill file and `data/README.md` describe the restructured
+layout (2026-10-03).
