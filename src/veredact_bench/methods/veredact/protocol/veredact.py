@@ -1,11 +1,5 @@
-"""VeRedact-PQ: Phases 3-6 on top of the shared ledger (Phases 1-2).
-
-Variants (paper, Sec. Evaluation):
-  batching   = "abrrr" (default) | "fixed" (Fixed-Batch) | "none" (Per-Request)
-  bimc       = True  | False (No-BIMC: independent Merkle update + PQCH adaptation per modification)
-  rezk       = False | True  (Re-ZK: committee re-verifies each PQZK proof instead of alpha_i)
-  per_record = False | True  (Per-Record Evidence: individual paths + full auth evidence per record)
-"""
+"""VeRedact-PQ: Phases 3-6 on top of the shared ledger (Phases 1-2). One configuration: ABRRR batching,
+BIMC coalescing, attestation-based Phase 4, query-scoped audit evidence (no internal variants)."""
 
 import math
 import os
@@ -37,14 +31,12 @@ class AuditResponse:
 class VeRedactPQ:
     name = "VeRedact-PQ"
 
-    def __init__(self, ledger: Ledger, cfg: dict, batching="abrrr", bimc=True, rezk=False, per_record=False):
+    def __init__(self, ledger: Ledger, cfg: dict):
         v = cfg["veredact"]
-        B_min, B_max, T_max_ms, fixed_B = v["B_min"], v["B_max"], v["T_max_ms"], v["fixed_batch"]
         self.L, self.c = ledger, ledger.c
         self.pending_anchor = []  # futures of ledger operations (ledger_ms is measured from these)
         self.last_finalization = None
-        self.batching, self.bimc, self.rezk, self.per_record = batching, bimc, rezk, per_record
-        self.B_min, self.B_max, self.T_max_ms, self.fixed_B = B_min, B_max, T_max_ms, fixed_B
+        self.B_min, self.B_max, self.T_max_ms = v["B_min"], v["B_max"], v["T_max_ms"]
         self.evidence: dict[bytes, dict] = {}  # off-ledger evidence store: RID -> full evidence
         self.auths: dict[bytes, BatchAuth] = {}
         self.records: list[RedactionRecord] = []
@@ -143,16 +135,12 @@ class VeRedactPQ:
         without defining f; here f = lambda_e * T_max (expected arrivals within T_max). |Q_e| is applied by
         the batcher (Exp. 1 closes a batch once |Q_e| >= B_e*); adding it to B_hat would keep B_hat above
         |Q_e| forever, so batches would only close at T_max or B_max."""
-        if self.batching == "none":
-            return 1
-        if self.batching == "fixed":
-            return self.fixed_B
         b_hat = arrival_rate * self.T_max_ms / 1000.0
         return min(self.B_max, max(self.B_min, math.ceil(b_hat)))
 
     def authorize(self, batch: list[ValidatedRequest]):
-        """Phase 4. self.last_breakdown (ms): attestation verification (+ C_VR reconstruction, Re-ZK proof
-        checks), state freshness, batch commitment, committee signing + verification."""
+        """Phase 4. self.last_breakdown (ms): attestation verification (+ C_VR reconstruction), state freshness,
+        batch commitment, committee signing + verification."""
         L, c = self.L, self.c
         bd = {"attest_ms": 0.0, "fresh_ms": 0.0, "commit_ms": 0.0, "committee_ms": 0.0}
         self.last_breakdown = bd
@@ -175,8 +163,6 @@ class VeRedactPQ:
                     vr.e_i,
                     h_proof,
                 )
-            if ok and self.rezk:  # Re-ZK variant: re-verify the PQZK proof
-                ok = c.zk_verify(vr.req.ID_r, ev["x"], ev["proof"], L.policies[vr.PID].threshold, vr.req.ts_r // 1000)
             t1 = time.perf_counter()
             bd["attest_ms"] += (t1 - t0) * 1000
             if not ok:
@@ -247,7 +233,7 @@ class VeRedactPQ:
             if not verify_proof(auth.R_VR, auth.leaves[i], i, auth.proofs[vr.RID]):
                 continue
             by_batch.setdefault(vr.b, []).append(vr)
-        prepared, finalized, chains = [], [], {}
+        prepared, finalized, groups = [], [], {}
         for b, reqs in by_batch.items():
             bt = L.batches[b]
             seen, exe = set(), []
@@ -260,17 +246,13 @@ class VeRedactPQ:
                 exe.append(vr)
             if not exe:
                 continue
-            chains[b] = [exe] if self.bimc else [[v] for v in exe]
-        # distributed SIS adaptation, one ABRRR round at a time: the combiner prepares (p_j, z_j) for every
-        # touched batch j, each of the t members returns S_k Z for the whole round, the combiner combines.
-        # Without BIMC a batch has a chain of groups (each adapts from the previous one's randomness), so
-        # the round proceeds level by level: level l holds the l-th group of every batch that has one.
-        for level in range(max((len(ch) for ch in chains.values()), default=0)):
+            groups[b] = exe  # BIMC: every modification of batch b shares one root transition
+        # distributed SIS adaptation for the whole ABRRR round: the combiner prepares (p_j, z_j) for every
+        # touched batch j, each of the t members returns S_k Z for the round, the combiner combines.
+        if groups:
             jobs = []
-            for b, chain in chains.items():
-                if level >= len(chain):
-                    continue
-                bt, grp = L.batches[b], chain[level]
+            for b, grp in groups.items():
+                bt = L.batches[b]
                 old_root, old_r = bt.tree.root, bt.r
                 changes, old = {}, {}
                 for vr in grp:
@@ -391,19 +373,11 @@ class VeRedactPQ:
             tau = rr.pbrp["tau_A"]
             by_shard.setdefault(L.rai.sid(tau), []).append(L.rai.shards[L.rai.sid(tau)].pos[tau])
         entries_bytes = 128 * len(records)
-        if self.per_record:  # individual path + complete authorization evidence per record
-            paths = sum(
-                len(L.rai.shards[s].tree.proof(p)) + len(L.rai.global_tree.proof(s))
-                for s, ps in by_shard.items()
-                for p in ps
-            )
-            auth_bytes = len(records) * self._auth_bytes()
-            proof_bytes = 32 * paths
-        else:  # query-scoped multiproof + shared batch evidence once per BID
-            mp = {s: L.rai.shards[s].tree.multiproof(ps) for s, ps in by_shard.items()}
-            gmp = L.rai.global_tree.multiproof(list(by_shard))
-            proof_bytes = 32 * (sum(len(v) for v in mp.values()) + len(gmp))
-            auth_bytes = len({rr.BID for rr in records}) * self._auth_bytes()
+        # query-scoped multiproof + shared batch evidence once per BID
+        mp = {s: L.rai.shards[s].tree.multiproof(ps) for s, ps in by_shard.items()}
+        gmp = L.rai.global_tree.multiproof(list(by_shard))
+        proof_bytes = 32 * (sum(len(v) for v in mp.values()) + len(gmp))
+        auth_bytes = len({rr.BID for rr in records}) * self._auth_bytes()
         rec_bytes = len(records) * (32 * 8 + L.c.sig.sig_size)  # per-record: eta, MP_B, C_VR, alpha, ...
         body = {"Q": Q, "records": records, "R_RAI": L.rai.root, "v_A": L.rai.snapshot}
         sigma = c.sign(L.audit_svc.sk, c.H(Q, len(records), L.rai.root, L.rai.snapshot))
@@ -452,12 +426,12 @@ class VeRedactPQ:
             _, ops = verify_multiproof(tree.root, leaves, tree.multiproof(list(leaves)), len(tree.levels) - 1)
             c.counts["T_H"] += ops
         bd["rai_mp_ms"] = (time.perf_counter() - t0) * 1000
-        # shared batch evidence once per BID (per record for the Per-Record variant)
+        # shared batch evidence: committee approvals verified once per BID
         checked = {}
         result = {}
         for rr in resp.records:
             t0 = time.perf_counter()
-            key = rr.BID if not self.per_record else (rr.BID, rr.RID)
+            key = rr.BID
             if key not in checked:
                 auth = self.auths[rr.BID]
                 msg = c.H(auth.C_B, auth.e)

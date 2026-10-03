@@ -1,8 +1,8 @@
 """Exp. 3 — audit efficiency, service side (manuscript Fig. 5).
 
-History: each system redacts the shared trace (untimed, common.build_history). VeRedact-PQ (and the
-Per-Record Evidence variant) is rebuilt per records_per_batch value, submitting the trace in authorization
-batches of exactly that size; baselines have no batches and run once.
+History: each system redacts the shared trace (untimed, common.build_history). VeRedact-PQ is rebuilt per
+records_per_batch value, submitting the trace in authorization batches of exactly that size; baselines have
+no batches and run once.
 Measured: audit() retrieval_ms (query resolution + evidence generation) and evidence_bytes, per n_Q.
 n_Q beyond what a system's history holds is recorded as unreachable (S1: one redaction per block).
 """

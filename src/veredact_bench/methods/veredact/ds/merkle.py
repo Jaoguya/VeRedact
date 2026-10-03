@@ -76,13 +76,6 @@ class MerkleTree:
             dirty = nxt
         return ops[0]
 
-    def update_independent(self, changes: dict[int, bytes]) -> int:
-        """No-BIMC variant: every modification recomputes its full path separately."""
-        total = 0
-        for pos, leaf in changes.items():
-            total += self.update({pos: leaf})
-        return total
-
 
 def verify_proof(root: bytes, leaf: bytes, pos: int, path: list[bytes]) -> bool:
     h = H("leaf", leaf)

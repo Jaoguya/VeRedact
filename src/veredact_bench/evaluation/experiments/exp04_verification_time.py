@@ -1,6 +1,6 @@
 """Exp. 4 — verification time, auditor side (manuscript Fig. 6), with fault injection.
 
-History as in Exp. 3 (VeRedact-PQ submitted in batches of veredact.fixed_batch). Per n_Q, level and
+History as in Exp. 3 (VeRedact-PQ submitted in batches of veredact.reference_batch). Per n_Q, level and
 injected fraction f: a seeded f * n_Q of the returned records are tampered (modified content,
 substituted evidence, stale version — cycled), the auditor verifies, and every record's decision is
 written. f = 0 (no injection) is always run: it is the clean verification time.
@@ -22,7 +22,7 @@ BREAKDOWN = ("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms"
 
 def run(cfg, out):
     x = cfg["experiment"]
-    for key, rpb, s, counts, ds in histories(cfg, out, [cfg["veredact"]["fixed_batch"]]):
+    for key, rpb, s, counts, ds in histories(cfg, out, [cfg["veredact"]["reference_batch"]]):
 
         def specs(s, n):
             for level in x["levels"]:

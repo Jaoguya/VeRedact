@@ -103,6 +103,93 @@ Find: `{exp1_redaction_throughput.png}` (and the four others)
 {exp1_redaction_throughput.pdf}
 ```
 
+## E. Variants and second settings removed (author decision 2026-10-04)
+
+The internal variants (Per-Request, Fixed-Batch, No-BIMC, Re-ZK, Per-Record Evidence) are no longer run,
+and every figure shows exactly one line per scheme (Exp. 3 at batch size 64, Exp. 4 normal audit, Exp. 5
+skew 0.8). The text below still describes them. Work from the bottom up.
+
+### E1. Lines 2943–2953 — Exp. 1: remove the variant list
+Find: `and~\cite{ref34}. In addition, three internal variants isolate the` … through `\end{enumerate}`
+```latex
+and~\cite{ref34}.
+```
+
+### E2. Lines 2981–2989 — Exp. 1 results (b): drop the variant comparisons, keep the ABRRR statements
+Find: `Fig.~\ref{fig:exp1_redaction}(b) shows that at low arrival rates` … through `benefit of coalesced Merkle updates and shared PQCH adaptation.`
+```latex
+Fig.~\ref{fig:exp1_redaction}(b) shows that batched execution adds a waiting time at low arrival rates,
+because a batch waits for additional requests; ABRRR bounds this wait by $T_{\max}$. Under heavy
+workloads, ABRRR enlarges batches toward $B_{\max}$, improving amortization.
+```
+
+### E3. Lines 3015–3017 — Exp. 2: remove the Re-ZK variant
+Find: `define no separate authorization step. An internal` … through `re-verify each PQZK proof instead of the VPS attestation $\alpha_i$.`
+```latex
+define no separate authorization step.
+```
+
+### E4. Lines 3036–3039 — Exp. 2 results (a): remove the Re-ZK sentence
+Find: `Re-ZK exhibits substantially higher latency because each batch requires` … through `without weakening request-level validation.`
+```latex
+(delete — nothing to paste)
+```
+
+### E5. Lines 3055–3057 — Exp. 3: records per batch is fixed, not varied
+Find: `$n_Q\in\{10,10^2,10^3,10^4\}$, while the average number of returned` … through `control evidence sharing.`
+```latex
+$n_Q\in\{10,10^2,10^3,10^4\}$, with records drawn from authorization batches of
+\textbf{[64]} requests.
+```
+
+### E6. Lines 3058–3061 — Exp. 3: remove the Per-Record Evidence variant
+Find: `Scheme~\cite{ref13} and Scheme~\cite{ref1}. An internal variant,` … through `query-scoped multiproof with shared batch evidence.`
+```latex
+Scheme~\cite{ref13} and Scheme~\cite{ref1}.
+```
+
+### E7. Lines 3081–3087 — Exp. 3 results: remove the Per-Record sentence and the clustering paragraph (no longer measured)
+Find: `Per-Record Evidence, which repeats complete authorization evidence for` … through `the multiproof continues to reduce redundant authentication paths.`
+```latex
+(delete — nothing to paste; the next sentence "Overall, the results show that …" stays)
+```
+
+### E8. Lines 3097–3103 — Exp. 4: normal audit only
+Find: `Experiment~3 under two verification levels: \textbf{Normal Audit},` … through `validation attestations, state-transition and PQCH checks, and PQZK` and the next line `verification.`
+```latex
+Experiment~3 for the \textbf{Normal Audit}, which verifies validation attestations and the committed
+$H(\pi_i^{PQ})$. Verification time is decomposed into response signature and query binding, RAI
+multiproof, committee approvals, validation attestations, and state-transition and PQCH checks.
+```
+
+### E9. Line 3114 — Fig. 6 caption
+Find: `versus number of verified records for normal and deep audits and`
+```latex
+versus number of verified records for the normal audit and
+```
+
+### E10. Lines 3122–3127 — Exp. 4 results (a): remove the deep-audit comparison
+Find: `approvals contribute only $t|\Omega_{Q_j}^B|T_V$. Deep-audit verification` … through `audits in which independent re-verification is required.`
+```latex
+approvals contribute only $t|\Omega_{Q_j}^B|T_V$. Routine audits therefore rely only on PQ-signed
+attestations and hash-based authentication; complete PQZK verification is reserved for challenged or
+forensic audits.
+```
+
+### E11. Lines 3151–3152 — Exp. 5: one skew
+Find: `ABRRR batch is varied as $m\in\{1,8,32,64,128,256\}$ under Zipf skews` and the next line `$s\in\{0,0.8\}$. The baselines were implemented as contracts that store`
+```latex
+ABRRR batch is varied as $m\in\{1,8,32,64,128,256\}$ under Zipf skew
+$s=0.8$. The baselines were implemented as contracts that store
+```
+
+### E12. Lines 3173–3175 — Exp. 5 results (b): no second skew to compare
+Find: `shows that the amortized gas per redaction decreases as $m$ increases,` … through `redactions share each checkpoint update.`
+```latex
+shows that the amortized gas per redaction decreases as $m$ increases, since more redactions share
+each checkpoint update.
+```
+
 ## C. After the full run — fill from `paper/` and `results/` (never from the papers)
 
 | Line(s) | What | Source |

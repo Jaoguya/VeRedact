@@ -30,22 +30,12 @@ from ..crypto import Crypto
 from .ledger import Ledger
 from .veredact import Rejection, VeRedactPQ
 
-VARIANTS = {
-    "veredact": {},
-    "per_request": {"batching": "none"},
-    "fixed_batch": {"batching": "fixed"},
-    "no_bimc": {"bimc": False},
-    "re_zk": {"rezk": True},
-    "per_record_evidence": {"per_record": True},
-}
-
 
 class VeRedactScheme(Scheme):
-    def __init__(
-        self, cfg: dict, variant: str = "veredact", committee_n: int | None = None, committee_t: int | None = None
-    ):
-        self.cfg, self.variant = cfg, variant
-        self.key = "veredact" if variant == "veredact" else f"veredact:{variant}"
+    key = "veredact"
+
+    def __init__(self, cfg: dict, committee_n: int | None = None, committee_t: int | None = None):
+        self.cfg = cfg
         self.n = committee_n or cfg["veredact"]["committee_n"]
         self.t = committee_t or cfg["veredact"]["committee_t"]
         self._last_submitted = None
@@ -67,7 +57,7 @@ class VeRedactScheme(Scheme):
         # signatures; Phase 4 adds (1 attestation verify) per request and t signatures + t verifications per BATCH.
         return AuthCost(
             signature_verifications=2,
-            proof_verifications=1 + (1 if self.variant == "re_zk" else 0),
+            proof_verifications=1,
             signatures_generated=2,
             consensus_blocks=0,
             round_trips=0,
@@ -79,7 +69,7 @@ class VeRedactScheme(Scheme):
         self.anchor = make_anchor(self.cfg)
         self.ledger = Ledger(self.cfg, self.crypto, self.anchor, self.n, self.t)
         self.ledger.commit_transactions(dataset.transactions)
-        self.p = VeRedactPQ(self.ledger, self.cfg, **VARIANTS[self.variant])
+        self.p = VeRedactPQ(self.ledger, self.cfg)
         self.crypto.reset()
 
     def prepare(self, req: RedactionRequest):

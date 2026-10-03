@@ -7,7 +7,7 @@ Pipeline (identical for every system; only the Scheme behind it changes):
             Stale requests (Phase 3 freshness, Phase 4/5 stale/conflict) go back to a requester thread,
             are re-proved and resubmitted, as the manuscript specifies ("returned for revalidation").
   workers   [veredact.vps_workers] threads call authorize() (Phase 3 / the baseline's authorization).
-  executor  one thread forms batches — VeRedact: B_e* from ABRRR (or the variant's rule), flushed at
+  executor  one thread forms batches — VeRedact: B_e* from ABRRR, flushed at
             B_e* or T_max; baselines: 1 (their papers redact per request) — and calls redact().
   finality  VeRedact returns a ledger Future; its receipt time is the request's completion. Baselines
             block on the receipt inside redact().

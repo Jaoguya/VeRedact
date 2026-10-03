@@ -14,7 +14,7 @@ from veredact_bench.reporting.load import metrics, num, rows
 from veredact_bench.utils.config import REPO_ROOT, load
 
 OUT = REPO_ROOT / "paper" / "tables"
-ORDER = ["veredact", "S1", "S13", "S27", "S34"]
+ORDER = list(style.PAPER_METHODS)
 
 
 def sym_tex(symbol: str) -> str:
@@ -81,7 +81,9 @@ def _samples(tier):
     r2 = rows("exp02_authorization_latency", tier)
     sizes = {int(r["batch_size"]) for r in r2 if r["system"].startswith("veredact")}
     n0 = str(cfg["veredact"]["committee_n"])  # VeRedact-PQ at its default batch (or the largest one run)
-    m0 = str(cfg["veredact"]["fixed_batch"] if cfg["veredact"]["fixed_batch"] in sizes else max(sizes, default=1))
+    m0 = str(
+        cfg["veredact"]["reference_batch"] if cfg["veredact"]["reference_batch"] in sizes else max(sizes, default=1)
+    )
     e2 = {}
     for r in r2:
         if r["committee_n"] == n0 and r["batch_size"] == (m0 if r["system"].startswith("veredact") else "1"):
@@ -110,7 +112,8 @@ def _samples(tier):
 
 
 def table_significance(tier, written):
-    data = _samples(tier)
+    data = {t: {k: v for k, v in d.items() if k in ORDER} for t, d in _samples(tier).items()}  # five schemes only
+    data = {t: d for t, d in data.items() if d}
     if not data:
         return
     methods = [k for k in ORDER if any(k in d for d in data.values())]

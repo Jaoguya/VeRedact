@@ -40,7 +40,7 @@ authorization timer. The registry (`veredact_bench/registry.py`) is the only pla
 
 | Key | System | Implementation | Boundaries |
 |:--|:--|:--|:--|
-| `veredact` (+ `:per_request` `:fixed_batch` `:no_bimc` `:re_zk` `:per_record_evidence`) | VeRedact-PQ | `src/veredact_bench/methods/veredact/` | this file |
+| `veredact` | VeRedact-PQ (no internal variants since 2026-10-04) | `src/veredact_bench/methods/veredact/` | this file |
 | `S1` | Li et al. [1] Improved DCH on Jia's chain | `src/veredact_bench/methods/baselines/s01_improved_dch/adapter.py` | `docs/baselines/S1-improved-dch.md` |
 | `S13` | Zhang et al. [13] EAQ-VRBC | `src/veredact_bench/methods/baselines/s13_eaq_vrbc/adapter.py` | `docs/baselines/S13-eaq-vrbc.md` |
 | `S27` | Liu et al. [27] ETCH | `src/veredact_bench/methods/baselines/s27_etch/adapter.py` | `docs/baselines/S27-etch.md` |
@@ -74,13 +74,16 @@ Where this differs from manuscript Table I, the code is right and the table must
 | Exp | Fig. | Systems (config) | What is measured | Notes |
 |:--|:--|:--|:--|:--|
 | exp00_primitives | tab:primitives | VeRedact-PQ + each baseline's own primitives | per-operation time, `samples_per_point` calls, fresh inputs | VeRedact-PQ on the protocol's own Crypto facade; baselines on their construction modules at `[baselines.*]` parameters |
-| 1 | 3 | all five + 3 variants | open-loop, real time: per-request latency submit → finalized, goodput, per-stage times | client threads prove at arrival; VPS worker pool; ABRRR batcher (B_e\* from λ̂, T_max); stale requests returned for revalidation (manuscript Phases 4/5); saturation = decided/offered < 1 − tol stops the rate sweep; load-generator shortfall recorded separately |
-| 2 | 4 | veredact, re_zk, S1, S34 | Phase 3 per request + Phase 4 per batch, split into attestation / freshness / commitment / committee; baselines' own authorization | committee axis maps to each system's own distribution parameter (S1 nodes, S34 policy attributes); baselines have no batch axis (b = 1). S13 (key possession) and S27 (threshold only inside Adapt) define no authorization step |
-| 3 | 5 | veredact, per_record_evidence, S13, S1 | audit response generation time + size vs n_Q, records per batch | n_Q above a system's history is recorded `unreachable` (S1: one redaction per block) |
-| 4 | 6 | veredact, S13, S1 | auditor verification time split by step (Fig. 6(b)); normal/deep; injected modified/substituted/stale records | per-record decisions written; S13's aggregate decision shows as false rejections |
-| 5 | 7, VIII | all five | gas from Besu receipts per on-chain transaction | anchor receipt log; no receipts on the in-process ledger (refused in the experiment tier) |
+| 1 | 3 | all five | open-loop, real time: per-request latency submit → finalized, goodput, per-stage times | client threads prove at arrival; VPS worker pool; ABRRR batcher (B_e\* from λ̂, T_max); stale requests returned for revalidation (manuscript Phases 4/5); saturation = decided/offered < 1 − tol stops the rate sweep; load-generator shortfall recorded separately |
+| 2 | 4 | veredact, S1, S34 | Phase 3 per request + Phase 4 per batch, split into attestation / freshness / commitment / committee; baselines' own authorization | committee axis maps to each system's own distribution parameter (S1 nodes, S34 policy attributes); baselines have no batch axis (b = 1). S13 (key possession) and S27 (threshold only inside Adapt) define no authorization step |
+| 3 | 5 | veredact, S13, S1 | audit response generation time + size vs n_Q (VeRedact-PQ at batch size `reference_batch`) | n_Q above a system's history is recorded `unreachable` (S1: one redaction per block) |
+| 4 | 6 | veredact, S13, S1 | auditor verification time split by step (Fig. 6(b)); normal audit; injected modified/substituted/stale records | per-record decisions written; S13's aggregate decision shows as false rejections |
+| 5 | 7, VIII | all five | gas from Besu receipts per on-chain transaction, skew `workload.zipf_s` | anchor receipt log; no receipts on the in-process ledger (refused in the experiment tier) |
 
-Rows 1–5 above are `exp01_redaction_throughput` … `exp05_gas_consumption`. One run per configuration point
+Rows 1–5 above are `exp01_redaction_throughput` … `exp05_gas_consumption`. Figures draw exactly one line per scheme
+(VeRedact-PQ and Schemes [1], [13], [27], [34]); there are no internal variants and no second setting of a
+scheme (author decisions 2026-10-04, following the ZK-Redact evaluation, where ablations are points of the
+scheme's own sweep, e.g. batch size m = 1 in Exp. 2). One run per configuration point
 (no repetitions): Exp. 1 statistics come from every request of the run, Exp. 2–4 from `samples_per_point`
 batches / queries inside it.
 

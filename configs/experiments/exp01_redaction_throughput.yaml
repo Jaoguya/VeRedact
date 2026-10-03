@@ -3,7 +3,6 @@ experiment:
   id: exp01_redaction_throughput
   paper: [fig:exp1_redaction]
   systems: [veredact, S1, S13, S27, S34]
-  variants: [per_request, fixed_batch, no_bimc]
   rates: [100, 250, 500, 1000, 2000, 5000]   # [DERIVED] manuscript [100] .. [5,000] req/s
   zipf_sweep: [0.0, 0.4, 0.8, 1.2]           # [DERIVED] manuscript Exp. 1
   zipf_rate: 1000               # [CONFIRM] fixed rate for the skew sweep (below every system's saturation: from the pilot)

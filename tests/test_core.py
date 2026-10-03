@@ -29,7 +29,7 @@ def test_merkle_proofs_and_bimc():
     changes = {p: os.urandom(32) for p in pos}
     coalesced, independent = MerkleTree(leaves), MerkleTree(leaves)
     ops_bimc = coalesced.update(changes)
-    ops_indep = independent.update_independent(changes)
+    ops_indep = sum(independent.update({p: v}) for p, v in changes.items())  # one path per modification
     assert coalesced.root == independent.root
     assert ops_bimc < ops_indep  # shared paths computed once
 

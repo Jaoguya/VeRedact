@@ -3,7 +3,7 @@ experiment:
   id: exp03_audit_efficiency
   paper: [fig:exp3_audit]
   systems: [veredact, S13, S1]  # only systems with an audit/consistency path
-  variants: [per_record_evidence]
   n_Q: [10, 100, 1000, 10000]                # [DERIVED] manuscript
-  records_per_batch: [1, 4, 16, 64]          # [DERIVED] manuscript 1 .. [64]
+  records_per_batch: [64]       # [DERIVED] = veredact.reference_batch: one VeRedact-PQ setting (author decision
+                                #   2026-10-04: one line per scheme, no second setting)
   samples_per_point: 30         # [PROPOSED] audit queries per (system, records per batch, n_Q) in the one run

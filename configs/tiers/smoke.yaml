@@ -25,6 +25,6 @@ experiments:
     client_threads: 2
     drain_s: 5
   exp02_authorization_latency: {committee_sizes: [4, 7], batch_sizes: [1, 8], samples_per_point: 2}
-  exp03_audit_efficiency: {n_Q: [10, 50], records_per_batch: [1, 8], samples_per_point: 2}
+  exp03_audit_efficiency: {n_Q: [10, 50], records_per_batch: [8], samples_per_point: 2}
   exp04_verification_time: {n_Q: [10, 50], samples_per_point: 2}
   exp05_gas_consumption: {batch_sizes: [1, 8, 32], requests_per_point: 64}

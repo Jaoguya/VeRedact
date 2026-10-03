@@ -77,7 +77,7 @@ def test_s1_one_redaction_per_block(cfg, ds):
 def test_audits_detect_tampering_with_their_own_granularity(cfg, ds):
     for key in ("veredact", "S1", "S13"):
         s = open_system(cfg, key, ds)
-        build_history(s, ds.trace, cfg["veredact"]["fixed_batch"] if key == "veredact" else 1)
+        build_history(s, ds.trace, cfg["veredact"]["reference_batch"] if key == "veredact" else 1)
         if hasattr(s, "index_records"):
             s.index_records()
         n = 4
@@ -94,5 +94,5 @@ def test_audits_detect_tampering_with_their_own_granularity(cfg, ds):
 
 def test_registry_knows_every_configured_system(cfg):
     for _exp, x in load_all("smoke")["experiments"].items():
-        for key in x.get("systems", []) + [f"veredact:{v}" for v in x.get("variants", [])]:
+        for key in x.get("systems", []):
             make(cfg, key)

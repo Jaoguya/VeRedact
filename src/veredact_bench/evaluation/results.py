@@ -88,7 +88,7 @@ def show(path) -> str:
 
 
 def method_dir(method: str) -> str:
-    return method.replace(":", "-")  # veredact:per_request -> veredact-per_request
+    return method.replace(":", "-")  # folder-safe method name
 
 
 class RunWriter:

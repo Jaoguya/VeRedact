@@ -10,12 +10,16 @@ it produced. `results/` is gitignored: it exists only on the machine that ran it
 instance) and is **not on GitHub**; `paper/` (generated tables + figures) is committed.
 `deploy/aws/fetch_results.sh` copies the server's `results/` and `paper/` into this checkout.
 
+**Smoke runs prove nothing.** The smoke tier only checks code paths, stale code and mistakes (does every
+experiment and method run, are all files written, does anything crash). Its numbers are never read,
+compared or reported; results come only from the experiment tier on the server.
+
 | # | Step | Command | Status | Result stored at |
 |:-:|:--|:--|:--|:--|
 | 1 | Code aligned with the final manuscript | — | **done** 2026-10-03 | commit `c86a97d` (what changed: §3) |
 | 2 | Restructure to the IEEE evaluation-code layout (option B: YAML configs, `src/`, one run per point) | — | **done** 2026-10-03 | commit `f93f640` on GitHub `main` (what changed: §3.2) |
 | 3 | Tests + lint | `make test lint` | **done** 2026-10-03 | console only: 44 passed; ruff clean |
-| 4 | Local smoke from a fresh `.venv` (laptop, in-process ledger) | `make all TIER=smoke FORCE=--force` | **done** 2026-10-03 (11 min, no errors) | laptop: `results/<exp>/<method>/smoke/` (§1.1); `paper/tables/*.tex`, `paper/figures/*.pdf` (smoke numbers, not for the paper) |
+| 4 | Local smoke from a fresh `.venv` (laptop, in-process ledger) | `make all TIER=smoke FORCE=--force` | **done** 2026-10-04 (7 min, no errors; after removing variants) | laptop: `results/<exp>/<method>/smoke/` (§1.1); `paper/tables/*.tex`, `paper/figures/*.pdf` (code-path check only; numbers not used) |
 | 5 | Start the server | `deploy/aws/provision_ec2.sh` | to do | instance id → `deploy/aws/.instance` (gitignored) |
 | 6 | Server smoke (Besu + liboqs + STARK build) | `deploy/aws/launch_run.sh smoke` | to do | server: `results/<exp>/<method>/smoke/`, log `results/logs/smoke_*.log` |
 | 7 | Pilot | `deploy/aws/launch_run.sh pilot` | to do | server: `results/<exp>/<method>/pilot/`, log `results/logs/pilot_*.log` |
@@ -33,12 +37,12 @@ Mapping to the manuscript: `paper/MANIFEST.md`.
 
 | Date | Tier | Machine | Experiments | Location | Status |
 |:--|:--|:--|:--|:--|:--|
-| 2026-10-03 | smoke | laptop | exp00_primitives | `results/exp00_primitives/<method>/smoke/` — S1, S13, S27, S34, veredact | **current** (smoke) |
-| 2026-10-03 | smoke | laptop | exp01_redaction_throughput | `results/exp01_redaction_throughput/<method>/smoke/` — S1, S13, S27, S34, veredact, veredact-fixed_batch, veredact-no_bimc, veredact-per_request | **current** (smoke) |
-| 2026-10-03 | smoke | laptop | exp02_authorization_latency | `results/exp02_authorization_latency/<method>/smoke/` — S1, S34, veredact, veredact-re_zk | **current** (smoke) |
-| 2026-10-03 | smoke | laptop | exp03_audit_efficiency | `results/exp03_audit_efficiency/<method>/smoke/` — S1, S13, veredact, veredact-per_record_evidence | **current** (smoke) |
-| 2026-10-03 | smoke | laptop | exp04_verification_time | `results/exp04_verification_time/<method>/smoke/` — S1, S13, veredact | **current** (smoke) |
-| 2026-10-03 | smoke | laptop | exp05_gas_consumption | `results/exp05_gas_consumption/<method>/smoke/` — S1, S13, S27, S34, veredact | **current** (smoke (no gas: in-process ledger)) |
+| 2026-10-04 | smoke | laptop | exp00_primitives | `results/exp00_primitives/<method>/smoke/` — S1, S13, S27, S34, veredact | **current** (code-path check only) |
+| 2026-10-04 | smoke | laptop | exp01_redaction_throughput | `results/exp01_redaction_throughput/<method>/smoke/` — S1, S13, S27, S34, veredact | **current** (code-path check only) |
+| 2026-10-04 | smoke | laptop | exp02_authorization_latency | `results/exp02_authorization_latency/<method>/smoke/` — S1, S34, veredact | **current** (code-path check only) |
+| 2026-10-04 | smoke | laptop | exp03_audit_efficiency | `results/exp03_audit_efficiency/<method>/smoke/` — S1, S13, veredact | **current** (code-path check only) |
+| 2026-10-04 | smoke | laptop | exp04_verification_time | `results/exp04_verification_time/<method>/smoke/` — S1, S13, veredact | **current** (code-path check only) |
+| 2026-10-04 | smoke | laptop | exp05_gas_consumption | `results/exp05_gas_consumption/<method>/smoke/` — S1, S13, S27, S34, veredact | **current** (code-path check only; no gas: in-process ledger) |
 | — | pilot | EC2 | all six | `results/<exp>/<method>/pilot/` | to do |
 | — | experiment | EC2 | exp00_primitives | `results/exp00_primitives/<method>/experiment/` | to do |
 | — | experiment | EC2 | exp01_redaction_throughput | `results/exp01_redaction_throughput/<method>/experiment/` | to do |
@@ -108,10 +112,10 @@ One run per point (2026-10-03), so the experiment tier is much shorter than the 
 | Experiment | Points (one run each) | Estimate |
 |:--|:--|:--|
 | exp00_primitives | 25 operations × 100 samples | minutes |
-| exp01_redaction_throughput | 8 systems/variants × ≤ 10 points × ≈ 100 s (window + drain + setup) | ≈ 1.5–2.5 h |
-| exp02_authorization_latency | 4 × 5 committee sizes × 6 batch sizes × 30 samples | ≈ 0.5 h |
-| exp03 + exp04 | 10 histories × n_Q up to 10^4 × 30 samples | ≈ 0.5–1 h |
-| exp05_gas_consumption | 5 systems × 2 skews × 6 batch sizes, Besu receipts | ≈ 0.5 h |
+| exp01_redaction_throughput | 5 schemes × ≤ 10 points × ≈ 100 s (window + drain + setup) | ≈ 1–1.5 h |
+| exp02_authorization_latency | 3 × 5 committee sizes × 6 batch sizes × 30 samples | ≈ 0.3 h |
+| exp03 + exp04 | 6 histories × n_Q up to 10^4 × 30 samples | ≈ 0.3–0.5 h |
+| exp05_gas_consumption | 5 schemes × 1 skew × 6 batch sizes, Besu receipts | ≈ 0.3 h |
 
 c7i.4xlarge in ap-southeast-1 ≈ US$ 0.9/h → ≈ US$ 3–5 for the experiment tier (plus the pilot). The
 estimate is replaced by the measured `runtime_s` in each `run_info.json` after the run.
