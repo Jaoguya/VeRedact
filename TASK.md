@@ -20,9 +20,9 @@ compared or reported; results come only from the experiment tier on the server.
 | 2 | Restructure to the IEEE evaluation-code layout (option B: YAML configs, `src/`, one run per point) | — | **done** 2026-10-03 | commit `f93f640` on GitHub `main` (what changed: §3.2) |
 | 3 | Tests + lint | `make test lint` | **done** 2026-10-03 | console only: 44 passed; ruff clean |
 | 4 | Local smoke from a fresh `.venv` (laptop, in-process ledger) | `make all TIER=smoke FORCE=--force` | **done** 2026-10-04 (7 min, no errors; after removing variants) | laptop: `results/<exp>/<method>/smoke/` (§1.1); `paper/tables/*.tex`, `paper/figures/*.pdf` (code-path check only; numbers not used) |
-| 5 | Start the server | `deploy/aws/provision_ec2.sh` | to do | instance id → `deploy/aws/.instance` (gitignored) |
-| 6 | Server smoke (Besu + liboqs + STARK build) | `deploy/aws/launch_run.sh smoke` | to do | server: `results/<exp>/<method>/smoke/`, log `results/logs/smoke_*.log` |
-| 7 | Pilot | `deploy/aws/launch_run.sh pilot` | to do | server: `results/<exp>/<method>/pilot/`, log `results/logs/pilot_*.log` |
+| 5 | Start the server | `deploy/aws/provision_ec2.sh` | **done** (existing instance `i-0d832e0ca1fb0c9db` reused; started by `launch_run.sh` 2026-10-04, bootstrap + 46 tests passed on the server) | `deploy/aws/.instance` (gitignored) |
+| 6 | Server smoke (Besu + liboqs + STARK build) | `deploy/aws/launch_run.sh smoke` | **done** 2026-10-04 (4 min, no errors, liboqs ML-DSA-65; code-path check only) | server: `results/<exp>/<method>/smoke/`, log `results/logs/smoke_*.log` |
+| 7 | Pilot | `deploy/aws/launch_run.sh pilot` | **done** 2026-10-04, fetched; sets D7, D9–D11 | server: `results/<exp>/<method>/pilot/`, log `results/logs/pilot_*.log` |
 | 8 | Full experiment | `deploy/aws/launch_run.sh experiment` | to do | server: `results/<exp>/<method>/experiment/`, log `results/logs/experiment_*.log` |
 | 9 | Fetch results + paper artifacts | `deploy/aws/fetch_results.sh` | to do | laptop: `results/`, `paper/tables/*.tex`, `paper/figures/*.pdf` |
 | 10 | Stop paying | `deploy/aws/teardown_ec2.sh` | to do | — (the idle watchdog powers off after 30 min idle anyway) |
@@ -43,7 +43,8 @@ Mapping to the manuscript: `paper/MANIFEST.md`.
 | 2026-10-04 | smoke | laptop | exp03_audit_efficiency | `results/exp03_audit_efficiency/<method>/smoke/` — S1, S13, veredact | **current** (code-path check only) |
 | 2026-10-04 | smoke | laptop | exp04_verification_time | `results/exp04_verification_time/<method>/smoke/` — S1, S13, veredact | **current** (code-path check only) |
 | 2026-10-04 | smoke | laptop | exp05_gas_consumption | `results/exp05_gas_consumption/<method>/smoke/` — S1, S13, S27, S34, veredact | **current** (code-path check only; no gas: in-process ledger) |
-| — | pilot | EC2 | all six | `results/<exp>/<method>/pilot/` | to do |
+| 2026-10-04 | smoke | EC2 | all six | server `results/<exp>/<method>/smoke/` | **current** (code-path check only; not fetched) |
+| 2026-10-04 | pilot | EC2 | all six | `results/<exp>/<method>/pilot/` (24 folders, fetched) + `paper/` | **done** 2026-10-04 (attempt 6, ~3.5 h; pilot exp04 n_Q capped at 10^3; attempts 1–4 stopped by harness bugs, fixed: QBFT extraData middleware, nonce reuse across points, executor outliving its point, serial ledger sender capped ~80 tx/s; Exp. 1 pilot results of attempts 1–4 deleted) |
 | — | experiment | EC2 | exp00_primitives | `results/exp00_primitives/<method>/experiment/` | to do |
 | — | experiment | EC2 | exp01_redaction_throughput | `results/exp01_redaction_throughput/<method>/experiment/` | to do |
 | — | experiment | EC2 | exp02_authorization_latency | `results/exp02_authorization_latency/<method>/experiment/` | to do |
@@ -58,12 +59,18 @@ Mapping to the manuscript: `paper/MANIFEST.md`.
 |:--|:--|:--|:--|
 | D3a | `ledger.validators` | 7 [CONFIRM] | keep 7 (one per organisation); the manuscript's "[TBD]-validator" takes this value |
 | D3b | `ledger.netem_delay_ms` | 10 [CONFIRM] | keep 10 unless the paper should model a WAN |
-| D3c | `exp01_redaction_throughput.zipf_rate` | 1000 [CONFIRM] | set from the pilot: below the lowest baseline saturation rate |
+| D3c | `exp01_redaction_throughput.zipf_rate` | **100 [DERIVED]** | see D10 |
 | D3d | repetitions | **decided 2026-10-03: one run per point** | manuscript text fix in `newchange.md` D1–D2 |
 | D8 | new dependencies `scipy` and `ruff` | **decided 2026-10-03: both added** | scipy 1.18.1 (Mann–Whitney U, t-based CI in `metrics/`); ruff 0.16.10 (`make lint`: check + format, clean on 82 files) |
 | D4 | SIS-PQCH distributed perturbation is spherical → statistical leakage of R over many adaptations | open | state as a limitation, or implement the distributed Genise–Micciancio perturbation (cost rises) |
 | D6 | SIS n = 256, q = 2^16 not checked with a lattice estimator for NIST level 3 | open | run the estimator before claiming level 3 for PQCH; does not change timings already measured |
-| D7 | Exp. 1 load generator shares the host with VPS, committee and 7 Besu validators | open | watch the pilot for "client-bound" notes; if they appear, add a client instance |
+| D7 | Exp. 1 load generator shares the host with VPS, committee and 7 Besu validators | **open — pilot confirmed it** | VeRedact-PQ is client-bound already at 100 req/s (requester PQZK proving ≈ 10.7 ms CPU each on the shared host). Options: A prove ahead of the window, B second client instance, C cap Exp. 1 at what one host drives |
+| D9 | S1 in Exp. 1: one redaction per block (Jia's rule) | **decided 2026-10-04** | kept as a real limit of S1; text item `overleaf/newchange.md` F1 |
+| D10 | Exp. 1 rates and `zipf_rate` | **decided 2026-10-04** | rates = manuscript [100]–[5,000] unchanged; `zipf_rate` = 100 (manuscript: skew sweep "at a fixed arrival rate", its lowest rate); Fig. 3(c) counts every finalized redaction of a point so saturated schemes still have a value |
+| D11 | S13 audit cost in Exp. 3–4 | **decided 2026-10-04** | Exp. 4: each S13 response built once per (n_Q, fault fraction), verified samples_per_point times (`AuditQuery.reuse_response`, fidelity-tested); Exp. 3: 5 samples for S13 at n_Q = 10^4 (`samples_override`) |
+| D13 | Paper artifacts not in the manuscript | **decided 2026-10-04** | `exp4_granularity` figure and `tab_significance` table deleted (with the Mann–Whitney code); only the manuscript's 5 figures and 2 tables are produced |
+| D12 | Exp. 1 early stop vs VeRedact-PQ revalidation storms | **decided 2026-10-04** | stop only after `saturation_patience` = 2 consecutive saturated rates (same rule for every scheme; literally every rate would cost S34 ~8 h of untimed setup); metrics.json reports `decided` and `revalidations` per point. Warm-up point removed (cold start disproven) |
+| F1 | Pilot false-positive check (2026-10-04) | **fixed** | (1) block watcher fetched one receipt per tx serially → finality inflated for every scheme above ~80 tx/s: now one `eth_getBlockReceipts` per block; (2) S13 recomputed the accumulated product per audited record: now once per audit (identical witnesses, tested); (3) STARK proofs used all cores and only 4 requester threads: now winterfell built without `concurrent` (each proof single-core on its requester thread; T_ZP single-core) and `client_threads: 16`; (4) idle watchdog never powered off (system python3 cannot import veredact_bench → `set -u` exit): venv python + 30 min fail-safe; (5) reader-preferring RWLock starved the executor under continuous authorizations (S1 at 250 req/s: 4,865 authorized, 0 executed): now writer-preferring, regression-tested; (6) queue_ms < 0 after a resubmission: timings now describe the last attempt. Pilot exp00 + exp01 re-run with these fixes: done 2026-10-04 08:41 UTC, fetched to `results/exp0{0,1}_*/<method>/pilot/`; server stopped |
 
 ## 3. What changed (2026-10-03)
 

@@ -72,6 +72,8 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
 
     def send_back(r):
         st = stamp[r.seq]
+        for k in ("exec_start", "exec_done", "batch_size", "batch_id", "batch_adaptations"):
+            st.pop(k, None)  # timings describe the request's last attempt (else queue_ms < 0 after a resubmission)
         st.update(status="revalidating", revalidations=st.get("revalidations", 0) + 1)
         revalq.put(r)
 
@@ -95,7 +97,9 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         veredact = is_veredact(s)
         t_max = cfg["veredact"]["T_max_ms"] / 1000 if veredact else 0.0
         buf, enq, arrivals = [], [], []  # enq[i] = when buf[i] entered the pending queue Q_e
-        while not (stop.is_set() and validated.empty() and not buf):
+        # stop = drain window over: requests still queued stay 'unfinished' (a saturated point), and the
+        # executor exits so no transaction of this point reaches the ledger after the next point starts
+        while not stop.is_set():
             try:
                 a = validated.get(timeout=0.005)
                 buf.append(a)
@@ -161,7 +165,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         admit.put(None)
     for _ in workers_r:
         revalq.put(None)
-    ex.join(timeout=x["drain_s"])
+    ex.join()  # returns after the batch in progress: the next point's anchor must not share the account
     s.teardown()
 
     # rows + decisions over the measurement cohort: valid requests whose ARRIVAL falls in the window
@@ -219,10 +223,11 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
 
 def run(cfg, out):
     x = cfg["experiment"]
-    tol = x["saturation_tolerance"]
+    tol, patience = x["saturation_tolerance"], x["saturation_patience"]
     for key in system_keys(cfg):  # one run per point (no repetitions): every request of the run is a sample
         if not out.begin(key):
             continue
+        saturated = 0
         for rate in x["rates"]:  # rate sweep at the default skew
             ratio, client = run_point(cfg, key, rate, cfg["workload"]["zipf_s"], out, "rate")
             if client < 1 - tol:
@@ -231,8 +236,13 @@ def run(cfg, out):
                     "window on time — client-bound, not system-bound; higher rates skipped"
                 )
                 break
-            if ratio < 1 - tol:
-                out.note(f"{x['id']} {key}: saturated at {rate} req/s; higher rates skipped")
+            # one point below 1 - tol does not end the sweep: VeRedact-PQ's batch-version freshness can tip a
+            # point into a revalidation storm by chance (pilot: same point 17-61 % or 100 % decided)
+            saturated = saturated + 1 if ratio < 1 - tol else 0
+            if saturated >= patience:
+                out.note(
+                    f"{x['id']} {key}: saturated at {patience} consecutive rates up to {rate} req/s; higher skipped"
+                )
                 break
         for zs in x["zipf_sweep"]:  # skew sweep at a fixed rate
             run_point(cfg, key, x["zipf_rate"], zs, out, "skew")

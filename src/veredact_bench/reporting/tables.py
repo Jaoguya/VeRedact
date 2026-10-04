@@ -2,8 +2,7 @@
 
 tab_primitives.tex    tab:primitives  median (95% CI) of every primitive, VeRedact-PQ then the baselines
 tab_gas.tex           tab:gas         VeRedact-PQ gas per contract operation (median over transactions)
-tab_significance.tex  reviewer table: each experiment's headline metric per method, best bold, second
-                      underlined, Mann-Whitney p-value of every baseline against VeRedact-PQ
+Only the manuscript's tables are written (author decision 2026-10-04).
 """
 
 import re
@@ -11,7 +10,7 @@ import re
 from veredact_bench import metrics as M
 from veredact_bench.reporting import style
 from veredact_bench.reporting.load import metrics, num, rows
-from veredact_bench.utils.config import REPO_ROOT, load
+from veredact_bench.utils.config import REPO_ROOT
 
 OUT = REPO_ROOT / "paper" / "tables"
 ORDER = list(style.PAPER_METHODS)
@@ -65,88 +64,8 @@ def table_gas(tier, written):
     _write("tab_gas", body, written)
 
 
-def _samples(tier):
-    """experiment headline -> {method: per-sample values}; lower is better for every metric here."""
-    out = {}
-    r1 = rows("exp01_redaction_throughput", tier)
-    fin = [r for r in r1 if r.get("sweep") == "rate" and r["status"] == "finalized" and r["in_window"] == "1"]
-    by = {}
-    for r in fin:
-        by.setdefault(r["system"], {}).setdefault(num(r["rate_rps"]), []).append(num(r["latency_ms"]))
-    common = set.intersection(*(set(d) for d in by.values())) if by else set()
-    if common:
-        rate = max(common)
-        out[f"Exp. 1 latency (ms) at {rate:g} req/s"] = {k: d[rate] for k, d in by.items()}
-    cfg = load(tier, "exp02_authorization_latency")
-    r2 = rows("exp02_authorization_latency", tier)
-    sizes = {int(r["batch_size"]) for r in r2 if r["system"].startswith("veredact")}
-    n0 = str(cfg["veredact"]["committee_n"])  # VeRedact-PQ at its default batch (or the largest one run)
-    m0 = str(
-        cfg["veredact"]["reference_batch"] if cfg["veredact"]["reference_batch"] in sizes else max(sizes, default=1)
-    )
-    e2 = {}
-    for r in r2:
-        if r["committee_n"] == n0 and r["batch_size"] == (m0 if r["system"].startswith("veredact") else "1"):
-            e2.setdefault(r["system"], []).append(num(r["auth_per_request_ms"]))
-    if e2:
-        out[f"Exp. 2 authorization per request (ms), $n$={n0}"] = e2
-    for exp, col, title in (
-        ("exp03_audit_efficiency", "retrieval_ms", "Exp. 3 response generation (ms)"),
-        ("exp04_verification_time", "verify_ms", "Exp. 4 normal verification (ms)"),
-    ):
-        rr = [
-            r
-            for r in rows(exp, tier)
-            if r.get("status") == "ok"
-            and r.get("level", "normal") == "normal"
-            and num(r.get("inject_fraction", 0)) in (0, None)
-        ]
-        by = {}
-        for r in rr:
-            by.setdefault(r["system"], {}).setdefault(int(r["n_Q"]), []).append(num(r[col]))
-        common = set.intersection(*(set(d) for d in by.values())) if by else set()
-        if common:
-            n = max(common)
-            out[f"{title}, $n_Q$={n}"] = {k: d[n] for k, d in by.items()}
-    return out
-
-
-def table_significance(tier, written):
-    data = {t: {k: v for k, v in d.items() if k in ORDER} for t, d in _samples(tier).items()}  # five schemes only
-    data = {t: d for t, d in data.items() if d}
-    if not data:
-        return
-    methods = [k for k in ORDER if any(k in d for d in data.values())]
-    body = [
-        r"\begin{tabular}{l" + "r" * len(methods) + "}",
-        r"\toprule",
-        "Metric (median) & " + " & ".join(style.label(k) for k in methods) + r" \\",
-        r"\midrule",
-    ]
-    for title, d in data.items():
-        med = {k: M.median(v) for k, v in d.items() if v}
-        rank = sorted(med, key=med.get)
-        cells = []
-        for k in methods:
-            if k not in med:
-                cells.append("--")
-                continue
-            c = f"{med[k]:.2f}"
-            if k == rank[0]:
-                c = rf"\textbf{{{c}}}"
-            elif len(rank) > 1 and k == rank[1]:
-                c = rf"\underline{{{c}}}"
-            if k != "veredact" and "veredact" in d:
-                _, p = M.mann_whitney_u(d["veredact"], d[k])
-                c += f" ($p$={p:.1g})"
-            cells.append(c)
-        body.append(f"{title} & " + " & ".join(cells) + r" \\")
-    body += [r"\bottomrule", r"\end{tabular}"]
-    _write("tab_significance", body, written)
-
-
 def make_all(tier: str) -> list[str]:
     written: list[str] = []
-    for t in (table_primitives, table_gas, table_significance):
+    for t in (table_primitives, table_gas):
         t(tier, written)
     return written

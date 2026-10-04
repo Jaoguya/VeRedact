@@ -241,9 +241,10 @@ class NonMemWit:  # w_x = (a, B, s)
     s: list
 
 
-def nonmem_create(A: Accumulator, x_h1: int) -> NonMemWit:
-    """Alg. 1 NonMemWitCreate."""
-    theta, x, s = A.theta(), x_h1, [1]
+def nonmem_create(A: Accumulator, x_h1: int, theta: int | None = None) -> NonMemWit:
+    """Alg. 1 NonMemWitCreate. theta (the accumulated product) may be passed in: it is the same for every
+    record of one audit, so audit_prove computes it once instead of once per record (same witnesses)."""
+    theta, x, s = theta or A.theta(), x_h1, [1]
     while (g := math.gcd(theta, x)) != 1:
         x //= g
         s.append(g)
@@ -392,10 +393,11 @@ class Ledger:
         V = S = 1
         mu = 0
         items = []
+        theta = self.acc.theta()  # constant during the audit: one product, not one per challenged record
         for i, beta in chal:
             t, c, hh = self.tags[i]
             V, S, mu = V * pow(t.v, beta, N) % N, S * pow(t.S, beta, N) % N, mu + beta * c
-            items.append((self.p.H1(i, hh), nonmem_create(self.acc, self.p.H1(i, hh))))
+            items.append((self.p.H1(i, hh), nonmem_create(self.acc, self.p.H1(i, hh), theta)))
         return (V, S), mu, nonmem_aggregate(self.acc, items)
 
     def audit_verify(self, chal, proof) -> bool:

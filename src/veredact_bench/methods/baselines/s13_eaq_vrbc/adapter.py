@@ -116,8 +116,16 @@ class EAQVRBCScheme(Scheme):
             saved[s] = self.L.tags[s]  # (two records in one block must not flip the same bit back)
             t, c, hh = self.L.tags[s]
             self.L.tags[s] = (type(t)(t.S ^ 1, t.v), c, hh)
-        t0 = time.perf_counter()
-        proof = self.L.audit_prove(chal)
+        ck = (query.records, tuple(sorted(query.tamper.items())))
+        cached = getattr(self, "_responses", {}).get(ck) if query.reuse_response else None
+        if cached:  # Exp. 4: same challenge + proof again; only the auditor's verification is re-timed
+            chal, proof, gen_ms = cached
+        else:
+            t0 = time.perf_counter()
+            proof = self.L.audit_prove(chal)
+            gen_ms = (time.perf_counter() - t0) * 1000
+            if query.reuse_response:
+                self.__dict__.setdefault("_responses", {})[ck] = (chal, proof, gen_ms)
         t1 = time.perf_counter()
         ok = self.L.audit_verify(chal, proof)
         t2 = time.perf_counter()
@@ -131,7 +139,7 @@ class EAQVRBCScheme(Scheme):
         )
         return AuditResult(
             "ledger integrity + version freshness (aggregate, per challenged set)",
-            (t1 - t0) * 1000,
+            gen_ms,
             (t2 - t1) * 1000,
             nbytes,
             {i: ok for i in range(min(query.records, len(self.redacted)))},

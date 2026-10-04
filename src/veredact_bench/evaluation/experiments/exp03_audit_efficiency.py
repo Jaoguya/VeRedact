@@ -46,8 +46,10 @@ def query_rows(cfg, out, key, rpb, s, counts, ds, n_q_axis, extra=lambda s, n: [
         if n > have:
             out.row(**base, status=f"unreachable: history holds {have} redactions")
             continue
+        k = cfg["experiment"]["samples_per_point"]
+        k = cfg["experiment"].get("samples_override", {}).get(key, {}).get(str(n), k)  # S13 at 10^4 (Exp. 3)
         for spec in extra(s, n):
-            for sample in range(cfg["experiment"]["samples_per_point"]):  # queries per point, one run
+            for sample in range(k):  # queries per point, one run
                 try:
                     res = s.audit(spec["query"])
                 except NotSupported as e:

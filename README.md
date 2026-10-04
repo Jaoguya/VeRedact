@@ -23,7 +23,6 @@ One command per paper artifact (`TIER=experiment` for the paper's numbers):
 | Fig. 5 audit efficiency | `make eval EXP=exp03_audit_efficiency` then `make figures` | `paper/figures/exp3_audit_efficiency.pdf` |
 | Fig. 6 verification time | `make eval EXP=exp04_verification_time` then `make figures` | `paper/figures/exp4_verification_time.pdf` |
 | Fig. 7 gas, table: gas per operation | `make eval EXP=exp05_gas_consumption` then `make tables figures` | `paper/figures/exp5_gas_consumption.pdf`, `paper/tables/tab_gas.tex` |
-| Significance of headline comparisons | `make tables` | `paper/tables/tab_significance.tex` |
 | Each baseline's own published figures | `make paper-runs` | `results/reproduction/<S id>/*.csv` |
 
 A finished (experiment, method, tier) is skipped on re-run; `make eval ... FORCE=--force` re-runs it.

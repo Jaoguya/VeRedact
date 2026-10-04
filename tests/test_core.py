@@ -145,19 +145,26 @@ def test_besu_block_watcher_resolves_pipelined_transactions():
     """Fake chain: a transaction mined BEFORE it is registered (race) and one mined after must both resolve."""
     import threading
     import time
+    from concurrent.futures import ThreadPoolExecutor
     from types import SimpleNamespace
 
     from veredact_bench.evaluation.anchor import BesuAnchor, gather
 
     blocks = {}
-    eth = SimpleNamespace(
-        block_number=0,
-        get_block=lambda n: SimpleNamespace(transactions=blocks[n]),
-        get_transaction_receipt=lambda h: SimpleNamespace(status=1, gasUsed=21000 + h[0]),
-    )
+    eth = SimpleNamespace(block_number=0)
+
+    def rpc(method, params):  # eth_getBlockReceipts: every receipt of a block in one call
+        assert method == "eth_getBlockReceipts"
+        txs = blocks[int(params[0], 16)]
+        return {
+            "result": [{"transactionHash": "0x" + h.hex(), "status": "0x1", "gasUsed": hex(21000 + h[0])} for h in txs]
+        }
+
     a = object.__new__(BesuAnchor)
-    a.w3, a.poll_s, a.timeout_s, a.receipts = SimpleNamespace(eth=eth), 0.005, 5, []
+    a.w3 = SimpleNamespace(eth=eth, provider=SimpleNamespace(make_request=rpc))
+    a.poll_s, a.timeout_s, a.receipts = 0.005, 5, []
     a._pending, a._mined, a._plock, a._stop, a._last_block = {}, {}, threading.Lock(), threading.Event(), 0
+    a._senders = ThreadPoolExecutor(2)
     a._watcher = threading.Thread(target=a._watch, daemon=True)
     a._watcher.start()
     blocks[1] = [b"\x01" * 32]
@@ -170,4 +177,35 @@ def test_besu_block_watcher_resolves_pipelined_transactions():
     both = gather([f1, f2])
     assert f1.result(timeout=2)[1] == 21001 and f2.result(timeout=2)[1] == 21002
     assert both.result(timeout=2)[1] == 21001 + 21002
+    f3 = a._register(b"\x03" * 32, time.perf_counter())  # its send RPC failed: the Future must not hang
+    a._fail(b"\x03" * 32, RuntimeError("rejected by node"))
+    assert isinstance(f3.exception(timeout=2), RuntimeError)
     a.close()
+
+
+def test_rwlock_executor_not_starved_by_overlapping_readers():
+    """Readers that always overlap (continuous authorizations) must not keep the writer (executor) out."""
+    import threading
+    import time
+
+    from veredact_bench.evaluation.common import RWLock
+
+    lock, stop, wrote = RWLock(), threading.Event(), threading.Event()
+
+    def reader():
+        while not stop.is_set():
+            with lock.read():
+                time.sleep(0.01)
+
+    readers = [threading.Thread(target=reader, daemon=True) for _ in range(8)]
+    for r in readers:
+        r.start()
+    time.sleep(0.05)  # readers now overlap continuously
+
+    def writer():
+        with lock.write():
+            wrote.set()
+
+    threading.Thread(target=writer, daemon=True).start()
+    assert wrote.wait(timeout=2), "executor starved by overlapping readers"
+    stop.set()

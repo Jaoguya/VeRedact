@@ -2,9 +2,7 @@
 
 One run per configuration point (configs/base.yaml): a point's statistics come from the samples inside
 that run (every request in Exp. 1, every authorization batch / audit query in Exp. 2-4, every primitive
-call in exp00). Confidence intervals of the mean use Student's t; comparisons between two systems use
-the two-sided Mann-Whitney U test (unpaired: two systems never see the same request at the same time).
-Both come from scipy.stats.
+call in exp00). Confidence intervals of the mean use Student's t (scipy.stats).
 """
 
 import math
@@ -72,16 +70,3 @@ def per_thousand(events: float, completed: int) -> float:
 def rate(hits: int, total: int) -> float:
     """hits / total, e.g. detected tampered records / injected, falsely rejected / valid."""
     return hits / total if total else 0.0
-
-
-def mann_whitney_u(a: Sequence[float], b: Sequence[float]) -> tuple[float, float]:
-    """Two-sided Mann-Whitney U test (scipy.stats.mannwhitneyu, method "auto": exact for small samples
-    without ties, normal approximation with tie and continuity correction otherwise).
-    Returns (U of sample a, p-value); U counts pairs (x in a, y in b) with x > y, ties counting one half."""
-    a, b = [float(v) for v in a], [float(v) for v in b]
-    if not a or not b:
-        raise ValueError("both samples need values")
-    if len(set(a) | set(b)) == 1:  # every value tied: no evidence of a difference (scipy returns nan)
-        return len(a) * len(b) / 2, 1.0
-    r = stats.mannwhitneyu(a, b, alternative="two-sided")
-    return float(r.statistic), float(r.pvalue)

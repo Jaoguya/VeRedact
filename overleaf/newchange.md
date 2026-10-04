@@ -190,11 +190,22 @@ shows that the amortized gas per redaction decreases as $m$ increases, since mor
 each checkpoint update.
 ```
 
+## F. Pilot findings that the text must state (2026-10-04)
+
+### F1. Line 2976 — Exp. 1 results (a): Scheme [1] permits one redaction per block
+Find: `threshold adaptation or policy-based authorization. VeRedact-PQ sustains the`
+```latex
+threshold adaptation or policy-based authorization. Moreover, Ref.~\cite{ref1} permits only one
+redaction per block, so once every targeted block has been redacted, further requests are rejected and its
+throughput of finalized redactions falls to near zero. VeRedact-PQ sustains the
+```
+
 ## C. After the full run — fill from `paper/` and `results/` (never from the papers)
 
 | Line(s) | What | Source |
 |:--|:--|:--|
 | 2835-2836 | CPU, cores, clock; RAM | `results/<exp>/<method>/experiment/run_info.json` → environment (c7i.4xlarge: 16 vCPU, 32 GiB) |
+| 2890 | `$T_{ZP}$ / $T_{ZV}$ & PQZK prove / verify & [TBD] / [TBD]` → `$T_{ZP}$ / $T_{ZV}$ & PQZK prove / verify (single core) & … / …` | proofs are generated on one core (STARK built without winterfell's `concurrent` feature), as on a requester's own device; values from `results/exp00_primitives/veredact/experiment/metrics.json` |
 | 2838 | netem delay | `configs/base.yaml` `ledger.netem_delay_ms` (now 10, marked CONFIRM) |
 | 2852 | number of Besu validators | `configs/base.yaml` `ledger.validators` (now 7, marked CONFIRM) |
 | 2889-2904 | primitive timings | `paper/tables/tab_primitives.tex` (median ± 95% CI) — paste the rows |

@@ -1,6 +1,6 @@
 """metrics.json: per-point summary of one (experiment, method) run, computed from its rows with metrics.py.
 
-The rows stay the source of truth (tables and significance tests read them); metrics.json is the readable
+The rows stay the source of truth (tables and figures read them); metrics.json is the readable
 summary a reviewer opens first. Keys are "<axis>=<value>|..." strings so the file stays flat JSON.
 """
 
@@ -50,13 +50,19 @@ def _exp01(rows, cfg):
     for k, rs in _group(rows, "sweep", "rate_rps", "zipf_s").items():
         win = [r for r in rs if str(r["in_window"]) == "1" and not r.get("fault")]
         fin = [r for r in win if r["status"] == "finalized"]
-        adapt = {r["batch_id"]: _num(r["batch_adaptations"]) for r in fin if r.get("batch_id") not in ("", None)}
+        # Fig. 3(c) counts PQCH adaptations over EVERY finalized redaction of the point (warm-up included): the
+        # count does not depend on arrival time, and a scheme saturated at zipf_rate (S13, S34 at the
+        # manuscript's lowest rate) finalizes few requests inside the window but still has a value
+        done = [r for r in rs if r["status"] == "finalized" and not r.get("fault")]
+        adapt = {r["batch_id"]: _num(r["batch_adaptations"]) for r in done if r.get("batch_id") not in ("", None)}
         out[k] = {
             "offered": len(win),
+            "decided": sum(r["status"] in ("finalized", "rejected", "failed") for r in win),
+            "revalidations": sum(int(_num(r.get("revalidations")) or 0) for r in win),  # stale -> re-prove
             "finalized": len(fin),
             "throughput_per_s": M.throughput(len(fin), dur),
             "latency_ms": _stats(r["latency_ms"] for r in fin),
-            "pqch_adaptations_per_1000": M.per_thousand(sum(adapt.values()), len(fin)) if fin else None,
+            "pqch_adaptations_per_1000": M.per_thousand(sum(adapt.values()), len(done)) if done else None,
         }
     return out
 

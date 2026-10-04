@@ -32,23 +32,3 @@ def test_rates():
     assert M.rate(1, 4) == 0.25 and M.rate(0, 0) == 0.0
     with pytest.raises(ValueError):
         M.throughput(1, 0)
-
-
-def test_mann_whitney_hand_computed():
-    # a = [1, 2, 3], b = [4, 5, 6]: no pair with a > b -> U_a = 0. Exact test (no ties, small n): of the
-    # C(6,3) = 20 equally likely rank splits, U = 0 and U = 9 are as extreme -> two-sided p = 2/20 = 0.1
-    u, p = M.mann_whitney_u([1, 2, 3], [4, 5, 6])
-    assert u == 0
-    assert p == pytest.approx(0.1)
-
-
-def test_mann_whitney_ties_and_symmetry():
-    a, b = [1, 2, 2, 3], [2, 3, 4, 5]
-    # pairs a > b: (3>2) = 1; ties count 1/2: (2,2) x2 + (3,3) x1 -> 1.5; U_a = 2.5
-    u, p = M.mann_whitney_u(a, b)
-    assert u == pytest.approx(2.5)
-    u2, p2 = M.mann_whitney_u(b, a)
-    assert u + u2 == pytest.approx(len(a) * len(b)) and p == pytest.approx(p2)
-    # ties -> normal approximation: mu = 8, tie-corrected var = 16/12*(9 - 30/56) = 11.2857, continuity 0.5
-    assert p == pytest.approx(math.erfc(((8 - 2.5) - 0.5) / math.sqrt(16 / 12 * (9 - 30 / 56)) / math.sqrt(2)))
-    assert M.mann_whitney_u([1, 1], [1, 1])[1] == 1.0  # all tied: no evidence

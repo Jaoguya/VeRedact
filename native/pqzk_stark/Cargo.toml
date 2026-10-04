@@ -10,7 +10,10 @@ name = "vrpq_stark"
 crate-type = ["cdylib"]
 
 [dependencies]
-winterfell = { version = "0.13", features = ["concurrent"] }
+# no "concurrent" feature: a proof runs single-core on the calling thread, as on a requester's own device, so
+# concurrent requesters prove in parallel (the GIL is released) instead of sharing one rayon pool (pilot
+# 2026-10-04: all-core proofs measured T_ZP on 16 cores and capped Exp. 1 below 100 req/s)
+winterfell = { version = "0.13" }
 winter-utils = { version = "0.13", package = "winter-utils" }
 pyo3 = { version = "0.25", features = ["extension-module", "abi3-py312"] }
 

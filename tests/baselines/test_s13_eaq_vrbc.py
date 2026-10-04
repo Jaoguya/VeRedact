@@ -63,4 +63,6 @@ def test_aggregated_nonmembership_and_audit(p):
     for x in xs[:2]:
         A.revoke(x)
     agg = nonmem_aggregate(A, [(x, nonmem_create(A, x)) for x in xs[2:]])
+    th = A.theta()  # audit_prove passes the product once per audit: the witnesses must not change
+    assert all(nonmem_create(A, x, th) == nonmem_create(A, x) for x in xs[2:])
     assert nonmem_verify_agg(A, agg)

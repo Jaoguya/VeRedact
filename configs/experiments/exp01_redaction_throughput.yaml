@@ -5,9 +5,16 @@ experiment:
   systems: [veredact, S1, S13, S27, S34]
   rates: [100, 250, 500, 1000, 2000, 5000]   # [DERIVED] manuscript [100] .. [5,000] req/s
   zipf_sweep: [0.0, 0.4, 0.8, 1.2]           # [DERIVED] manuscript Exp. 1
-  zipf_rate: 1000               # [CONFIRM] fixed rate for the skew sweep (below every system's saturation: from the pilot)
+  zipf_rate: 100                # [DERIVED] manuscript: skew sweep "at a fixed arrival rate" = its lowest rate [100]
+                                #   (author decision 2026-10-04; S13/S34 saturate there, Fig. 3(c) counts every
+                                #   finalized redaction of the point)
   duration_s: 60                # [PROPOSED] steady-state window per point
   warmup_s: 10                  # [METHOD] discarded before measuring
-  client_threads: 4             # [PROPOSED] requester threads that sign + prove; the achieved rate is recorded
-  saturation_tolerance: 0.10    # [PROPOSED] saturated when decided/offered < 1 - tol; higher rates are skipped
+  client_threads: 16            # [PROPOSED] requester threads that sign + prove (= vcpus; single-core proofs);
+                                #   the achieved rate is recorded and a client-bound point is reported as such
+  saturation_tolerance: 0.10    # [PROPOSED] a point is saturated when decided/offered < 1 - tol
+  saturation_patience: 2        # [METHOD] higher rates are skipped after this many CONSECUTIVE saturated points
+                                #   (author decision 2026-10-04, D12): a single unstable point does not end a sweep,
+                                #   a scheme saturated for good (S13, S34) does not run every rate (S34's untimed
+                                #   per-record setup alone would take ~8 h at 500-5,000 req/s)
   drain_s: 30                   # [PROPOSED] wait for in-flight requests after the window; the rest are recorded

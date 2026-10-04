@@ -74,7 +74,7 @@ Where this differs from manuscript Table I, the code is right and the table must
 | Exp | Fig. | Systems (config) | What is measured | Notes |
 |:--|:--|:--|:--|:--|
 | exp00_primitives | tab:primitives | VeRedact-PQ + each baseline's own primitives | per-operation time, `samples_per_point` calls, fresh inputs | VeRedact-PQ on the protocol's own Crypto facade; baselines on their construction modules at `[baselines.*]` parameters |
-| 1 | 3 | all five | open-loop, real time: per-request latency submit → finalized, goodput, per-stage times | client threads prove at arrival; VPS worker pool; ABRRR batcher (B_e\* from λ̂, T_max); stale requests returned for revalidation (manuscript Phases 4/5); saturation = decided/offered < 1 − tol stops the rate sweep; load-generator shortfall recorded separately |
+| 1 | 3 | all five | open-loop, real time: per-request latency submit → finalized, goodput, per-stage times | client threads prove at arrival; VPS worker pool; ABRRR batcher (B_e\* from λ̂, T_max); stale requests returned for revalidation (manuscript Phases 4/5); a point is saturated when decided/offered < 1 − tol; the rate sweep stops after `saturation_patience` (2) consecutive saturated points, so one unstable point (VeRedact-PQ revalidation storm) does not end it; `decided` and `revalidations` reported per point; load-generator shortfall recorded separately |
 | 2 | 4 | veredact, S1, S34 | Phase 3 per request + Phase 4 per batch, split into attestation / freshness / commitment / committee; baselines' own authorization | committee axis maps to each system's own distribution parameter (S1 nodes, S34 policy attributes); baselines have no batch axis (b = 1). S13 (key possession) and S27 (threshold only inside Adapt) define no authorization step |
 | 3 | 5 | veredact, S13, S1 | audit response generation time + size vs n_Q (VeRedact-PQ at batch size `reference_batch`) | n_Q above a system's history is recorded `unreachable` (S1: one redaction per block) |
 | 4 | 6 | veredact, S13, S1 | auditor verification time split by step (Fig. 6(b)); normal audit; injected modified/substituted/stale records | per-record decisions written; S13's aggregate decision shows as false rejections |
@@ -118,6 +118,10 @@ evaluation: `make paper-runs` → `results/reproduction/<S id>/*.csv`.
   on the stated host, recorded as such — not of the protocol in the abstract.
 - **Single host.** Load generator, VPS, committee and Besu validators share one instance
   (`[environment]`). The client shortfall is measured (`client_lag_ms`, achieved offered rate) and a
-  client-bound point stops the sweep with a note instead of being reported as saturation.
+  client-bound point stops the sweep with a note instead of being reported as saturation. Each STARK
+  proof runs single-core on its requester thread (winterfell without `concurrent`), 16 requester threads.
+- **Freshness instability.** A request binds its batch version; under Zipf hot batches a point can tip into
+  a re-prove/resubmit storm by chance (pilot 2026-10-04: same point 17–61 % or 100 % decided). Reported,
+  not hidden: `decided`, `revalidations` per point.
 - **pqcrypto vs liboqs.** The laptop fallback signs ML-DSA-65 in ~8.7 ms (liboqs: well under 1 ms); smoke
   numbers are plumbing checks only. The experiment tier refuses any backend but liboqs.

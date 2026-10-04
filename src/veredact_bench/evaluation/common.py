@@ -10,28 +10,46 @@ from veredact_bench.methods.scheme import AuthCost, NotSupported
 
 class RWLock:
     """Readers = authorization workers, writer = the executor. Applied identically to every system: no
-    scheme's authorize() may read state while its redact() is half-way through changing it."""
+    scheme's authorize() may read state while its redact() is half-way through changing it.
+
+    Writer-preferring: once the executor waits, new readers wait too. The earlier reader-preferring lock
+    starved the executor whenever authorizations overlapped continuously (pilot 2026-10-04: S1 at 250 req/s,
+    52 ms authorizations on 8 workers, authorized 4,865 requests and executed none)."""
 
     def __init__(self):
-        self._r, self._lock, self._w = 0, threading.Lock(), threading.Lock()
+        self._c = threading.Condition()
+        self._readers, self._writing, self._writers_waiting = 0, False, 0
 
     def read(self):
         return _Guard(self._acquire_r, self._release_r)
 
     def write(self):
-        return _Guard(self._w.acquire, self._w.release)
+        return _Guard(self._acquire_w, self._release_w)
 
     def _acquire_r(self):
-        with self._lock:
-            self._r += 1
-            if self._r == 1:
-                self._w.acquire()
+        with self._c:
+            while self._writing or self._writers_waiting:
+                self._c.wait()
+            self._readers += 1
 
     def _release_r(self):
-        with self._lock:
-            self._r -= 1
-            if self._r == 0:
-                self._w.release()
+        with self._c:
+            self._readers -= 1
+            if self._readers == 0:
+                self._c.notify_all()
+
+    def _acquire_w(self):
+        with self._c:
+            self._writers_waiting += 1
+            while self._writing or self._readers:
+                self._c.wait()
+            self._writers_waiting -= 1
+            self._writing = True
+
+    def _release_w(self):
+        with self._c:
+            self._writing = False
+            self._c.notify_all()
 
 
 class _Guard:

@@ -7,9 +7,9 @@ Fig. 5 at VeRedact-PQ's default batch (veredact.reference_batch), Fig. 6 normal 
   Fig. 3  (a) throughput, (b) p95 end-to-end latency vs arrival rate, (c) PQCH adaptations per 1,000 vs skew
   Fig. 4  (a) amortized authorization per request vs batch size, (b) per-batch authorization vs committee size
   Fig. 5  (a) response-generation time, (b) response size vs returned records
-  Fig. 6  (a) verification time vs records (normal, deep), (b) VeRedact-PQ verification-time breakdown
+  Fig. 6  (a) verification time vs records (normal audit), (b) VeRedact-PQ verification-time breakdown
   Fig. 7  (a) total gas per authorization round, (b) amortized gas per redaction vs redactions per batch
-plus exp4_granularity (valid records falsely rejected vs injected fraction; Exp. 4 text).
+No other figure is drawn: only what the manuscript shows (author decision 2026-10-04).
 """
 
 from collections import defaultdict
@@ -236,17 +236,6 @@ def fig_exp4(tier, written):
     _tag(b, "b")
     _legend(a)
     _save(fig, "exp4_verification_time", written)
-    fig, (g,) = _panels(1)
-    for key, m in ms.items():
-        pts = defaultdict(list)
-        for k, v in _points(m).items():
-            if v.get("status") == "ok" and k[1] == "normal":
-                pts[k[2]].append(v["false_rejection_rate"])
-        xs = sorted(pts)
-        style.line(g, key, xs, [M.mean(pts[x]) for x in xs])
-    g.set(xlabel="Injected fraction", ylabel="Valid records falsely rejected")
-    _legend(g)
-    _save(fig, "exp4_granularity", written)
 
 
 def fig_exp5(tier, written):

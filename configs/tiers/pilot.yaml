@@ -1,4 +1,4 @@
-# Tier "pilot": on the server with Besu, smaller sweeps. Sets exp01 zipf_rate and shows saturation points.
+# Tier "pilot": on the server with Besu, smaller sweeps. Shows saturation points and run times.
 meta:
   tier: pilot
 dataset:
@@ -10,5 +10,5 @@ experiments:
   exp01_redaction_throughput: {duration_s: 20, drain_s: 15}
   exp02_authorization_latency: {samples_per_point: 5}
   exp03_audit_efficiency: {n_Q: [10, 100, 1000], samples_per_point: 5}
-  exp04_verification_time: {samples_per_point: 5}
+  exp04_verification_time: {n_Q: [10, 100, 1000], samples_per_point: 5}   # = exp03 pilot n_Q (S13: ~100 s per audit at 10^3)
   exp05_gas_consumption: {requests_per_point: 512}

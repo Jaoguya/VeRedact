@@ -30,7 +30,10 @@ def run(cfg, out):
                     rng = random.Random(cfg["meta"]["seed"] + n)
                     idx = rng.sample(range(n), round(f * n))
                     tamper = {i: KINDS[j % len(KINDS)] for j, i in enumerate(sorted(idx))}
-                    yield dict(query=AuditQuery(n, deep=level == "deep", tamper=tamper), level=level, f=f)
+                    # reuse_response: Exp. 4 times the auditor; a scheme whose response generation is slow (S13:
+                    # one accumulator witness per record) builds it once and is verified samples_per_point times
+                    q = AuditQuery(n, deep=level == "deep", tamper=tamper, reuse_response=True)
+                    yield dict(query=q, level=level, f=f)
 
         for base, spec, sample, res in query_rows(cfg, out, key, rpb, s, counts, ds, x["n_Q"], specs):
             t = spec["query"].tamper

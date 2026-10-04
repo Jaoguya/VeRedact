@@ -92,6 +92,18 @@ def test_audits_detect_tampering_with_their_own_granularity(cfg, ds):
         s.teardown()
 
 
+def test_s13_reused_audit_response_gives_the_same_decision(cfg, ds):
+    """Exp. 4 verifies S13's response again instead of rebuilding it: same decisions, tampering still caught."""
+    s = open_system(cfg, "S13", ds)
+    build_history(s, ds.trace, 1)
+    for tamper in ({}, {1: "modified"}):
+        first = s.audit(AuditQuery(4, tamper=tamper, reuse_response=True))
+        again = s.audit(AuditQuery(4, tamper=tamper, reuse_response=True))
+        assert again.accepted == first.accepted and again.retrieval_ms == first.retrieval_ms
+        assert all(first.accepted.values()) == (not tamper)
+    s.teardown()
+
+
 def test_registry_knows_every_configured_system(cfg):
     for _exp, x in load_all("smoke")["experiments"].items():
         for key in x.get("systems", []):

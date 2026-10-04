@@ -123,6 +123,7 @@ class AuditQuery:
     records: int
     deep: bool = False
     tamper: dict = field(default_factory=dict)  # seq -> fault class, for Exp. 4 fault injection
+    reuse_response: bool = False  # Exp. 4 measures the auditor: a scheme may verify a cached response again
 
 
 @dataclass

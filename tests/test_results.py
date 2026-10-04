@@ -49,11 +49,6 @@ def test_paper_artifacts_show_only_the_five_schemes(monkeypatch):
     monkeypatch.setattr(figures, "_all_metrics", lambda exp, tier: {k: {"points": {}} for k in keys})
     assert list(figures.metrics("exp01_redaction_throughput", "smoke")) == list(style.PAPER_METHODS)
     assert tables.ORDER == ["veredact", "S1", "S13", "S27", "S34"]
-    monkeypatch.setattr(tables, "_samples", lambda tier: {"m": {"veredact": [5, 6], "S99": [1, 1]}})
-    out = []
-    tables.table_significance("smoke", out)
-    tex = (tables.OUT / "tab_significance.tex").read_text()
-    assert "S99" not in tex and r"\textbf{5.50}" in tex  # an unlisted method is neither shown nor ranked
 
 
 def test_gas_figure_draws_one_line_per_scheme(monkeypatch, tmp_path):
@@ -70,3 +65,26 @@ def test_gas_figure_draws_one_line_per_scheme(monkeypatch, tmp_path):
     style.apply()
     figures.fig_exp5("smoke", [])
     assert drawn["exp5_gas_consumption"] == [len(style.PAPER_METHODS)] * 2
+
+
+def test_exp1_adaptations_count_every_finalized_redaction():
+    """Fig. 3(c): a scheme that finalizes nothing inside the window still gets an adaptation count."""
+    from veredact_bench.evaluation.summaries import _exp01
+
+    def row(seq, in_window, status, batch):
+        return dict(
+            sweep="skew",
+            rate_rps=100,
+            zipf_s=0.8,
+            seq=seq,
+            in_window=in_window,
+            fault="",
+            status=status,
+            batch_id=batch,
+            batch_adaptations=1,
+            latency_ms=10.0,
+        )
+
+    rows = [row(1, 0, "finalized", 1), row(2, 0, "finalized", 2), row(3, 1, "unfinished", "")]
+    (pt,) = _exp01(rows, {"experiment": {"duration_s": 20}}).values()
+    assert pt["finalized"] == 0 and pt["pqch_adaptations_per_1000"] == 1000.0

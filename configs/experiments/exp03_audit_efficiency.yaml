@@ -7,3 +7,5 @@ experiment:
   records_per_batch: [64]       # [DERIVED] = veredact.reference_batch: one VeRedact-PQ setting (author decision
                                 #   2026-10-04: one line per scheme, no second setting)
   samples_per_point: 30         # [PROPOSED] audit queries per (system, records per batch, n_Q) in the one run
+  samples_override: {S13: {"10000": 5}}   # [METHOD] S13 builds one RSA-accumulator non-membership witness per record
+                                #   (pilot: 106 s per audit at n_Q = 10^3): 5 samples at 10^4 (author decision 2026-10-04)
