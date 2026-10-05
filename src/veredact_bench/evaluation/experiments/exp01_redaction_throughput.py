@@ -19,6 +19,7 @@ submission fraction drops below 1 - saturation_tolerance; the note never skips a
 Throughput = redactions finalized during the window / its length (summaries._exp01).
 """
 
+import multiprocessing
 import os
 import queue
 import threading
@@ -36,6 +37,19 @@ from veredact_bench.evaluation.common import (
 )
 from veredact_bench.methods.registry import system_keys
 from veredact_bench.methods.scheme import RedactionOutcome
+from veredact_bench.utils import cpus
+
+_REQ = None  # the VeRedact-PQ system a forked requester process proves for (static credentials and keys)
+
+
+def _req_init(requester_cpus):
+    if requester_cpus:
+        os.sched_setaffinity(0, requester_cpus)
+
+
+def _req_job(job):
+    """Requester process: PQZK proof + PQ signature for one request (requester side, excluded from T_val)."""
+    return _REQ.p.requester_work(job)
 
 
 def run_point(cfg, key, rate, zipf_s, out, sweep):
@@ -57,6 +71,28 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         if pin and hasattr(os, "sched_setaffinity"):
             os.sched_setaffinity(threading.get_native_id(), pin[part])
 
+    # audit A3: requester proving (VeRedact-PQ only: the baselines' requesters do no proving) runs in forked
+    # processes on their own physical cores, so it competes neither for the system's cores nor for its GIL
+    req_cpus, sys_cpus = cpus.split(x["requester_cores"])
+    pool = None
+    if is_veredact(s) and x["requester_cores"] > 0:
+        global _REQ
+        _REQ = s  # inherited by fork: credential registry and keys are static during the run
+        pool = multiprocessing.get_context("fork").Pool(
+            x["requester_processes"], initializer=_req_init, initargs=(req_cpus,)
+        )
+    if sys_cpus:
+        os.sched_setaffinity(0, sys_cpus)  # this thread; every thread started below inherits it
+
+    def requester(r):
+        """The request as its requester sends it, proved against the state at THIS moment."""
+        if pool is None:
+            return prepare(s, r)
+        R, job = s.prepare_begin(r)  # reads the live batch version (cheap: hashing only)
+        if job is not None:
+            R.proof, R.sigma_R = pool.apply(_req_job, (job,))
+        return R
+
     def client(i):
         pin_to("requesters")
         for r in ds.trace[i :: x["client_threads"]]:
@@ -65,7 +101,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             delay = r.arrival_s - now()
             if delay > 0:
                 time.sleep(delay)
-            p = prepare(s, r)  # the requester proves against the state at its arrival time
+            p = requester(r)  # the requester proves against the state at its arrival time
             stamp[r.seq]["submit"] = stamp[r.seq]["proved"] = now()
             admit.put((r, p))
 
@@ -77,7 +113,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             r = revalq.get()
             if r is None:
                 return
-            p = prepare(s, r)
+            p = requester(r)
             stamp[r.seq]["proved"] = now()  # this attempt's proof (staleness window: proved -> auth_done)
             admit.put((r, p))
 
@@ -178,6 +214,11 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     for _ in workers_r:
         revalq.put(None)
     ex.join()  # returns after the batch in progress: the next point's anchor must not share the account
+    if pool is not None:
+        pool.terminate()
+        pool.join()
+    if sys_cpus:
+        os.sched_setaffinity(0, sum(cpus.physical_cores(), []))  # setup of the next point uses every core
     s.teardown()
 
     # rows + decisions over the measurement cohort: valid requests whose ARRIVAL falls in the window
@@ -241,6 +282,9 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
 def run(cfg, out):
     x = cfg["experiment"]
     tol = x["saturation_tolerance"]
+    _, sys_cpus = cpus.split(x["requester_cores"])
+    if sys_cpus and cfg["ledger"]["backend"] == "besu":
+        cpus.pin_besu(sys_cpus)  # the validators belong to the system side (audit A3)
     for key in system_keys(cfg):  # one run per point (no repetitions): every request of the run is a sample
         if not out.begin(key):
             continue
@@ -253,3 +297,5 @@ def run(cfg, out):
         for zs in x["zipf_sweep"]:  # skew sweep at a fixed rate
             run_point(cfg, key, x["zipf_rate"], zs, out, "skew")
         out.end()
+    if sys_cpus and cfg["ledger"]["backend"] == "besu":
+        cpus.pin_besu(None)  # later experiments use every cpu

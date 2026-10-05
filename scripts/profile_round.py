@@ -33,7 +33,8 @@ def main():
     pr.disable()
     wall = time.perf_counter() - t
     rounds = max(1, counts["redacted"] // a.m)
-    print(f"m={a.m} s={a.zipf}: {counts} in {wall:.1f} s -> {1000 * wall / rounds:.0f} ms per round (incl. requester proving)")
+    per_round = 1000 * wall / rounds
+    print(f"m={a.m} s={a.zipf}: {counts} in {wall:.1f} s -> {per_round:.0f} ms per round (incl. requester proving)")
     print("crypto counters:", dict(s.crypto.counts))
     out = io.StringIO()
     pstats.Stats(pr, stream=out).sort_stats("tottime").print_stats(18)

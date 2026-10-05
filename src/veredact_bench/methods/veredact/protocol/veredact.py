@@ -46,6 +46,14 @@ class VeRedactPQ:
     # ============================================================ requester side
     def make_request(self, requester: int, tid: bytes, m_new: bytes, op="modify", tamper="") -> Request:
         """Requester prepares R_i, signs it (T_S) and proves policy compliance (T_ZP). Excluded from T_val."""
+        R, job = self.request_skeleton(requester, tid, m_new, op, tamper)
+        R.proof, R.sigma_R = self.requester_work(job, counted=True)
+        return R
+
+    def request_skeleton(self, requester: int, tid: bytes, m_new: bytes, op="modify", tamper=""):
+        """Requester side, cheap part (hashing only): R_i bound to the CURRENT batch version v_b, plus the job
+        for the expensive part (PQZK proof + PQ signature). Exp. 1 runs the job in requester processes on their
+        own cores (audit A3); everything else calls make_request, which does both here."""
         L, c = self.L, self.c
         tx = L.txs.get(tid)
         rho_new = os.urandom(32)
@@ -61,16 +69,27 @@ class VeRedactPQ:
             rho_new=rho_new,
             tamper=tamper,
         )
+        prove = None
         if tx is not None:
             bt = L.batches[tx.b]
             R.v_b = bt.v
             R.x = self._statement(R, tx, bt.v)
             # fault "zk": the requester lacks a valid credential -> a proof over a non-registered witness
             forged = int.from_bytes(os.urandom(15), "big") if tamper == "zk" else None
-            R.proof = c.zk_prove(requester, R.x, L.policies[tx.PID].threshold, R.ts_r // 1000, forged)
-        sk = L.requesters[requester].sk if tamper != "sig" else L.requesters[(requester + 1) % len(L.requesters)].sk
-        R.sigma_R = c.sign(sk, self._hR(R))
-        return R
+            prove = (requester, R.x, L.policies[tx.PID].threshold, R.ts_r // 1000, forged)
+        signer = requester if tamper != "sig" else (requester + 1) % len(L.requesters)
+        return R, (prove, signer, self._hR(R))
+
+    def requester_work(self, job, counted: bool = False):
+        """Requester side, expensive part: (PQZK proof or None, PQ signature on H(R_i)). counted=False (requester
+        processes) uses the primitives directly, without the parent's operation counters."""
+        prove, signer, h = job
+        L, c = self.L, self.c
+        if counted:
+            proof = c.zk_prove(*prove) if prove else b""
+            return proof, c.sign(L.requesters[signer].sk, h)
+        proof = c.zk.prove(*prove) if prove else b""
+        return proof, c.sig.sign(L.requesters[signer].sk, h)
 
     def _hR(self, R):
         return self.c.H(R.ID_r, R.TID, R.op, R.D_new, R.e, R.ts_r, R.n_r)

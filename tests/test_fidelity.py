@@ -169,3 +169,15 @@ def test_veredact_state_check_once_per_transition_and_tamper_still_caught(cfg, d
     acc2 = p.verify_audit(bad, q)  # same signed query, one record's r_b' altered
     assert not acc2[bad.records[0].RID]
     s.teardown()
+
+
+def test_veredact_split_request_equals_one_piece_request(cfg, ds):
+    """Audit A3: Exp. 1 builds R_i in the main process (live batch version) and proves/signs in a requester
+    process. The split request must validate exactly like make_request's, faults included."""
+    s = open_system(cfg, "veredact", ds)
+    for fault in ("", "sig", "zk", "stale"):
+        r = faulty(ds, fault, seq=3)
+        R, job = s.prepare_begin(r)
+        R.proof, R.sigma_R = s.p.requester_work(job)  # what a requester process runs (uncounted primitives)
+        assert authorize(s, r, R).ok == (fault == "")
+    s.teardown()

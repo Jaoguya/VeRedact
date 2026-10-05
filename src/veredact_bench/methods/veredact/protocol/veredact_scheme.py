@@ -86,6 +86,21 @@ class VeRedactScheme(Scheme):
         self._last_submitted = R
         return R
 
+    def prepare_begin(self, req: RedactionRequest):
+        """Exp. 1 split of prepare (audit A3): (R_i bound to the CURRENT batch version, job for the expensive
+        requester work, or None when nothing is left to do — a replay re-sends the last request)."""
+        if req.fault == "replay" and self._last_submitted is not None:
+            return self._last_submitted, None
+        tid = req.tid if req.fault != "absent" else b"TX-DOES-NOT-EXIST"
+        R, job = self.p.request_skeleton(
+            req.requester % len(self.ledger.requesters),
+            tid,
+            req.new_payload,
+            tamper=req.fault if req.fault in ("sig", "zk", "policy", "stale") else "",
+        )
+        self._last_submitted = R
+        return R, job
+
     # ------------------------------------------------------------------ Phase 3
     def authorize(self, req: RedactionRequest, prepared=None) -> Authorization:
         R = prepared if prepared is not None else self.prepare(req)
