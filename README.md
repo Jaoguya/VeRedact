@@ -6,11 +6,15 @@ run and one results folder: see [`paper/MANIFEST.md`](paper/MANIFEST.md).
 
 ## Reproduce
 
+Everything runs on the AWS server (`veredact-bench`), never on the laptop: on the laptop every `make` target is
+forwarded by `deploy/aws/remote.sh`, which starts the instance if needed, syncs the sources, runs the target
+there and copies `paper/` back. Any other command: `deploy/aws/remote.sh '<command>'`.
+
 ```bash
-make venv build-zk test lint            # Python 3.12 venv (pinned deps), Rust STARK module, tests, ruff gate
-make smoke                              # every experiment, tiny sizes, in-process ledger (laptop, ~20 min)
-make all TIER=experiment                # the paper: all experiments + tables + figures (server only, see below)
-make tables figures TIER=experiment     # regenerate paper/tables and paper/figures from existing results/
+make test lint                          # tests, ruff gate (on the server)
+make smoke                              # every experiment, tiny sizes, in-process ledger (server, ~10 min)
+make all TIER=experiment                # the paper: all experiments + tables + figures (server, see below)
+make tables figures TIER=experiment     # regenerate paper/tables and paper/figures from the server's results/
 ```
 
 One command per paper artifact (`TIER=experiment` for the paper's numbers):
@@ -41,7 +45,7 @@ deploy/aws/teardown_ec2.sh
 
 | Tier | Machine | Ledger | Runtime |
 |:--|:--|:--|:--|
-| smoke | any laptop (tested: Apple M-series, macOS) | in-process | ~20 min |
+| smoke | AWS EC2 c7i.4xlarge (the same server) | in-process | ~10 min |
 | pilot | AWS EC2 c7i.4xlarge (16 vCPU, 32 GiB), Ubuntu 24.04, ap-southeast-1 | 7-validator Besu QBFT | ~3–5 h |
 | experiment | same instance | same | ~2–4 h (one run per point; Exp. 1 dominates) |
 
@@ -67,4 +71,4 @@ exp00 minutes · exp01 ~1.5–2.5 h · exp02 ~0.5 h · exp03 + exp04 ~0.5–1 h 
 | `docs/` | `experiments.md` (rules, boundaries), `baselines/*.md`, `paper-conformance.md`, `aws-runbook.md` |
 | `tools/` | PDF→Markdown and TeX→Markdown converters |
 
-Status and open decisions: [`TASK.md`](TASK.md). File placement rules: [`.claude/skills/veredact/SKILL.md`](.claude/skills/veredact/SKILL.md).
+Status and open decisions: [`TASK.md`](TASK.md).

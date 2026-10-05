@@ -1,6 +1,9 @@
 # VeRedact-PQ evaluation. One command per paper artifact; every run is gated by the config check.
-#   make venv build-zk test lint                 one-time setup (Python 3.12 + Rust), tests, ruff gate
-#   make smoke                                   every experiment on the smoke tier (laptop, minutes)
+# EVERYTHING RUNS ON THE AWS SERVER (author decision 2026-10-05: no local compute). On the laptop each target
+# below is forwarded to veredact-bench by deploy/aws/remote.sh (paper/ is copied back); on the server the
+# marker /opt/veredact/.on-server makes the same targets run directly.
+#   make test lint                               tests, ruff gate
+#   make smoke                                   every experiment on the smoke tier
 #   make eval EXP=exp02_authorization_latency TIER=pilot      one experiment on one tier
 #   make all TIER=experiment                     all experiments + tables + figures (server: deploy/aws/launch_run.sh)
 #   make tables figures TIER=experiment          paper/tables/*.tex, paper/figures/*.pdf from results/
@@ -8,8 +11,17 @@ TIER ?= smoke
 EXP  ?= all
 PY   := .venv/bin/python
 FORCE ?=
+ON_SERVER := $(wildcard /opt/veredact/.on-server)
 
-.PHONY: venv build-zk test lint validate eval smoke pilot experiment tables figures all capabilities paper-runs clean-results
+.PHONY: venv build-zk test lint validate eval smoke pilot experiment tables figures all capabilities paper-runs clean-results resummarize
+
+ifeq ($(ON_SERVER),)
+# laptop: forward every target to the server (same target, same variables)
+venv build-zk test lint validate eval smoke pilot experiment tables figures all capabilities paper-runs resummarize:
+	deploy/aws/remote.sh make $@ TIER=$(TIER) EXP=$(EXP) FORCE=$(FORCE)
+clean-results:
+	@echo "results/ lives on the server; delete there via: deploy/aws/remote.sh make clean-results"
+else
 
 venv:
 	python3.12 -m venv .venv
@@ -52,5 +64,9 @@ capabilities:
 paper-runs:                      ## each baseline's OWN paper evaluation (original instantiation), quick
 	$(PY) scripts/paper_reproduction.py all --quick
 
-clean-results:                   ## deletes local results/ (keeps the folder marker)
+resummarize:                     ## metrics.json from stored rows after a metric-DEFINITION change (EXP=..., TIER=...)
+	$(PY) scripts/resummarize.py --tier $(TIER) --experiment $(EXP)
+
+clean-results:                   ## deletes results/ on this machine (keeps the folder marker)
 	find results -mindepth 1 ! -name .keep-results -exec rm -rf {} +
+endif

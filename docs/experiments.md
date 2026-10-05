@@ -19,7 +19,7 @@ artefact (ZK-Redact): real execution, one config, one dataset, one contract for 
 | 9 | **Equal security.** Baselines at 128-bit classical (RSA ≥ 3072, BLS12-381); VeRedact-PQ at NIST level 3. The experiment tier refuses weaker parameters, the in-process ledger, and any ML-DSA backend but liboqs. | `validate_config`, `__main__.cmd_run` |
 | 10 | **Fidelity tests.** Each system must reject exactly what its paper can reject. | `tests/test_fidelity.py`, `make test` |
 
-Config tiers have identical keys: `smoke` (laptop, minutes, in-process ledger) → `pilot` (server, Besu,
+Config tiers have identical keys: `smoke` (server, minutes, in-process ledger) → `pilot` (server, Besu,
 resolve sweep bounds, measure variance) → `experiment` (paper numbers). `make validate-config CONFIG=…`
 gates every run; the CLI refuses an invalid config.
 

@@ -46,7 +46,8 @@ def _primitives(rows, cfg):
 
 def _exp01(rows, cfg):
     dur = cfg["experiment"]["duration_s"]
-    end = cfg["experiment"]["warmup_s"] + dur  # end of the measurement window (arrival-time axis)
+    start = cfg["experiment"]["warmup_s"]
+    end = start + dur  # the measurement window [start, end) on the run's clock
     out = {}
     for k, rs in _group(rows, "sweep", "rate_rps", "zipf_s").items():
         win = [r for r in rs if str(r["in_window"]) == "1" and not r.get("fault")]
@@ -55,6 +56,11 @@ def _exp01(rows, cfg):
         # count does not depend on arrival time, and a scheme saturated at zipf_rate (S13, S34 at the
         # manuscript's lowest rate) finalizes few requests inside the window but still has a value
         done = [r for r in rs if r["status"] == "finalized" and not r.get("fault")]
+        # throughput = redactions FINALIZED DURING the window (steady state, any arrival time) / its length. Counting
+        # requests that ARRIVED in the window instead credits the drain after it (S27 at 500 req/s: 456/s vs 152/s
+        # actually completed) and shows 0 for a saturated scheme that keeps finalizing (S13: 5.3/s) — 2026-10-05.
+        fin_t = lambda r: _num(r["submit_s"]) + _num(r["latency_ms"]) / 1000
+        completed = [r for r in done if _num(r.get("latency_ms")) is not None and start <= fin_t(r) < end]
         adapt = {r["batch_id"]: _num(r["batch_adaptations"]) for r in done if r.get("batch_id") not in ("", None)}
         out[k] = {
             "offered": len(win),
@@ -63,9 +69,10 @@ def _exp01(rows, cfg):
             "submitted_on_time": M.rate(
                 sum(_num(r.get("submit_s")) is not None and _num(r["submit_s"]) < end for r in win), len(win)
             ),
-            "finalized": len(fin),
-            "throughput_per_s": M.throughput(len(fin), dur),
-            "latency_ms": _stats(r["latency_ms"] for r in fin),
+            "finalized": len(fin),  # arrived in the window and finalized (any time): kept for traceability
+            "completed_in_window": len(completed),
+            "throughput_per_s": M.throughput(len(completed), dur),
+            "latency_ms": _stats(r["latency_ms"] for r in completed),
             "pqch_adaptations_per_1000": M.per_thousand(sum(adapt.values()), len(done)) if done else None,
         }
     return out

@@ -181,7 +181,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
 
     # rows + decisions over the measurement cohort: valid requests whose ARRIVAL falls in the window
     w0 = x["warmup_s"]
-    offered = finalized = decided = on_time = 0
+    offered = completed = decided = on_time = 0
     for r in ds.trace:
         st = stamp[r.seq]
         status = st.get("status", "unfinished")
@@ -194,8 +194,9 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         if in_window and not r.fault:
             offered += 1
             on_time += "submit" in st and st["submit"] < window
-            finalized += status == "finalized"
             decided += status in ("finalized", "rejected", "failed")
+        if status == "finalized" and not r.fault and w0 <= st.get("final", -1) < window:
+            completed += 1  # throughput: finalized DURING the window, whatever its arrival (summaries._exp01)
         out.row(
             experiment=x["id"],
             sweep=sweep,
@@ -231,7 +232,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     ratio = decided / offered if offered else 1.0
     out.log.info(
         f"  {key:28s} rate={rate:<6} s={zipf_s:<4}  offered={offered / x['duration_s']:7.1f}/s  "
-        f"submitted-in-window={client:.3f}  decided/offered={ratio:.3f}  goodput={finalized / x['duration_s']:.1f}/s"
+        f"submitted-in-window={client:.3f}  decided/offered={ratio:.3f}  throughput={completed / x['duration_s']:.1f}/s"
     )
     return ratio, client
 

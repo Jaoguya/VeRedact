@@ -50,4 +50,5 @@ sudo -u "$RUN_USER" bash -lc "
   VRPQ_SIG_BACKEND=oqs .venv/bin/python -c 'from veredact_bench.methods.veredact.crypto.pqsig import load_pqsig; print(\"signature backend:\", load_pqsig(\"oqs\").name)'
   .venv/bin/python -m pytest -q
 "
+touch "$REMOTE_DIR/.on-server"   # Makefile: run targets here instead of forwarding to the server
 echo "bootstrap complete: $REMOTE_DIR  (log out/in once so the docker group applies)"

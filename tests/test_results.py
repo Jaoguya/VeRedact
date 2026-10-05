@@ -83,8 +83,35 @@ def test_exp1_adaptations_count_every_finalized_redaction():
             batch_id=batch,
             batch_adaptations=1,
             latency_ms=10.0,
+            submit_s=1.0,
         )
 
     rows = [row(1, 0, "finalized", 1), row(2, 0, "finalized", 2), row(3, 1, "unfinished", "")]
     (pt,) = _exp01(rows, {"experiment": {"duration_s": 20, "warmup_s": 10}}).values()
     assert pt["finalized"] == 0 and pt["pqch_adaptations_per_1000"] == 1000.0
+
+
+def test_exp1_throughput_counts_redactions_finalized_during_the_window():
+    """Throughput = finalized DURING [warmup, warmup+duration) / duration, whatever the arrival time: a backlog
+    request finalized inside the window counts, a window request finalized in the drain does not."""
+    from veredact_bench.evaluation.summaries import _exp01
+
+    def row(seq, arrival_win, submit_s, latency_ms):
+        return dict(
+            sweep="rate",
+            rate_rps=100,
+            zipf_s=0.8,
+            seq=seq,
+            in_window=arrival_win,
+            fault="",
+            status="finalized",
+            batch_id=seq,
+            batch_adaptations=1,
+            submit_s=submit_s,
+            latency_ms=latency_ms,
+        )
+
+    rows = [row(1, 0, 5.0, 10_000), row(2, 1, 20.0, 1_000), row(3, 1, 25.0, 60_000)]  # done at 15 s, 21 s, 85 s
+    (pt,) = _exp01(rows, {"experiment": {"duration_s": 60, "warmup_s": 10}}).values()
+    assert pt["completed_in_window"] == 2 and pt["finalized"] == 2  # rows 1+2 vs arrival cohort rows 2+3
+    assert abs(pt["throughput_per_s"] - 2 / 60) < 1e-9

@@ -134,3 +134,9 @@ layout (2026-10-03).
 
 
 Full run complete 2026-10-05 21:00 ICT: 24 result folders in `results/<exp>/<method>/experiment/`, `paper/figures/` (5 PDFs) and `paper/tables/` (2 .tex) regenerated locally from them; diagnostic `results/diagnostics/core_isolation.json`. Server stopped.
+
+2026-10-05 (late): Exp. 1 throughput redefined as redactions FINALIZED DURING the window / its length (the
+arrival-cohort count credited the drain and showed 0 for saturated schemes); metrics.json of all five Exp. 1
+results recomputed from the unchanged rows on the server (`scripts/resummarize.py`, old file kept as
+`metrics.prev.json`); figures regenerated on the server. All compute now runs on the server
+(`deploy/aws/remote.sh`, Makefile forwards on the laptop); skills and plugins removed, only the rtk hook remains.

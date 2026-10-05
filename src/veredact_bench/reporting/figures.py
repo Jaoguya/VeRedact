@@ -56,11 +56,14 @@ def _measured_xticks(fig):
     plain = ticker.FuncFormatter(lambda v, _: f"{v:g}")
     for ax in fig.axes:
         xs = sorted({x for ln in ax.lines for x in ln.get_xdata()})
-        if xs and len(xs) <= 10:
+        if xs and len(xs) <= 10 and not getattr(ax, "fixed_xticks", False):  # offset markers set their own
             ax.xaxis.set_minor_locator(ticker.NullLocator())
             ax.set_xticks(xs)
             ax.xaxis.set_major_formatter(plain)
         if ax.get_yscale() == "log":
+            lo, hi = ax.get_ylim()
+            subs = (1.0,) if hi / lo > 1e3 else (1.0, 2.0, 5.0)  # < 3 decades: 1-2-5 ticks, never an empty axis
+            ax.yaxis.set_major_locator(ticker.LogLocator(base=10, subs=subs))
             ax.yaxis.set_minor_formatter(ticker.NullFormatter())
             ax.yaxis.set_major_formatter(plain)
 
@@ -78,9 +81,38 @@ def _save(fig, name: str, written: list):
     written.append(f"paper/figures/{name}.pdf")
 
 
-def _legend(ax):
-    if ax.get_legend_handles_labels()[0]:
-        ax.legend(frameon=False, ncol=2)
+def _legend(ax, keys=()):
+    """Legend of the drawn lines, plus every scheme in keys that has no drawn line (e.g. saturated
+    everywhere in Fig. 3), so all five schemes are always listed."""
+    handles, labels = ax.get_legend_handles_labels()
+    for k in keys:
+        if style.label(k) not in labels:
+            lab, col, _, mk = style.METHODS[k]
+            handles.append(plt.Line2D([], [], color=col, marker=mk, linestyle="-"))
+            labels.append(lab)
+    if handles:
+        order = [style.label(k) for k in style.PAPER_METHODS]
+        pairs = sorted(zip(handles, labels), key=lambda p: order.index(p[1]) if p[1] in order else 99)
+        ax.legend(*zip(*pairs), frameon=False, ncol=2)
+
+
+def _saturated(ax, key, xs):
+    """Rates where a scheme finalized nothing inside the window: a hollow x on the bottom edge
+    (a zero cannot be drawn on a log axis, and silently dropping it would hide the result)."""
+    if xs:
+        _, col, _, _ = style.METHODS[key]
+        f = 1 + 0.06 * (style.PAPER_METHODS.index(key) - 2)  # log-x offset per scheme: coinciding x stay distinct
+        ax.plot(
+            [x * f for x in xs],
+            [0.0] * len(xs),
+            transform=ax.get_xaxis_transform(),
+            linestyle="none",
+            marker="x",
+            color=col,
+            markersize=6,
+            clip_on=False,
+            zorder=5,
+        )
 
 
 def fig_exp1(tier, written):
@@ -88,19 +120,28 @@ def fig_exp1(tier, written):
     if not ms:
         return
     fig, (a, b, c) = _panels(3)
+    skews = set()
+    base_keys = [k for k in ms if not k.startswith("veredact")]
     for key, m in ms.items():
         pts = _points(m)
-        rate = sorted((k[1], v) for k, v in pts.items() if k[0] == "rate" and v["finalized"])
-        if rate:
-            style.line(a, key, [x for x, _ in rate], [v["throughput_per_s"] for _, v in rate])
-            style.line(b, key, [x for x, _ in rate], [v["latency_ms"]["p95"] for _, v in rate])
+        rate = sorted((k[1], v) for k, v in pts.items() if k[0] == "rate")
+        ok = [(x, v) for x, v in rate if v["completed_in_window"]]
+        if ok:
+            style.line(a, key, [x for x, _ in ok], [v["throughput_per_s"] for _, v in ok])
+            style.line(b, key, [x for x, _ in ok], [v["latency_ms"]["p95"] for _, v in ok])
+        zero = [x for x, v in rate if not v["completed_in_window"]]
+        _saturated(a, key, zero)
+        _saturated(b, key, zero)
         skew = sorted(
             (k[2], v["pqch_adaptations_per_1000"])
             for k, v in pts.items()
             if k[0] == "skew" and v["pqch_adaptations_per_1000"] is not None
         )
         if skew:
-            style.line(c, key, [x for x, _ in skew], [y for _, y in skew])
+            # the baselines all sit at 1,000 (one adaptation per redaction): offset them slightly so none hides
+            dx = 0.03 * (base_keys.index(key) - (len(base_keys) - 1) / 2) if key in base_keys else 0.0
+            style.line(c, key, [x + dx for x, _ in skew], [y for _, y in skew])
+            skews |= {x for x, _ in skew}
     for ax, xl, yl in (
         (a, "Arrival rate (req/s)", "Throughput (red./s)"),
         (b, "Arrival rate (req/s)", "p95 latency (ms)"),
@@ -108,12 +149,22 @@ def fig_exp1(tier, written):
     ):
         ax.set_xlabel(xl)
         ax.set_ylabel(yl)
-    for ax in (a, b):
+    rates = sorted({k[1] for m in ms.values() for k in _points(m) if k[0] == "rate"})
+    for ax in (a, b):  # ticks at the measured rates, not at the offset x markers
         ax.set_xscale("log")
         ax.set_yscale("log")
+        ax.set_xticks(rates)
+        ax.xaxis.set_minor_locator(ticker.NullLocator())
+        ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
+    c.set_xticks(sorted(skews))
+    for ax in (a, b, c):
+        ax.fixed_xticks = True
+    c.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
     for ax, t in zip((a, b, c), "abc"):
         _tag(ax, t)
-    _legend(a)
+    if any(ln.get_marker() == "x" for ln in a.lines):  # explain the x only when one is drawn
+        a.set_title(r"$\times$ = nothing finalized during the window", loc="right", fontsize=style.FONT_PT - 1)
+    _legend(a, keys=ms)
     _save(fig, "exp1_redaction_throughput", written)
 
 
@@ -231,7 +282,9 @@ def fig_exp4(tier, written):
             b.bar(levels, h, bottom=bottom, label=name, width=0.5)
             bottom = [x + y for x, y in zip(bottom, h)]
         b.set(ylabel="Verification time (ms)", title=f"VeRedact-PQ normal audit, $n_Q$ = {n_max}")
-        b.legend(frameon=False, ncol=2)
+        b.legend(
+            frameon=False, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.12)
+        )  # below: no swatch on its own colour
     _tag(a, "a")
     _tag(b, "b")
     _legend(a)
