@@ -104,6 +104,20 @@ def test_s13_reused_audit_response_gives_the_same_decision(cfg, ds):
     s.teardown()
 
 
+def test_s13_prebuilt_witnesses_give_the_identical_audit_response(cfg, ds):
+    """Witnesses built once (index_records) must be exactly Alg. 1's output: same response as a fresh build."""
+    s = open_system(cfg, "S13", ds)
+    build_history(s, ds.trace, 1)
+    s.index_records()
+    blocks = sorted({b for _, b in s.redacted})
+    chal = [(i, 1000 + i) for i in blocks]
+    assert s._cached_witnesses(chal) is not None
+    assert s.L.audit_prove(chal, s._cached_witnesses(chal)) == s.L.audit_prove(chal)
+    res = s.audit(AuditQuery(4))
+    assert all(res.accepted.values()) and res.retrieval_ms >= min(ms for _, _, ms in s._wit.values())
+    s.teardown()
+
+
 def test_registry_knows_every_configured_system(cfg):
     for _exp, x in load_all("smoke")["experiments"].items():
         for key in x.get("systems", []):

@@ -86,5 +86,5 @@ def test_exp1_adaptations_count_every_finalized_redaction():
         )
 
     rows = [row(1, 0, "finalized", 1), row(2, 0, "finalized", 2), row(3, 1, "unfinished", "")]
-    (pt,) = _exp01(rows, {"experiment": {"duration_s": 20}}).values()
+    (pt,) = _exp01(rows, {"experiment": {"duration_s": 20, "warmup_s": 10}}).values()
     assert pt["finalized"] == 0 and pt["pqch_adaptations_per_1000"] == 1000.0

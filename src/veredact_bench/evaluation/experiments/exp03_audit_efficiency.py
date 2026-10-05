@@ -42,6 +42,8 @@ def query_rows(cfg, out, key, rpb, s, counts, ds, n_q_axis, extra=lambda s, n: [
             history_redactions=have,
             setup_s=s.setup_s,
             **capability_fields(s),
+            # S13 only: serial / parallel per-witness time (its witnesses are timed in a process pool)
+            **({"witness_calibration": s.witness_calibration} if hasattr(s, "witness_calibration") else {}),
         )
         if n > have:
             out.row(**base, status=f"unreachable: history holds {have} redactions")

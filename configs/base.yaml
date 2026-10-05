@@ -51,7 +51,7 @@ environment:
   # with the comparison). 7 Besu validators (~1 vCPU each) + load generator leave >= 8 vCPUs for the system
   # under test at veredact.vps_workers = 8.
   instance_type: c7i.4xlarge
-  vcpus: 16
+  vcpus: 16                     # = 8 physical cores x 2 hyperthreads (c7i); S13 times witnesses on vcpus // 2
   region: ap-southeast-1
 
 ledger:

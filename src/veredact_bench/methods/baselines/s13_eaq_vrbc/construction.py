@@ -244,12 +244,19 @@ class NonMemWit:  # w_x = (a, B, s)
 def nonmem_create(A: Accumulator, x_h1: int, theta: int | None = None) -> NonMemWit:
     """Alg. 1 NonMemWitCreate. theta (the accumulated product) may be passed in: it is the same for every
     record of one audit, so audit_prove computes it once instead of once per record (same witnesses)."""
-    theta, x, s = theta or A.theta(), x_h1, [1]
+    return nonmem_create_raw(A.p.u, A.p.N, theta or A.theta(), x_h1)
+
+
+def nonmem_create_raw(u: int, N: int, theta: int, x_h1: int) -> NonMemWit:
+    """Alg. 1 on plain integers (picklable: process-pool workers build witnesses in parallel).
+    b is about as large as theta, so u^b mod N grows with the revocation history (Alg. 1 as written;
+    the Auditee does not hold phi(N) and cannot reduce b)."""
+    x, s = x_h1, [1]
     while (g := math.gcd(theta, x)) != 1:
         x //= g
         s.append(g)
     _, a, b = ext_gcd(theta, x)  # a*theta + b*x = 1
-    return NonMemWit(a, pow(A.p.u, b, A.p.N), s)
+    return NonMemWit(a, pow(u, b, N), s)
 
 
 def nonmem_verify(A: Accumulator, x_h1: int, w: NonMemWit) -> bool:
@@ -388,16 +395,19 @@ class Ledger:
         idx = sorted(secrets.SystemRandom().sample(range(len(self.blocks)), k))
         return [(i, secrets.randbits(64) + 1) for i in idx]
 
-    def audit_prove(self, chal):
+    def audit_prove(self, chal, witnesses: dict | None = None):
+        """witnesses: block -> NonMemWit already built by Alg. 1 for the CURRENT accumulator (identical to
+        building them here; the harness times each once — see the adapter). None: build them all here."""
         N = self.p.N
         V = S = 1
         mu = 0
         items = []
-        theta = self.acc.theta()  # constant during the audit: one product, not one per challenged record
+        theta = None if witnesses else self.acc.theta()  # one product per audit, not one per record
         for i, beta in chal:
             t, c, hh = self.tags[i]
             V, S, mu = V * pow(t.v, beta, N) % N, S * pow(t.S, beta, N) % N, mu + beta * c
-            items.append((self.p.H1(i, hh), nonmem_create(self.acc, self.p.H1(i, hh), theta)))
+            x = self.p.H1(i, hh)
+            items.append((x, witnesses[i] if witnesses else nonmem_create(self.acc, x, theta)))
         return (V, S), mu, nonmem_aggregate(self.acc, items)
 
     def audit_verify(self, chal, proof) -> bool:

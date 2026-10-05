@@ -13,11 +13,15 @@ fi
 eval "$cfg"
 MINUTES=${RUN_IDLE_SHUTDOWN_MINUTES:-30}  # fail safe: an unreadable config must not disable the shutdown
 STAMP=/var/tmp/veredact-last-busy
-if pgrep -f "veredact_bench|run_eval.py|run_experiments.sh|bootstrap_server.sh" >/dev/null || who | grep -q pts/; then
+if pgrep -f "veredact_bench|run_eval.py|scripts/diag_|run_experiments.sh|bootstrap_server.sh" >/dev/null || who | grep -q pts/; then
   date +%s > "$STAMP"; exit 0
 fi
 [[ -f "$STAMP" ]] || { date +%s > "$STAMP"; exit 0; }
-idle=$(( ($(date +%s) - $(cat "$STAMP")) / 60 ))
+# idle since the later of the last busy minute and this boot: the stamp survives a stop/start (/var/tmp), and
+# an old stamp powered the instance off one minute after boot, before launch_run.sh could connect (2026-10-04)
+boot=$(date -d "$(uptime -s)" +%s)
+last=$(cat "$STAMP"); (( boot > last )) && last=$boot
+idle=$(( ($(date +%s) - last) / 60 ))
 if (( idle >= MINUTES )); then
   logger "veredact idle watchdog: idle ${idle} min -> poweroff"
   /sbin/shutdown -h now

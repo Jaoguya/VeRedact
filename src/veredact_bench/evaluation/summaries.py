@@ -46,6 +46,7 @@ def _primitives(rows, cfg):
 
 def _exp01(rows, cfg):
     dur = cfg["experiment"]["duration_s"]
+    end = cfg["experiment"]["warmup_s"] + dur  # end of the measurement window (arrival-time axis)
     out = {}
     for k, rs in _group(rows, "sweep", "rate_rps", "zipf_s").items():
         win = [r for r in rs if str(r["in_window"]) == "1" and not r.get("fault")]
@@ -59,6 +60,9 @@ def _exp01(rows, cfg):
             "offered": len(win),
             "decided": sum(r["status"] in ("finalized", "rejected", "failed") for r in win),
             "revalidations": sum(int(_num(r.get("revalidations")) or 0) for r in win),  # stale -> re-prove
+            "submitted_on_time": M.rate(
+                sum(_num(r.get("submit_s")) is not None and _num(r["submit_s"]) < end for r in win), len(win)
+            ),
             "finalized": len(fin),
             "throughput_per_s": M.throughput(len(fin), dur),
             "latency_ms": _stats(r["latency_ms"] for r in fin),

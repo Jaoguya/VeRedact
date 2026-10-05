@@ -10,13 +10,21 @@ Paper workflow:
              non-membership witness (Alg. 2, NI-SimPoE) -> AuditVerify (Alg. 3). The protocol answers
              "are these blocks intact and current?" for the challenged set as a whole: one decision,
              applied to every record of the query (it cannot reject records individually).
+
+Measurement (harness, not the paper): Alg. 1's witness B = u^b mod N has |b| ~ |theta|, so one witness costs
+seconds at the experiment's 10^4-redaction history. A challenged block's witness depends only on the block
+and theta, which audits do not change, so index_records() builds every block's witness ONCE after the
+untimed history (process pool, one core per witness, each timed in its worker). An audit then uses those
+exact witnesses: response bytes and verification are measured directly; generation time = the summed
+single-core witness times of its blocks + the directly measured challenge-dependent aggregation.
 """
 
 import os
 import time
+from concurrent.futures import ProcessPoolExecutor
 
 from veredact_bench.evaluation.anchor import gather, make_anchor
-from veredact_bench.methods.baselines.s13_eaq_vrbc.construction import Ledger
+from veredact_bench.methods.baselines.s13_eaq_vrbc.construction import Ledger, nonmem_create_raw
 from veredact_bench.methods.baselines.s13_eaq_vrbc.construction import setup as s13_setup
 from veredact_bench.methods.scheme import (
     AuditQuery,
@@ -30,6 +38,7 @@ from veredact_bench.methods.scheme import (
     RedactionResult,
     Scheme,
 )
+from veredact_bench.utils.log import get_logger
 
 
 class EAQVRBCScheme(Scheme):
@@ -108,6 +117,46 @@ class EAQVRBCScheme(Scheme):
             finality_op="baseline_redaction",
         )
 
+    def index_records(self) -> None:
+        """After the (untimed) history: Alg. 1 witness of every redacted block, built once and timed per
+        witness on one core. Built in parallel on one worker per PHYSICAL core (hyperthread siblings slow each
+        other: a timing bias against S13); a few are re-timed serially, and if parallel times are inflated by
+        more than 10 % every witness is re-timed serially, so the reported times are single-core times."""
+        u, N, theta = self.p.u, self.p.N, self.L.acc.theta()
+        blocks = sorted({s for _, s in self.redacted})
+        xs = [self.p.H1(i, self.L.tags[i][2]) for i in blocks]
+        workers = max(1, min(self.cfg["environment"]["vcpus"] // 2, os.cpu_count() or 1))
+        with ProcessPoolExecutor(workers, initializer=_wit_init, initargs=(u, N, theta)) as ex:
+            built = list(ex.map(_wit_job, xs))
+        _wit_init(u, N, theta)
+        k = min(4, len(xs))
+        solo = [_wit_job(x)[1] for x in xs[:k]]
+        par = [ms for _, ms in built[:k]]
+        ratio = (sorted(solo)[k // 2] / sorted(par)[k // 2]) if k else 1.0
+        if ratio < 0.9:  # parallel timing inflated: time every witness on its own instead
+            built = [(w, _wit_job(x)[1]) for (w, _), x in zip(built, xs)]
+        self.witness_calibration = ratio
+        self._theta_n = len(self.L.acc.revoked)
+        self._wit = {i: (x, w, ms) for i, x, (w, ms) in zip(blocks, xs, built)}
+        get_logger().info(
+            f"  S13 witnesses: {len(xs)} blocks on {workers} workers, serial/parallel = {ratio:.2f}"
+            f"{' -> re-timed serially' if ratio < 0.9 else ''}, median "
+            f"{sorted(ms for _, _, ms in self._wit.values())[len(xs) // 2]:.0f} ms each"
+        )
+
+    def _cached_witnesses(self, chal):
+        """The prebuilt witnesses, if they are still Alg. 1's output for the current accumulator and tags."""
+        w = getattr(self, "_wit", None)
+        if not w or self._theta_n != len(self.L.acc.revoked):
+            return None
+        out = {}
+        for i, _ in chal:
+            x, wit, _ms = w.get(i, (None, None, 0))
+            if x != self.p.H1(i, self.L.tags[i][2]):
+                return None
+            out[i] = wit
+        return out
+
     def audit(self, query: AuditQuery) -> AuditResult:
         blocks = sorted({s for _, s in self.redacted[: query.records]})
         chal = [(i, int.from_bytes(os.urandom(8), "big") + 1) for i in blocks]
@@ -121,9 +170,12 @@ class EAQVRBCScheme(Scheme):
         if cached:  # Exp. 4: same challenge + proof again; only the auditor's verification is re-timed
             chal, proof, gen_ms = cached
         else:
+            wits = self._cached_witnesses(chal)
             t0 = time.perf_counter()
-            proof = self.L.audit_prove(chal)
+            proof = self.L.audit_prove(chal, wits)  # identical response either way
             gen_ms = (time.perf_counter() - t0) * 1000
+            if wits:  # + each witness's own measured single-core build time (index_records)
+                gen_ms += sum(self._wit[i][2] for i, _ in chal)
             if query.reuse_response:
                 self.__dict__.setdefault("_responses", {})[ck] = (chal, proof, gen_ms)
         t1 = time.perf_counter()
@@ -147,3 +199,17 @@ class EAQVRBCScheme(Scheme):
 
     def teardown(self) -> None:
         self.anchor.close()
+
+
+_W: tuple = ()
+
+
+def _wit_init(u: int, N: int, theta: int) -> None:
+    global _W
+    _W = (u, N, theta)  # theta is large: sent once per worker, not once per witness
+
+
+def _wit_job(x: int):
+    t0 = time.perf_counter()
+    w = nonmem_create_raw(*_W, x)
+    return w, (time.perf_counter() - t0) * 1000

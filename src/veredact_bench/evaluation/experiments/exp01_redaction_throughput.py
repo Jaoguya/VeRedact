@@ -18,6 +18,7 @@ overload) drops below 1 - saturation_tolerance; its higher rates are skipped and
 Goodput (finalized redactions/s) is reported separately.
 """
 
+import os
 import queue
 import threading
 import time
@@ -49,7 +50,14 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     t0 = time.perf_counter() + 0.5  # clients start preparing now; arrivals are relative to t0
     now = lambda: time.perf_counter() - t0
 
+    pin = x.get("cpu_pin")  # diagnostics only: {"requesters": [cpus], "system": [cpus]} (Linux)
+
+    def pin_to(part):
+        if pin and hasattr(os, "sched_setaffinity"):
+            os.sched_setaffinity(threading.get_native_id(), pin[part])
+
     def client(i):
+        pin_to("requesters")
         for r in ds.trace[i :: x["client_threads"]]:
             if stop.is_set():
                 return
@@ -57,17 +65,19 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             if delay > 0:
                 time.sleep(delay)
             p = prepare(s, r)  # the requester proves against the state at its arrival time
-            stamp[r.seq]["submit"] = now()
+            stamp[r.seq]["submit"] = stamp[r.seq]["proved"] = now()
             admit.put((r, p))
 
     def revalidator():
         """Stale requests are returned to their requester, which re-proves and resubmits (Phases 4/5).
         Latency keeps running from the ORIGINAL submission."""
+        pin_to("requesters")
         while True:
             r = revalq.get()
             if r is None:
                 return
             p = prepare(s, r)
+            stamp[r.seq]["proved"] = now()  # this attempt's proof (staleness window: proved -> auth_done)
             admit.put((r, p))
 
     def send_back(r):
@@ -151,6 +161,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     workers = [threading.Thread(target=worker, daemon=True) for _ in range(cfg["veredact"]["vps_workers"])]
     workers_r = [threading.Thread(target=revalidator, daemon=True) for _ in range(x["client_threads"])]
     ex = threading.Thread(target=executor, daemon=True)
+    pin_to("system")  # threads inherit the creator's affinity: workers and executor stay on the system cpus
     for th in clients + workers + workers_r + [ex]:
         th.start()
     for th in clients:
@@ -196,6 +207,10 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             arrival_s=r.arrival_s,
             submit_s=st.get("submit", ""),
             client_lag_ms=(st["submit"] - r.arrival_s) * 1000 if "submit" in st else "",
+            # last attempt: its proof's age when the VPS validated it (stale if its batch changed meanwhile)
+            proof_age_ms=(st["auth_done"] - st["proved"]) * 1000
+            if st.get("auth_done", -1) >= st.get("proved", 0)  # re-proved but never re-validated: no value
+            else "",
             in_window=int(in_window),
             status=status,
             reason=st.get("reason", ""),
@@ -230,18 +245,17 @@ def run(cfg, out):
         saturated = 0
         for rate in x["rates"]:  # rate sweep at the default skew
             ratio, client = run_point(cfg, key, rate, cfg["workload"]["zipf_s"], out, "rate")
-            if client < 1 - tol:
-                out.note(
-                    f"{x['id']} {key}: requesters submitted only {client:.0%} of the {rate} req/s "
-                    "window on time — client-bound, not system-bound; higher rates skipped"
-                )
-                break
-            # one point below 1 - tol does not end the sweep: VeRedact-PQ's batch-version freshness can tip a
-            # point into a revalidation storm by chance (pilot: same point 17-61 % or 100 % decided)
-            saturated = saturated + 1 if ratio < 1 - tol else 0
+            # Saturated = the system did not decide its offered load, OR its requesters fell behind. The second
+            # is NOT a load-generator limit here: requesters also re-prove every stale request (Phases 4/5), and
+            # under a revalidation storm that re-proving (2-3 proofs per request, pilot + full run 2026-10-04)
+            # crowds out fresh submissions. Both count toward the same patience rule; metrics.json reports
+            # submitted-on-time, decided and revalidations per point so the cause stays visible.
+            bad = ratio < 1 - tol or client < 1 - tol
+            saturated = saturated + 1 if bad else 0
             if saturated >= patience:
                 out.note(
-                    f"{x['id']} {key}: saturated at {patience} consecutive rates up to {rate} req/s; higher skipped"
+                    f"{x['id']} {key}: saturated at {patience} consecutive rates up to {rate} req/s "
+                    f"(decided {ratio:.0%}, submitted on time {client:.0%}); higher skipped"
                 )
                 break
         for zs in x["zipf_sweep"]:  # skew sweep at a fixed rate
