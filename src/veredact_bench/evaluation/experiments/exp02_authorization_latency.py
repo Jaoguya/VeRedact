@@ -4,7 +4,8 @@ Boundary: admission -> authorization decision. Requester-side preparation is out
   VeRedact-PQ   per request: Phase 3 (authorize); per batch of b: Phase 4 (authorize_batch: attestation +
                 C_VR reconstruction + freshness + R_e^VR + t committee ML-DSA signatures). Reported
                 separately, as phase3 + phase4/b per request, and Phase 4 split into its four steps.
-  baselines     their own per-request authorization; they have no batch axis, so they run at b = 1 only.
+  baselines     their own per-request authorization; no batch protocol, so a batch of b is b independent
+                authorizations, measured at every b of the axis (amortized per request; batch_total_ms per batch).
 committee_n sweeps each system's own distribution parameter (registry.make, t = floor(2n/3)+1).
 Valid requests only (fault_fraction = 0): Exp. 2 measures the cost of saying yes.
 """
@@ -31,7 +32,9 @@ def run(cfg, out):
     for key in system_keys(cfg):
         if not out.begin(key):
             continue
-        batch_axis = x["batch_sizes"] if key.startswith("veredact") else [1]
+        # every system at every batch size (author rule 2026-10-05: no single-point lines). A baseline has no batch
+        # protocol: a batch of m is m of its own per-request authorizations, each measured
+        batch_axis = x["batch_sizes"]
         ds = build_dataset(cfg, n_requests=reps * max(batch_axis))
         out.dataset(ds.dataset_id)
         for n in x["committee_sizes"]:
@@ -58,6 +61,8 @@ def run(cfg, out):
                     if is_veredact(s):
                         _, ph4 = s.authorize_batch(auths)
                         bd = {k: s.p.last_breakdown[k] for k in BREAKDOWN}
+                    # Fig. 4(b) per batch: VeRedact-PQ's Phase 4 for the batch; a baseline's m authorizations
+                    batch_total = ph4 if ph4 != "" else sum(a.crypto_ms for a in auths)
                     for a in auths:
                         out.row(
                             **common,
@@ -68,6 +73,7 @@ def run(cfg, out):
                             reason=a.reason,
                             phase3_ms=a.crypto_ms,
                             phase4_batch_ms=ph4,
+                            batch_total_ms=batch_total,
                             **{f"phase4_{k}": v for k, v in bd.items()},
                             auth_per_request_ms=a.crypto_ms + (ph4 / b if ph4 != "" else 0.0),
                         )

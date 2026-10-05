@@ -29,7 +29,7 @@ adapter: `adapter.py` (`REBSScheme`, key `S34`) · own evaluation: `reproduce.py
 | RSA | 1024 | 3072 in the comparison (`rsa_bits`); 1024 in `reproduce.py` | against S34, required for equal security |
 | AVNs | one per attribute (attribute i keyed by AVN_i's (ε_i, η_i), Lewko–Waters MA-ABE) | same: l attributes → l AVNs, so the AVN count is `policy_attributes`, not a separate parameter | none |
 | AttrKeyGen | once per identity | at setup (and lazily, untimed, for identities first seen at run time) | for S34 (one-off Sig_AMC checks untimed) |
-| CHash | per transaction at creation | materialised only for trace-targeted transactions (other transactions are never touched); ephemeral RSA keygen in a process pool | neutral (setup, untimed) |
+| CHash | per transaction at creation | materialised only for trace-targeted transactions (other transactions are never touched); integer part (ephemeral RSA keygen + h) in a process pool, pairing part in the main process; built once per process for a ledger and parameter set and reused by later points, each point working on its own copy of the table (a redaction replaces an entry, never modifies a shared one; `test_fidelity.py`) | neutral (setup, untimed) |
 | GT arithmetic | native exponentiation (PBC) | library exposes multiplication only → Straus multi-exponentiation in Python | against S34 (~5 ms of ~11 ms auth at t = 5) |
 | ledger writes | one per redaction | one per redaction, **pipelined** (finality tracked, not awaited), exactly like VeRedact-PQ's anchoring | neutral — removes a harness-imposed one-block-per-redaction cap |
 

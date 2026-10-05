@@ -14,9 +14,6 @@ experiment:
                                 #   {requesters: [...], system: [...]} to emulate requesters on their own machines
   client_threads: 16            # [PROPOSED] requester threads that sign + prove (= vcpus; single-core proofs);
                                 #   the achieved rate is recorded and a client-bound point is reported as such
-  saturation_tolerance: 0.10    # [PROPOSED] a point is saturated when decided/offered < 1 - tol
-  saturation_patience: 2        # [METHOD] higher rates are skipped after this many CONSECUTIVE saturated points
-                                #   (author decision 2026-10-04, D12): a single unstable point does not end a sweep,
-                                #   a scheme saturated for good (S13, S34) does not run every rate (S34's untimed
-                                #   per-record setup alone would take ~8 h at 500-5,000 req/s)
+  saturation_tolerance: 0.10    # [PROPOSED] a point is NOTED saturated when decided/offered or on-time < 1 - tol;
+                                #   every rate runs for every system (author rule 2026-10-05: no capped lines)
   drain_s: 30                   # [PROPOSED] wait for in-flight requests after the window; the rest are recorded

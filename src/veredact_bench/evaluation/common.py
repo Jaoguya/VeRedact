@@ -1,11 +1,12 @@
 """Shared runner machinery. Every experiment drives systems ONLY through Scheme (scheme.py) + registry."""
 
 import dataclasses
+import random
 import threading
 import time
 
 from veredact_bench.methods.registry import make
-from veredact_bench.methods.scheme import AuthCost, NotSupported
+from veredact_bench.methods.scheme import AuthCost, NotSupported, RedactionRequest
 
 
 class RWLock:
@@ -126,6 +127,29 @@ def build_history(s, trace, batch_size: int) -> dict:
         pending = retry
     for res in in_flight:
         res.wait()
+    return counts
+
+
+def fill_history(s, ds, cfg, need: int, batch_size: int, counts: dict) -> dict:
+    """Top up an audit history until it holds `need` redactions (the largest n_Q), so no n_Q point is ever
+    unreachable (author rule 2026-10-05: no capped lines). Untimed, like build_history: extra VALID requests
+    with UNIFORM targets over the same ledger (S1 allows one redaction per block, so the skewed trace keeps
+    hitting redacted blocks). Raises instead of capping when a round redacts nothing."""
+    d = cfg["dataset"]
+    rng = random.Random(cfg["meta"]["seed"] + 7919)
+    seq = max((r.seq for r in ds.trace), default=-1) + 1
+    while counts["redacted"] < need:
+        extra = []
+        for _ in range(2 * (need - counts["redacted"])):
+            tx = ds.transactions[rng.randrange(len(ds.transactions))]
+            payload = rng.randbytes(rng.randint(d["payload_min_bytes"], d["payload_max_bytes"]))
+            extra.append(RedactionRequest(seq, rng.randrange(ds.requesters), tx.tid, payload, 0.0))
+            seq += 1
+        c = build_history(s, extra, batch_size)
+        if c["redacted"] == 0:
+            raise RuntimeError(f"{getattr(s, 'key', s)}: history stuck at {counts['redacted']} < {need} redactions")
+        for k in counts:
+            counts[k] += c[k]
     return counts
 
 

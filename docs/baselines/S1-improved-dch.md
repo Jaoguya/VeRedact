@@ -8,10 +8,10 @@ adapter: `adapter.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `reprod
 | Exp | Enters | What S1 contributes |
 |:--|:-:|:--|
 | 1 | ✓ | per-request threshold redaction on Jia's chain (one redaction per block) |
-| 2 | ✓ | t full nodes each check acc + verify tx/tx' signatures; committee axis = full nodes n, t = ⌊2n/3⌋+1 |
+| 2 | ✓ | t full nodes each check acc + verify tx/tx' signatures; committee axis = full nodes n, t = ⌊2n/3⌋+1; a batch of m = m independent authorizations |
 | 3 | ✓ | consistency check (Jia Sec. III-C4): per queried block, block + RSA-accumulator membership witness |
 | 4 | ✓ | client verifies Improved DCH + membership per record — per-record decisions; one level only |
-| 5 | ✓ | one `recordRedaction` transaction per redaction |
+| 5 | ✓ | one `recordRedaction` transaction per redaction; measured at every m (a batch of m = m transactions) |
 
 ## Boundaries
 
@@ -32,6 +32,8 @@ adapter: `adapter.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `reprod
 | accumulator | RSA, size unstated | RSA-3072 (`accumulator_rsa_bits`), hash-to-prime via `next_prime` | neutral at equal security |
 | tx signatures | unspecified | ECDSA secp256k1 (coincurve) | neutral |
 | one redaction per block | Jia's rule | enforced; a second request to a redacted block is rejected (reported, never retried) | real limit, not a harness artefact |
+| block size | unstated | `txs_per_block` = 8 (12,500 blocks on the 10^5-transaction ledger) instead of the shared 256-transaction batch (391 blocks), so S1's audit history reaches n_Q = 10^4 | for S1 (smaller per-block Merkle root) |
+| audit history | — | topped up with untimed uniform requests until it holds max n_Q redactions (`common.fill_history`) | neutral (setup, untimed) |
 | ledger writes | one per redaction | one per redaction, **pipelined** (finality tracked, not awaited), exactly like VeRedact-PQ's anchoring | neutral — removes a harness-imposed one-block-per-redaction cap |
 
 ## Not implemented

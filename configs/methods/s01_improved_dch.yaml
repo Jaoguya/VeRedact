@@ -24,3 +24,8 @@ baselines:
     nodes_n: 7                  # [DERIVED] = veredact.committee_n
     pairing: BLS12-381          # [DERIVED] >= 128-bit classical security (paper used PBC Type A/E/F, <128-bit)
     accumulator_rsa_bits: 3072  # [DERIVED] Jia chain RSA accumulator at 128-bit: 3072
+    txs_per_block: 8            # [PROPOSED] the paper fixes no block size. Jia's rule allows ONE redaction per block,
+                                #   so the shared 256-tx batch gave only 391 blocks: S1's history stopped at 391
+                                #   redactions (Fig. 5/6 ended at n_Q = 100). 8 -> 12,500 blocks, enough for
+                                #   n_Q = 10^4 (author rule 2026-10-05: no capped lines). Smaller blocks make S1's
+                                #   per-block Merkle root slightly cheaper (docs/baselines/S1-improved-dch.md)

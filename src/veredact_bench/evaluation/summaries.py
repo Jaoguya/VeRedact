@@ -83,6 +83,7 @@ def _exp02(rows, cfg):
         k: {
             "auth_per_request_ms": _stats(r["auth_per_request_ms"] for r in rs),
             "phase4_batch_ms": _stats(r["phase4_batch_ms"] for r in rs),
+            "batch_total_ms": _stats(r.get("batch_total_ms") for r in rs),
             "accepted": sum(int(r["auth_ok"]) for r in rs),
             "requests": len(rs),
         }

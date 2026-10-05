@@ -1,11 +1,11 @@
 """Exp. 5 — blockchain gas (manuscript Fig. 7, Table VIII). Besu receipts ONLY.
 
-Per system, target skew s and batch size b: requests_per_point valid requests are redacted in
-authorization batches of b (baselines: per request — their papers have no batch, so b does not change
-their transactions and they run once per s). Every anchoring transaction the system sent after setup is
-read from the anchor's receipt log (anchor._Metered) — one row per on-chain transaction — plus VeRedact's
-RAI checkpoint. With ledger.backend = in_process there are no receipts: gas is left empty and the run is
-marked; validate-config refuses that backend in the experiment tier.
+Per system, target skew s and batch size b: requests_per_point valid requests are redacted in authorization
+batches of b; baselines have no batch protocol, so a batch of b is b redactions sent one by one (each its own
+transaction) - measured at every b, like VeRedact-PQ (no single-point lines, 2026-10-05). Every anchoring
+transaction the system sent after setup is read from the anchor's receipt log (anchor._Metered) — one row per
+on-chain transaction — plus VeRedact's RAI checkpoint. With ledger.backend = in_process there are no receipts:
+gas is left empty and the run is marked; validate-config refuses that backend in the experiment tier.
 """
 
 from veredact_bench.data.dataset import build_dataset
@@ -23,7 +23,7 @@ def run(cfg, out):
         for zs in x["zipf_sweep"]:
             ds = build_dataset(cfg, n_requests=x["requests_per_point"], zipf_s=zs)
             out.dataset(ds.dataset_id)
-            for b in x["batch_sizes"] if key.startswith("veredact") else [1]:
+            for b in x["batch_sizes"]:  # every system at every b; a baseline redacts b requests one by one
                 s = open_system(cfg, key, ds)
                 mark = len(s.anchor.receipts)
                 counts = build_history(s, ds.trace, b)

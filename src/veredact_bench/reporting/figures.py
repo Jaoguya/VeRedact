@@ -187,15 +187,16 @@ def fig_exp2(tier, written):
         style.line(a, key, [x for x, _ in amort], [y for _, y in amort])
         if key.startswith("veredact"):  # one ABRRR batch of m0 requests: Phase 4 time
             per_batch = sorted((k[0], v["phase4_batch_ms"]["median"]) for k, v in pts.items() if k[1] == m0)
-        else:  # baselines authorize one request per batch
-            per_batch = sorted((k[0], v["auth_per_request_ms"]["median"]) for k, v in pts.items() if k[1] == 1)
+        else:
+            # baselines: m0 of their own authorizations, measured as one batch (exp02 batch_total_ms)
+            per_batch = sorted((k[0], v["batch_total_ms"]["median"]) for k, v in pts.items() if k[1] == m0)
         style.line(b, key, [x for x, _ in per_batch], [y for _, y in per_batch])
     a.set(xscale="log", yscale="log", xlabel="Batch size $m$", ylabel="Amortized per request (ms)")
     b.set(
         yscale="log",
         xlabel="Committee size $n$ ($t=\\lfloor 2n/3\\rfloor+1$)",
         ylabel="Per batch (ms)",
-        title=f"VeRedact-PQ: one batch of $m$={int(m0)}",
+        title=f"one batch of $m$={int(m0)} requests",
     )
     _tag(a, "a")
     _tag(b, "b")

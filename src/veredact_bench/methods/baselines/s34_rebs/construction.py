@@ -152,11 +152,24 @@ class CHValue:
 
 
 def chash(amc: AMC, avns: list, policy: Policy, tx: bytes, t: int, rsa_bits: int, eph=None) -> tuple[CHValue, int, int]:
+    n_t, p_t, q_t, r, h = chash_rsa(amc.n, amc.e_big, tx, t, rsa_bits, eph)
+    return chash_ct(avns, policy, h, t, r, n_t, p_t, q_t, rsa_bits), p_t, q_t
+
+
+def chash_rsa(amc_n: int, e_big: int, tx: bytes, t: int, rsa_bits: int, eph=None) -> tuple:
+    """CHash, integer part: ephemeral RSA trapdoor and h = H(tx)^t * r^e mod N*n~ (plain ints: pools)."""
     n_t, p_t, q_t = eph or rsa_key(rsa_bits)
-    trap = p_t.to_bytes(rsa_bits // 16 + 8, "big") + q_t.to_bytes(rsa_bits // 16 + 8, "big")
-    M = amc.n * n_t
+    M = amc_n * n_t
     r = secrets.randbelow(M - 2) + 2
-    h = int(gmpy2.powmod(H_tx(tx, M), t, M)) * int(gmpy2.powmod(r, amc.e_big, M)) % M
+    h = int(gmpy2.powmod(H_tx(tx, M), t, M)) * int(gmpy2.powmod(r, e_big, M)) % M
+    return n_t, p_t, q_t, r, h
+
+
+def chash_ct(
+    avns: list, policy: Policy, h: int, t: int, r: int, n_t: int, p_t: int, q_t: int, rsa_bits: int
+) -> CHValue:
+    """CHash, pairing part: Trap = (p~, q~) encrypted under the policy (GT values: main process only)."""
+    trap = p_t.to_bytes(rsa_bits // 16 + 8, "big") + q_t.to_bytes(rsa_bits // 16 + 8, "big")
     # encrypt Trap under the policy
     m = policy.t
     v = [rnd() for _ in range(m)]
@@ -172,7 +185,7 @@ def chash(amc: AMC, avns: list, policy: Policy, tx: bytes, t: int, rsa_bits: int
         c3.append(a.pk_eta * sc(rl) + G2 * sc(th[l]))
     c0 = bytes(x ^ y for x, y in zip(trap, kdf(GT.pairing(G1 * sc(v[0]), G2), len(trap))))
     info = Ciphertext(c0, c1, c2, c3, hashlib.sha3_256(trap).digest())
-    return CHValue(h, t, r, n_t, info), p_t, q_t
+    return CHValue(h, t, r, n_t, info)
 
 
 def chver(amc: AMC, tx: bytes, v: CHValue) -> bool:

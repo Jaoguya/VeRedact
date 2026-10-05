@@ -12,10 +12,11 @@ Pipeline (identical for every system; only the Scheme behind it changes):
   finality  VeRedact returns a ledger Future; its receipt time is the request's completion. Baselines
             block on the receipt inside redact().
 Latency = finalized - submitted. Crypto and ledger time stay separate columns.
-A system is saturated at a rate when decided/offered (measurement window, valid requests; decided = any
-final outcome, so a protocol-level rejection such as S1's one-redaction-per-block is not mistaken for
-overload) drops below 1 - saturation_tolerance; its higher rates are skipped and recorded as such.
-Goodput (finalized redactions/s) is reported separately.
+Every system runs EVERY rate (author rule 2026-10-05: no figure line may end early). A point is noted as
+saturated when decided/offered (window arrivals, valid requests; decided = any final outcome, so a
+protocol-level rejection such as S1's one-redaction-per-block is not mistaken for overload) or the on-time
+submission fraction drops below 1 - saturation_tolerance; the note never skips a rate.
+Throughput = redactions finalized during the window / its length (summaries._exp01).
 """
 
 import os
@@ -239,26 +240,16 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
 
 def run(cfg, out):
     x = cfg["experiment"]
-    tol, patience = x["saturation_tolerance"], x["saturation_patience"]
+    tol = x["saturation_tolerance"]
     for key in system_keys(cfg):  # one run per point (no repetitions): every request of the run is a sample
         if not out.begin(key):
             continue
-        saturated = 0
-        for rate in x["rates"]:  # rate sweep at the default skew
+        for rate in x["rates"]:  # rate sweep at the default skew: every rate, for every system
             ratio, client = run_point(cfg, key, rate, cfg["workload"]["zipf_s"], out, "rate")
-            # Saturated = the system did not decide its offered load, OR its requesters fell behind. The second
-            # is NOT a load-generator limit here: requesters also re-prove every stale request (Phases 4/5), and
-            # under a revalidation storm that re-proving (2-3 proofs per request, pilot + full run 2026-10-04)
-            # crowds out fresh submissions. Both count toward the same patience rule; metrics.json reports
-            # submitted-on-time, decided and revalidations per point so the cause stays visible.
-            bad = ratio < 1 - tol or client < 1 - tol
-            saturated = saturated + 1 if bad else 0
-            if saturated >= patience:
-                out.note(
-                    f"{x['id']} {key}: saturated at {patience} consecutive rates up to {rate} req/s "
-                    f"(decided {ratio:.0%}, submitted on time {client:.0%}); higher skipped"
-                )
-                break
+            # noted, never skipped: requesters also re-prove every stale request (Phases 4/5), so under a
+            # revalidation storm the on-time fraction falls together with decided/offered
+            if ratio < 1 - tol or client < 1 - tol:
+                out.note(f"{x['id']} {key}: saturated at {rate} req/s (decided {ratio:.0%}, on time {client:.0%})")
         for zs in x["zipf_sweep"]:  # skew sweep at a fixed rate
             run_point(cfg, key, x["zipf_rate"], zs, out, "skew")
         out.end()

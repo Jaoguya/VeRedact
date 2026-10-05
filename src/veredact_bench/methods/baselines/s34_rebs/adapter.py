@@ -64,28 +64,46 @@ class REBSScheme(Scheme):
 
     # ------------------------------------------------------------------ setup (untimed)
     def setup(self, dataset: Dataset) -> None:
-        self.amc = R.gpgen(self.bits)
-        # one AVN per policy attribute: attribute i's key uses AVN_i's (eps_i, eta_i) (paper Sec. V, KeyAVN)
-        self.attr_auth = [R.key_avn() for _ in range(self.l)]
-        A = R.lsss_threshold(self.l, self.t)
-        self.policies = [R.Policy(A, [R.rnd() for _ in range(self.l)], self.t) for _ in range(dataset.policies)]
-        self.trs = {}  # requester -> (k_TR, Sig_AMC)
-        self.keys = {}  # (requester, policy used for the attribute values) -> {row: k_attr}
-        self.by_tid = {tx.tid: tx for tx in dataset.transactions}
-        targets = list(dict.fromkeys(r.tid for r in dataset.trace if r.tid in self.by_tid))
-        workers = min(self.cfg["environment"]["vcpus"], os.cpu_count() or 1)
-        with ProcessPoolExecutor(workers) as ex:
-            eph = list(ex.map(R.rsa_key, [self.bits] * len(targets)))
-        self.ch = {}
-        for tid, e in zip(targets, eph):
-            tx = self.by_tid[tid]
-            self.ch[tid] = R.chash(self.amc, self.attr_auth, self.policies[tx.policy], tx.payload, tx.ts, self.bits, e)[
-                0
-            ]
+        """Keys, policies and one chameleon hash per TARGETED ledger record, kept per process for a given ledger
+        and parameter set and reused by later points: only records not hashed yet are built (untimed setup;
+        ~80 ms each at RSA-3072 + 10 pairings). Without reuse every high-rate Exp. 1 point would rebuild up to
+        10^5 hashes and the sweep could not reach 5,000 req/s (author rule 2026-10-05: no capped lines). Each
+        point gets its own copy of the hash table; a redaction REPLACES its entry (R.chcld returns a new
+        CHValue), so the shared values are never modified."""
+        key = (dataset.seed, len(dataset.transactions), dataset.policies, self.bits, self.l, self.t)
+        if key not in _SETUP:
+            _SETUP[key] = self._keys(dataset)
+        self.amc, self.attr_auth, self.policies, self.trs, self.keys, self.by_tid, ch = _SETUP[key]
+        missing = list(dict.fromkeys(r.tid for r in dataset.trace if r.tid in self.by_tid and r.tid not in ch))
+        self._hash(missing, ch)
+        self.ch = dict(ch)  # this point's table: entries are replaced on redaction, the shared ones stay pristine
         for r in dataset.trace:
             if r.tid in self.by_tid:
                 self._issue(r.requester, self._values_policy(r))
         self.anchor = make_anchor(self.cfg)
+
+    def _keys(self, dataset: Dataset) -> tuple:
+        amc = R.gpgen(self.bits)
+        # one AVN per policy attribute: attribute i's key uses AVN_i's (eps_i, eta_i) (paper Sec. V, KeyAVN)
+        attr_auth = [R.key_avn() for _ in range(self.l)]
+        A = R.lsss_threshold(self.l, self.t)
+        policies = [R.Policy(A, [R.rnd() for _ in range(self.l)], self.t) for _ in range(dataset.policies)]
+        by_tid = {tx.tid: tx for tx in dataset.transactions}
+        # trs: requester -> (k_TR, Sig_AMC); keys: (requester, policy of the attribute values) -> {row: k_attr}
+        return amc, attr_auth, policies, {}, {}, by_tid, {}
+
+    def _hash(self, tids: list, ch: dict) -> None:
+        """CHash of every tid: integer part (ephemeral RSA key + h) in worker processes, pairing part here
+        (GT is not picklable)."""
+        if not tids:
+            return
+        txs = [self.by_tid[t] for t in tids]
+        jobs = [(self.amc.n, self.amc.e_big, tx.payload, tx.ts, self.bits) for tx in txs]
+        workers = min(self.cfg["environment"]["vcpus"], os.cpu_count() or 1)
+        with ProcessPoolExecutor(workers) as ex:
+            parts = ex.map(_chash_rsa, jobs, chunksize=max(1, len(jobs) // (8 * workers)))
+            for tx, (n_t, p_t, q_t, r, h) in zip(txs, parts):
+                ch[tx.tid] = R.chash_ct(self.attr_auth, self.policies[tx.policy], h, tx.ts, r, n_t, p_t, q_t, self.bits)
 
     def _values_policy(self, req: RedactionRequest) -> int:
         """Whose attribute values the TR holds: the target's policy, or (policy fault) another one's."""
@@ -156,3 +174,10 @@ class REBSScheme(Scheme):
 
     def teardown(self) -> None:
         self.anchor.close()
+
+
+_SETUP: dict = {}  # (ledger, parameters) -> keys + hashes built so far, shared by the points of one process
+
+
+def _chash_rsa(job):
+    return R.chash_rsa(*job)

@@ -122,3 +122,28 @@ def test_registry_knows_every_configured_system(cfg):
     for _exp, x in load_all("smoke")["experiments"].items():
         for key in x.get("systems", []):
             make(cfg, key)
+
+
+def test_s1_history_is_topped_up_to_the_largest_n_q(cfg, ds):
+    """No n_Q point may be unreachable: S1 (one redaction per block) gets untimed uniform requests until its
+    history holds `need` redactions."""
+    from veredact_bench.evaluation.common import fill_history
+
+    s = open_system(cfg, "S1", ds)
+    counts = build_history(s, ds.trace, 1)
+    need = counts["redacted"] + 20
+    fill_history(s, ds, cfg, need, 1, counts)
+    assert counts["redacted"] >= need and len(s.redacted) >= need
+    s.teardown()
+
+
+def test_s34_reused_setup_is_never_modified_by_a_redaction(cfg, ds):
+    """Exp. 1 points share S34's keys and hashes; a redaction in one point must not change another's table."""
+    a = open_system(cfg, "S34", ds)
+    b = open_system(cfg, "S34", ds)  # second point: reuses the shared setup, builds nothing new
+    assert a.ch is not b.ch and all(a.ch[t] is b.ch[t] for t in a.ch)
+    build_history(a, ds.trace, 1)
+    changed = [t for t in a.ch if a.ch[t] is not b.ch[t]]
+    assert changed and all(b.ch[t] is open_system(cfg, "S34", ds).ch[t] for t in changed)
+    a.teardown()
+    b.teardown()

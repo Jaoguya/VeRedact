@@ -140,3 +140,12 @@ arrival-cohort count credited the drain and showed 0 for saturated schemes); met
 results recomputed from the unchanged rows on the server (`scripts/resummarize.py`, old file kept as
 `metrics.prev.json`); figures regenerated on the server. All compute now runs on the server
 (`deploy/aws/remote.sh`, Makefile forwards on the laptop); skills and plugins removed, only the rtk hook remains.
+
+2026-10-05 (no-cap rule, code only, NOT run yet): author rule "no figure line may end early".
+- Exp. 1: early stop removed — every system runs all six rates; saturation is only noted.
+- S34: setup (keys + per-record CHash) kept per process and reused across points; integer part in a process pool.
+- S1: `txs_per_block` 8 (12,500 blocks); audit histories topped up to max n_Q (`common.fill_history`) — Fig. 5/6
+  reach n_Q = 10^4 for S1.
+- Exp. 2 / Exp. 5: baselines measured at every batch size m (m independent authorizations / transactions);
+  Fig. 4(b) per batch of m0 for every system (`batch_total_ms`).
+- To re-run on the server: Exp. 1 (all), Exp. 2 (baselines), Exp. 3–4 (S1), Exp. 5 (baselines). Not started.

@@ -89,7 +89,7 @@ class ImprovedDCHScheme(Scheme):
         self.N = nums.public_numbers.n
         self.g = pow(3, 2, self.N)
         self.acc, self.members, self.u = self.g, [], 1  # acc = g^u, u = product of redacted-header primes
-        N_leaves = self.cfg["dataset"]["leaves_per_batch"]
+        N_leaves = self.cfg["baselines"]["S1"]["txs_per_block"]  # S1's own block size (s01_improved_dch.yaml)
         self.blocks, self.block_of, self.sig = [], {}, {}
         prev = b"genesis"
         for off in range(0, len(dataset.transactions), N_leaves):
