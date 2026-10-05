@@ -147,3 +147,25 @@ def test_s34_reused_setup_is_never_modified_by_a_redaction(cfg, ds):
     assert changed and all(b.ch[t] is open_system(cfg, "S34", ds).ch[t] for t in changed)
     a.teardown()
     b.teardown()
+
+
+def test_veredact_state_check_once_per_transition_and_tamper_still_caught(cfg, ds):
+    """A2: the PQCH state-transition check runs once per (batch, transition) in a response, not per record,
+    and a record whose r_b' was altered is still rejected (its key differs, so it is checked separately)."""
+    s = open_system(cfg, "veredact", ds)
+    build_history(s, ds.trace, cfg["veredact"]["reference_batch"])
+    s.index_records()
+    p = s.p
+    q, sig = p.make_query("authorization+state", 8)
+    resp = p.audit(p.records[:8], q, sig)
+    before = p.c.counts["T_CH"]
+    acc = p.verify_audit(resp, q)
+    distinct = len({(rr.pbrp["b"], rr.pbrp["MR_new"]) for rr in resp.records})
+    assert all(acc.values()) and p.c.counts["T_CH"] - before == distinct <= len(resp.records)
+    import copy as _copy
+
+    bad = _copy.deepcopy(resp)
+    bad.records[0].pbrp["r_new"] = bad.records[0].pbrp["r_new"] + 1
+    acc2 = p.verify_audit(bad, q)  # same signed query, one record's r_b' altered
+    assert not acc2[bad.records[0].RID]
+    s.teardown()

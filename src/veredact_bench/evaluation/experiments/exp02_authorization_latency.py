@@ -75,7 +75,10 @@ def run(cfg, out):
                             phase4_batch_ms=ph4,
                             batch_total_ms=batch_total,
                             **{f"phase4_{k}": v for k, v in bd.items()},
-                            auth_per_request_ms=a.crypto_ms + (ph4 / b if ph4 != "" else 0.0),
+                            # Exp. 2 = Phase 4 (manuscript): VeRedact-PQ amortized = its batch authorization / b
+                            # (attestations, freshness, commitment, committee); Phase 3 VPS validation stays in
+                            # phase3_ms. A baseline's authorization is its own per-request protocol (Table IV).
+                            auth_per_request_ms=ph4 / b if ph4 != "" else a.crypto_ms,
                         )
             out.log.info(f"  {key:28s} n={n:<3} batch axis {batch_axis} x {reps} samples")
             s.teardown()

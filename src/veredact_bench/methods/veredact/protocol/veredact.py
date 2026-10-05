@@ -428,6 +428,7 @@ class VeRedactPQ:
         bd["rai_mp_ms"] = (time.perf_counter() - t0) * 1000
         # shared batch evidence: committee approvals verified once per BID
         checked = {}
+        transitions = {}  # (b, MR_b', r_b') -> PQCH check result: once per affected-batch transition
         result = {}
         for rr in resp.records:
             t0 = time.perf_counter()
@@ -445,8 +446,13 @@ class VeRedactPQ:
             ok &= c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)  # normal audit: alpha_i
             t2 = time.perf_counter()
             if state_transition:
-                c.counts["T_H"] += 2  # L_i, L_i' recomputation
-                ok &= c.ch_verify(L.pk_ch, p["CH"], p["MR_new"], p["r_new"])  # r_b' as recorded in A_b'
+                c.counts["T_H"] += 2  # L_i, L_i' recomputation (per record)
+                # PQCH check of the batch transition A_b -> A_b': shared by every record of that transition, so
+                # verified once per response (Table IV: state-transition audits add O(|Omega_e|) T_CH, not n_Q)
+                tk = (p["b"], p["MR_new"], _raw(p["CH"]), _raw(p["r_new"]))  # exact bytes: no tamper reuses a result
+                if tk not in transitions:
+                    transitions[tk] = c.ch_verify(L.pk_ch, p["CH"], p["MR_new"], p["r_new"])  # r_b' as in A_b'
+                ok &= transitions[tk]
             t3 = time.perf_counter()
             if deep:
                 ev = self.evidence[rr.RID]
@@ -481,3 +487,8 @@ class VeRedactPQ:
             ok &= self.rai_entry(rr) == L.rai.shards[L.rai.sid(tau)].entries[tau]
             result[rr.RID] = bool(ok)
         return result
+
+
+def _raw(x) -> bytes:
+    """Exact byte image of a PQCH value or randomness (numpy array) for use as a dictionary key."""
+    return x.tobytes() if hasattr(x, "tobytes") else repr(x).encode()

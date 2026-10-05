@@ -115,3 +115,19 @@ def test_exp1_throughput_counts_redactions_finalized_during_the_window():
     (pt,) = _exp01(rows, {"experiment": {"duration_s": 60, "warmup_s": 10}}).values()
     assert pt["completed_in_window"] == 2 and pt["finalized"] == 2  # rows 1+2 vs arrival cohort rows 2+3
     assert abs(pt["throughput_per_s"] - 2 / 60) < 1e-9
+
+
+def test_exp2_veredact_amortized_is_phase4_only(tmp_path):
+    """A1: Exp. 2 measures Phase 4. VeRedact-PQ's amortized latency = its batch authorization / m; the Phase 3
+    VPS validation is recorded separately (phase3_ms) and not added."""
+    import csv
+
+    cfg = _cfg(tmp_path, "exp02_authorization_latency")
+    x = cfg["experiment"]
+    x["systems"], x["committee_sizes"], x["batch_sizes"], x["samples_per_point"] = ["veredact"], [4], [1, 4], 1
+    RUNNERS["exp02_authorization_latency"](cfg, RunWriter(cfg))
+    with open(tmp_path / "exp02_authorization_latency" / "veredact" / "smoke" / "rows.csv") as f:
+        rows = list(csv.DictReader(f))
+    assert rows
+    for r in rows:
+        assert abs(float(r["auth_per_request_ms"]) - float(r["phase4_batch_ms"]) / int(r["batch_size"])) < 1e-9
