@@ -30,7 +30,9 @@ rsync -az -e "ssh -i $KEY" --exclude .git --exclude .venv --exclude __pycache__ 
 rc=0
 "${SSH[@]}" "cd $REPO_REMOTE_DIR && $*" || rc=$?
 case "${FETCH:-paper}" in
-  paper)   rsync -az -e "ssh -i $KEY" "$AWS_SSH_USER@$IP:$REPO_REMOTE_DIR/paper/" paper/ ;;
+  paper)   for d in figures tables; do  # mirror the GENERATED folders only (no stale files; MANIFEST.md untouched)
+             rsync -az --delete -e "ssh -i $KEY" "$AWS_SSH_USER@$IP:$REPO_REMOTE_DIR/paper/$d/" "paper/$d/"
+           done ;;
   results) deploy/aws/fetch_results.sh ;;
 esac
 exit $rc
