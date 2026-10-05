@@ -23,7 +23,7 @@ compared or reported; results come only from the experiment tier on the server.
 | 5 | Start the server | `deploy/aws/provision_ec2.sh` | **done** (existing instance `i-0d832e0ca1fb0c9db` reused; started by `launch_run.sh` 2026-10-04, bootstrap + 46 tests passed on the server) | `deploy/aws/.instance` (gitignored) |
 | 6 | Server smoke (Besu + liboqs + STARK build) | `deploy/aws/launch_run.sh smoke` | **done** 2026-10-04 (4 min, no errors, liboqs ML-DSA-65; code-path check only) | server: `results/<exp>/<method>/smoke/`, log `results/logs/smoke_*.log` |
 | 7 | Pilot | `deploy/aws/launch_run.sh pilot` | **done** 2026-10-04, fetched; sets D7, D9–D11 | server: `results/<exp>/<method>/pilot/`, log `results/logs/pilot_*.log` |
-| 8 | Full experiment | `deploy/aws/launch_run.sh experiment` | to do | server: `results/<exp>/<method>/experiment/`, log `results/logs/experiment_*.log` |
+| 8 | Full experiment | `deploy/aws/launch_run.sh experiment` | **done** 2026-10-05 21:00 ICT (RUN_EXIT=0, server auto-stopped) | server: `results/<exp>/<method>/experiment/`, log `results/logs/experiment_*.log` |
 | 9 | Fetch results + paper artifacts | `deploy/aws/fetch_results.sh` | to do | laptop: `results/`, `paper/tables/*.tex`, `paper/figures/*.pdf` |
 | 10 | Stop paying | `deploy/aws/teardown_ec2.sh` | to do | — (the idle watchdog powers off after 30 min idle anyway) |
 | 11 | Fill the manuscript from the run | `overleaf/newchange.md` §C | to do | `overleaf/newchange.md` |
@@ -45,12 +45,12 @@ Mapping to the manuscript: `paper/MANIFEST.md`.
 | 2026-10-04 | smoke | laptop | exp05_gas_consumption | `results/exp05_gas_consumption/<method>/smoke/` — S1, S13, S27, S34, veredact | **current** (code-path check only; no gas: in-process ledger) |
 | 2026-10-04 | smoke | EC2 | all six | server `results/<exp>/<method>/smoke/` | **current** (code-path check only; not fetched) |
 | 2026-10-04 | pilot | EC2 | all six | `results/<exp>/<method>/pilot/` (24 folders, fetched) + `paper/` | **done** 2026-10-04 (attempt 6, ~3.5 h; pilot exp04 n_Q capped at 10^3; attempts 1–4 stopped by harness bugs, fixed: QBFT extraData middleware, nonce reuse across points, executor outliving its point, serial ledger sender capped ~80 tx/s; Exp. 1 pilot results of attempts 1–4 deleted) |
-| 2026-10-04 | experiment | EC2 | exp00_primitives | `results/exp00_primitives/<method>/experiment/` (server until fetched) | **done** 2026-10-04 (53 s), fetched |
-| 2026-10-04 | experiment | EC2 | exp01_redaction_throughput | `results/exp01_redaction_throughput/<method>/experiment/` | baselines **done** 2026-10-04, fetched; VeRedact-PQ **re-running** 2026-10-05 (2-consecutive rule, proof_age_ms) |
-| 2026-10-04 | experiment | EC2 | exp02_authorization_latency | `results/exp02_authorization_latency/<method>/experiment/` (server until fetched) | **done** 2026-10-04 (39 min), fetched |
-| 2026-10-04 | experiment | EC2 | exp03_audit_efficiency | `results/exp03_audit_efficiency/<method>/experiment/` (server until fetched) | **running 2026-10-05 (S13 witness reuse, S1)**; earlier: veredact done, fetched; S13 stopped at n_Q=10^3 after 12.7 h (≈1.1 h per audit at the 10^4-redaction history), no metrics; S1 not run |
-| 2026-10-04 | experiment | EC2 | exp04_verification_time | `results/exp04_verification_time/<method>/experiment/` (server until fetched) | **running** 2026-10-05; server auto-shutdown after the run |
-| 2026-10-04 | experiment | EC2 | exp05_gas_consumption | `results/exp05_gas_consumption/<method>/experiment/` (server until fetched) | **running** 2026-10-05; server auto-shutdown after the run |
+| 2026-10-04 | experiment | EC2 | exp00_primitives | `results/exp00_primitives/<method>/experiment/` | **done** 2026-10-04 (53 s); fetched |
+| 2026-10-04 | experiment | EC2 | exp01_redaction_throughput | `results/exp01_redaction_throughput/<method>/experiment/` | **done**: baselines 2026-10-04, VeRedact-PQ re-run 2026-10-05 (15 min; saturated at 100 and 250 req/s, revalidation storm, cause unverified — D7/D12); fetched |
+| 2026-10-04 | experiment | EC2 | exp02_authorization_latency | `results/exp02_authorization_latency/<method>/experiment/` | **done** 2026-10-04 (39 min); fetched |
+| 2026-10-04 | experiment | EC2 | exp03_audit_efficiency | `results/exp03_audit_efficiency/<method>/experiment/` | **done** 2026-10-05 (61 min; S13 witness reuse, calibration 0.96, 391 witnesses, median 6.9 s each); fetched |
+| 2026-10-04 | experiment | EC2 | exp04_verification_time | `results/exp04_verification_time/<method>/experiment/` | **done** 2026-10-05 (~2 h; S13 calibration 0.95); fetched |
+| 2026-10-04 | experiment | EC2 | exp05_gas_consumption | `results/exp05_gas_consumption/<method>/experiment/` | **done** 2026-10-05 (20 min); fetched |
 | 2026-09-29 – 2026-10-03 | smoke | laptop | old layout | `results/{exp1..exp5,primitives}/<run_id>/`, `results/S*_*.csv` | **deleted** 2026-10-03 (before the restructure; never used for the paper) |
 
 ## 2. Decisions still yours (before step 8)
@@ -131,3 +131,6 @@ estimate is replaced by the measured `runtime_s` in each `run_info.json` after t
 
 `README.md`, `docs/*.md`, `docs/baselines/*.md`, the skill file and `data/README.md` describe the restructured
 layout (2026-10-03).
+
+
+Full run complete 2026-10-05 21:00 ICT: 24 result folders in `results/<exp>/<method>/experiment/`, `paper/figures/` (5 PDFs) and `paper/tables/` (2 .tex) regenerated locally from them; diagnostic `results/diagnostics/core_isolation.json`. Server stopped.
