@@ -13,3 +13,4 @@ deploy/besu/.network/
 native/pqzk_stark/target/
 *.egg-info/
 .cache/
+deploy/aws/.provers

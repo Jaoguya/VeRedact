@@ -111,17 +111,23 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         admit.put((r, R))
 
     def request_async(r, first):
-        """Remote provers: build R_i now (live batch version), prove on a prover host, send when it returns."""
-        R, job = s.prepare_begin(r)
-        if job is None:
+        """Remote provers: R_i is built (live batch version) when a prover is free, proved there, then sent."""
+        if r.fault == "replay":  # re-sends an already submitted request: nothing to prove
+            R, _ = s.prepare_begin(r)
             send(r, R, first)
             return
+        built = {}
 
-        def proved(proof, sig, R=R):
+        def make_job():
+            built["R"], job = s.prepare_begin(r)
+            return job
+
+        def proved(proof, sig):
+            R = built["R"]
             R.proof, R.sigma_R = proof, sig
             send(r, R, first)
 
-        remote.submit(job, proved)
+        remote.submit(make_job, proved)
 
     def client(i):
         pin_to("requesters")

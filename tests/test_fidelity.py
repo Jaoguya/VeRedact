@@ -211,16 +211,19 @@ def test_remote_prover_service_reproduces_the_requesters(cfg, ds, tmp_path):
         remote = RemoteProvers([f"127.0.0.1:{port}"], s)
         for fault in ("", "sig", "zk"):
             r = faulty(ds, fault, seq=5)
-            R, job = s.prepare_begin(r)
-            got = threading.Event()
+            got, box = threading.Event(), {}
 
-            def cb(proof, sig, R=R, got=got):
-                R.proof, R.sigma_R = proof, sig
+            def make(r=r, box=box):
+                box["R"], job = s.prepare_begin(r)
+                return job
+
+            def cb(proof, sig, box=box, got=got):
+                box["R"].proof, box["R"].sigma_R = proof, sig
                 got.set()
 
-            remote.submit(job, cb)
+            remote.submit(make, cb)
             assert got.wait(60)
-            assert authorize(s, r, R).ok == (fault == "")
+            assert authorize(s, r, box["R"]).ok == (fault == "")
         remote.close()
         s.teardown()
     finally:

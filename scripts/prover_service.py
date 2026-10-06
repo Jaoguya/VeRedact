@@ -50,9 +50,14 @@ def serve(conn, workers):
             _, jid, job = msg
 
             def done(f, jid=jid):
+                if f.cancelled():  # the system closed the connection: nothing to answer
+                    return
                 proof, sig = f.result()
                 with lock:
-                    conn.send(("done", jid, proof, sig))
+                    try:
+                        conn.send(("done", jid, proof, sig))
+                    except OSError:
+                        pass
 
             pool.submit(_work, job).add_done_callback(done)
         elif msg[0] == "close":

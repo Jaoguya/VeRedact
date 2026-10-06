@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Power the instance off once nothing has run for [run].idle_shutdown_minutes, so a finished (or crashed)
 # run stops costing money. Installed by deploy/aws/launch_run.sh as a root cron job (every minute).
-# "Busy" = a veredact_bench / run_eval.py / run_experiments / bootstrap process, or an interactive SSH session.
+# "Busy" = any repo script (scripts/, deploy/experiments/), a veredact_bench or bootstrap process, or an interactive SSH session.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # the venv python: aws_config.py imports veredact_bench (system python3 cannot, so the watchdog used to exit
@@ -13,7 +13,7 @@ fi
 eval "$cfg"
 MINUTES=${RUN_IDLE_SHUTDOWN_MINUTES:-30}  # fail safe: an unreadable config must not disable the shutdown
 STAMP=/var/tmp/veredact-last-busy
-if pgrep -f "veredact_bench|run_eval.py|scripts/diag_|run_experiments.sh|bootstrap_server.sh" >/dev/null || who | grep -q pts/; then
+if pgrep -f "veredact_bench|scripts/|deploy/experiments/|bootstrap_server.sh" >/dev/null || who | grep -q pts/; then
   date +%s > "$STAMP"; exit 0
 fi
 [[ -f "$STAMP" ]] || { date +%s > "$STAMP"; exit 0; }

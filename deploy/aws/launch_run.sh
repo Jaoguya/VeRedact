@@ -38,5 +38,7 @@ fi
   else source ~/.cargo/env && .venv/bin/pip install -q -e '.[dev,server]' && \
   (cd native/pqzk_stark && ../../.venv/bin/maturin develop --release -q); fi"
 "${SSH[@]}" "echo '* * * * * root $REPO_REMOTE_DIR/deploy/server/idle_watchdog.sh' | sudo tee /etc/cron.d/veredact-idle >/dev/null"
-"${SSH[@]}" "cd $REPO_REMOTE_DIR && mkdir -p results/logs && nohup deploy/experiments/run_experiments.sh $TIER $EXPS > results/logs/launch_$TIER.out 2>&1 < /dev/null & echo started pid \$!"
+PROVER_ENV=""   # audit A4: remote requester provers, when deploy/aws/provision_provers.sh has started them
+[[ -f deploy/aws/.provers ]] && PROVER_ENV="VRPQ_PROVER_KEY='$(sed -n 1p deploy/aws/.provers)' VRPQ_PROVERS='$(sed -n 2p deploy/aws/.provers)'"
+"${SSH[@]}" "cd $REPO_REMOTE_DIR && mkdir -p results/logs && $PROVER_ENV nohup deploy/experiments/run_experiments.sh $TIER $EXPS > results/logs/launch_$TIER.out 2>&1 < /dev/null & echo started pid \$!"
 echo "follow: ssh -i $KEY $AWS_SSH_USER@$IP tail -f $REPO_REMOTE_DIR/results/logs/launch_$TIER.out"
