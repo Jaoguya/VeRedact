@@ -34,6 +34,7 @@ adapter: `adapter.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `reprod
 | one redaction per block | Jia's rule | enforced; a second request to a redacted block is rejected (reported, never retried) | real limit, not a harness artefact |
 | block size | unstated | `txs_per_block` = 8 (12,500 blocks on the 10^5-transaction ledger) instead of the shared 256-transaction batch (391 blocks), so S1's audit history reaches n_Q = 10^4 | for S1 (smaller per-block Merkle root) |
 | audit history | — | topped up with untimed uniform requests until it holds max n_Q redactions (`common.fill_history`) | neutral (setup, untimed) |
+| membership proofs | "gets the membership proof locally or by running GenMem" (Sec. III-C4 step 2) | held locally: built once after the untimed history with RootFactor (all proofs in O(n log n); identical to GenMem, tested); an audit fetches them. Per-query GenMem would cost ~8 s per record at 10^4 redactions (22.6 h for one n_Q = 10^4 audit, measured) | for S1 (generation excludes GenMem), the paper's first option |
 | ledger writes | one per redaction | one per redaction, **pipelined** (finality tracked, not awaited), exactly like VeRedact-PQ's anchoring | neutral — removes a harness-imposed one-block-per-redaction cap |
 
 ## Not implemented

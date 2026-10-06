@@ -178,6 +178,25 @@ class ImprovedDCHScheme(Scheme):
         )
 
     # ------------------------------------------------------------------ audit: consistency check
+    def index_records(self) -> None:
+        """Membership proofs held locally (Li et al. Sec. III-C4 step 2: the node "gets the membership proof
+        locally or by running the GenMem algorithm"). Built once after the untimed history with RootFactor
+        (all |members| witnesses g^{prod of the others} in O(n log n) exponentiations; identical to GenMem,
+        tests/baselines/test_s01_improved_dch.py). Per-query GenMem cost O(history) per record: ~6.7 s at
+        10^4 redactions, i.e. ~18 h for one n_Q = 10^4 audit, which no figure point could reach."""
+        self._wit = dict(zip(self.members, root_factor(self.g, self.members, self.N)))
+        self._wit_n = len(self.members)
+
+    def _membership(self, x: int) -> int:
+        w = getattr(self, "_wit", None)
+        if w is not None and self._wit_n == len(self.members) and x in w:
+            return w[x]  # held locally
+        others = 1  # GenMem
+        for m in self.members:
+            if m != x:
+                others *= m
+        return int(gmpy2.powmod(self.g, others, self.N))
+
     def audit(self, query: AuditQuery) -> AuditResult:
         recs = self.redacted[: query.records]
         t0 = time.perf_counter()
@@ -185,16 +204,12 @@ class ImprovedDCHScheme(Scheme):
         for i, (_, b) in enumerate(recs):  # node: block + membership witness u^{prod of the other primes}
             blk = self.blocks[b]
             x = _hprime(blk["msg"])
-            others = 1
-            for m in self.members:
-                if m != x:
-                    others *= m
             evidence.append(
                 (
                     b,
                     blk["msg"] if i not in query.tamper else blk["msg"] + b"!",
                     blk["r"],
-                    int(gmpy2.powmod(self.g, others, self.N)),
+                    self._membership(x),
                 )
             )
         t1 = time.perf_counter()
@@ -213,3 +228,21 @@ class ImprovedDCHScheme(Scheme):
 
     def teardown(self) -> None:
         self.anchor.close()
+
+
+def root_factor(g: int, xs: list[int], N: int) -> list[int]:
+    """RootFactor (Sander; Boneh-Buenz-Fisch): [g^{prod_{j != i} x_j} mod N for each i] by halving."""
+    if len(xs) == 1:
+        return [int(g)]
+    mid = len(xs) // 2
+    left, right = xs[:mid], xs[mid:]
+    g_left = gmpy2.powmod(g, gmpy2.mpz(_prod(right)), N)  # the left half's witnesses include every right prime
+    g_right = gmpy2.powmod(g, gmpy2.mpz(_prod(left)), N)
+    return root_factor(g_left, left, N) + root_factor(g_right, right, N)
+
+
+def _prod(xs: list[int]) -> int:
+    """Balanced product tree (fast for big integers)."""
+    while len(xs) > 1:
+        xs = [xs[i] * xs[i + 1] if i + 1 < len(xs) else xs[i] for i in range(0, len(xs), 2)]
+    return xs[0] if xs else 1

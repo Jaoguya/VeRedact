@@ -44,3 +44,23 @@ def test_jia_dch_is_forgeable():
     r2 = j.collision(b"m", h.r, b"m2", ids)
     assert j.verify(b"m", h.r, b"m2", r2)
     assert j.verify(b"m", h.r, b"evil", forge_jia(j, b"m", h.r, b"m2", r2, b"evil"))  # Sec. IV attack
+
+
+def test_root_factor_equals_per_record_genmem():
+    """S1 audit proofs held locally (RootFactor) must equal GenMem's g^{prod of the other members}."""
+    import random
+
+    import gmpy2
+
+    from veredact_bench.methods.baselines.s01_improved_dch.adapter import root_factor
+
+    rng = random.Random(7)
+    N = int(gmpy2.next_prime(rng.getrandbits(512))) * int(gmpy2.next_prime(rng.getrandbits(512)))
+    g = 9
+    xs = [int(gmpy2.next_prime(rng.getrandbits(64))) for _ in range(13)]
+    for i, w in enumerate(root_factor(g, xs, N)):
+        others = 1
+        for j, x in enumerate(xs):
+            if j != i:
+                others *= x
+        assert w == int(gmpy2.powmod(g, others, N))
