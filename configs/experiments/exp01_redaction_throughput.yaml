@@ -17,6 +17,9 @@ experiment:
                                 #   Audit A3: co-located requester proving made VeRedact-PQ's round 4x slower (82 ms
                                 #   alone vs 338 ms) and biased Fig. 3 against it; baselines' requesters do no proving
   requester_processes: 8        # [METHOD] forked requester processes (= vCPUs of requester_cores)
+  provers: []                   # [METHOD] audit A4: "host:port" of remote prover services (scripts/prover_service.py);
+                                #   non-empty -> requesters prove on those machines and the system keeps every core
+                                #   (deploy/aws/provision_provers.sh fills it in at run time)
   client_threads: 16            # [PROPOSED] requester threads that sign + prove (= vcpus; single-core proofs);
                                 #   the achieved rate is recorded and a client-bound point is reported as such
   saturation_tolerance: 0.10    # [PROPOSED] a point is NOTED saturated when decided/offered or on-time < 1 - tol;

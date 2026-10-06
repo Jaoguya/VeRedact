@@ -49,6 +49,7 @@ class PolicySTARK:
         self.p = params
         size = 1 << params.depth
         now = int(time.time()) if now_s is None else now_s
+        self.now_s, self.seed, self.requesters = now, seed, requesters  # rebuild key for remote provers
         self._secret = [rng.getrandbits(_FIELD_BITS) for _ in range(requesters)]
         # every registered requester holds the top attribute level, so an honest request satisfies any
         # policy threshold; the predicate is still proven for each request

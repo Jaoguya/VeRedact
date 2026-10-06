@@ -35,11 +35,17 @@ from veredact_bench.evaluation.common import (
     prepare,
     revalidate,
 )
+from veredact_bench.evaluation.provers import RemoteProvers
 from veredact_bench.methods.registry import system_keys
 from veredact_bench.methods.scheme import RedactionOutcome
 from veredact_bench.utils import cpus
 
 _REQ = None  # the VeRedact-PQ system a forked requester process proves for (static credentials and keys)
+
+
+def prover_addresses(x) -> list[str]:
+    """experiment.provers, or VRPQ_PROVERS="host:port,..." (set by deploy/aws/provision_provers.sh)."""
+    return list(x["provers"]) or [a for a in os.environ.get("VRPQ_PROVERS", "").split(",") if a]
 
 
 def _req_init(requester_cpus):
@@ -73,9 +79,13 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
 
     # audit A3: requester proving (VeRedact-PQ only: the baselines' requesters do no proving) runs in forked
     # processes on their own physical cores, so it competes neither for the system's cores nor for its GIL
-    req_cpus, sys_cpus = cpus.split(x["requester_cores"])
+    # audit A4: with remote prover hosts (experiment.provers) requesters prove on separate machines and the
+    # system keeps every core; otherwise requester processes on dedicated local cores (A3)
+    addrs = prover_addresses(x)
+    remote = RemoteProvers(addrs, s) if is_veredact(s) and addrs else None
+    req_cpus, sys_cpus = (None, None) if addrs else cpus.split(x["requester_cores"])
     pool = None
-    if is_veredact(s) and x["requester_cores"] > 0:
+    if is_veredact(s) and remote is None and x["requester_cores"] > 0:
         global _REQ
         _REQ = s  # inherited by fork: credential registry and keys are static during the run
         pool = multiprocessing.get_context("fork").Pool(
@@ -93,6 +103,26 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             R.proof, R.sigma_R = pool.apply(_req_job, (job,))
         return R
 
+    def send(r, R, first):
+        """The proved request reaches the VPS: first submission (latency starts) or a resubmission."""
+        stamp[r.seq]["proved"] = now()
+        if first:
+            stamp[r.seq]["submit"] = stamp[r.seq]["proved"]
+        admit.put((r, R))
+
+    def request_async(r, first):
+        """Remote provers: build R_i now (live batch version), prove on a prover host, send when it returns."""
+        R, job = s.prepare_begin(r)
+        if job is None:
+            send(r, R, first)
+            return
+
+        def proved(proof, sig, R=R):
+            R.proof, R.sigma_R = proof, sig
+            send(r, R, first)
+
+        remote.submit(job, proved)
+
     def client(i):
         pin_to("requesters")
         for r in ds.trace[i :: x["client_threads"]]:
@@ -101,6 +131,9 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             delay = r.arrival_s - now()
             if delay > 0:
                 time.sleep(delay)
+            if remote is not None:
+                request_async(r, first=True)  # never blocks: the next arrival is not delayed by a proof
+                continue
             p = requester(r)  # the requester proves against the state at its arrival time
             stamp[r.seq]["submit"] = stamp[r.seq]["proved"] = now()
             admit.put((r, p))
@@ -113,6 +146,9 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             r = revalq.get()
             if r is None:
                 return
+            if remote is not None:
+                request_async(r, first=False)
+                continue
             p = requester(r)
             stamp[r.seq]["proved"] = now()  # this attempt's proof (staleness window: proved -> auth_done)
             admit.put((r, p))
@@ -217,6 +253,8 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     if pool is not None:
         pool.terminate()
         pool.join()
+    if remote is not None:
+        remote.close()
     if sys_cpus:
         os.sched_setaffinity(0, sum(cpus.physical_cores(), []))  # setup of the next point uses every core
     s.teardown()
@@ -282,7 +320,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
 def run(cfg, out):
     x = cfg["experiment"]
     tol = x["saturation_tolerance"]
-    _, sys_cpus = cpus.split(x["requester_cores"])
+    _, sys_cpus = (None, None) if prover_addresses(x) else cpus.split(x["requester_cores"])
     if sys_cpus and cfg["ledger"]["backend"] == "besu":
         cpus.pin_besu(sys_cpus)  # the validators belong to the system side (audit A3)
     for key in system_keys(cfg):  # one run per point (no repetitions): every request of the run is a sample

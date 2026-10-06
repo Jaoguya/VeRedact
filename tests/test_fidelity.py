@@ -181,3 +181,48 @@ def test_veredact_split_request_equals_one_piece_request(cfg, ds):
         R.proof, R.sigma_R = s.p.requester_work(job)  # what a requester process runs (uncounted primitives)
         assert authorize(s, r, R).ok == (fault == "")
     s.teardown()
+
+
+def test_remote_prover_service_reproduces_the_requesters(cfg, ds, tmp_path):
+    """Audit A4: a prover service rebuilds the point's requester state from the bundle (same registry root) and
+    its proofs/signatures validate exactly like local ones; faults stay rejected."""
+    import os
+    import socket
+    import subprocess
+    import sys
+    import threading
+    import time
+
+    from veredact_bench.evaluation.provers import RemoteProvers
+    from veredact_bench.utils.config import REPO_ROOT
+
+    with socket.socket() as so:
+        so.bind(("127.0.0.1", 0))
+        port = so.getsockname()[1]
+    env = dict(os.environ, VRPQ_PROVER_KEY="test-key")
+    svc = subprocess.Popen(
+        [sys.executable, str(REPO_ROOT / "scripts" / "prover_service.py"), "--port", str(port), "--workers", "2"],
+        env=env,
+    )
+    try:
+        time.sleep(3)
+        os.environ["VRPQ_PROVER_KEY"] = "test-key"
+        s = open_system(cfg, "veredact", ds)
+        remote = RemoteProvers([f"127.0.0.1:{port}"], s)
+        for fault in ("", "sig", "zk"):
+            r = faulty(ds, fault, seq=5)
+            R, job = s.prepare_begin(r)
+            got = threading.Event()
+
+            def cb(proof, sig, R=R, got=got):
+                R.proof, R.sigma_R = proof, sig
+                got.set()
+
+            remote.submit(job, cb)
+            assert got.wait(60)
+            assert authorize(s, r, R).ok == (fault == "")
+        remote.close()
+        s.teardown()
+    finally:
+        svc.terminate()
+        svc.wait()

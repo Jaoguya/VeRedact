@@ -2,6 +2,7 @@
 requester/system core split, reporting decided %, throughput, executor round cost and revalidations.
 Usage (server, Besu up): VRPQ_SIG_BACKEND=oqs VRPQ_BESU_KEY=... .venv/bin/python scripts/validate_a3.py"""
 
+# ruff: noqa: E501  (diagnostic report lines)
 import argparse
 import statistics as st
 
@@ -39,14 +40,23 @@ def main():
             c = Collect(get_logger())
             run_point(cfg, "veredact", rate, s, c, "validate")
             win = [r for r in c.rows if r["in_window"] == 1 and not r["fault"]]
-            done = [r for r in c.rows if r["status"] == "finalized" and not r["fault"] and r["latency_ms"] != ""
-                    and w0 <= r["submit_s"] + r["latency_ms"] / 1000 < w1]
+            done = [
+                r
+                for r in c.rows
+                if r["status"] == "finalized"
+                and not r["fault"]
+                and r["latency_ms"] != ""
+                and w0 <= r["submit_s"] + r["latency_ms"] / 1000 < w1
+            ]
             batches = {r["batch_id"]: (r["redact_crypto_ms"], r["batch_size"]) for r in c.rows if r["batch_id"] != ""}
-            print(f"A3 rate={rate} s={s}: decided {sum(r['status'] in ('finalized','rejected','failed') for r in win) / len(win):.0%}"
-                  f" | throughput {len(done) / x['duration_s']:.1f}/s | round p50 {st.median(v[0] for v in batches.values()):.0f} ms"
-                  f" x batch p50 {st.median(v[1] for v in batches.values()):.0f} | revalidations/request "
-                  f"{sum(int(r['revalidations']) for r in win) / len(win):.2f} | on time "
-                  f"{sum(r['submit_s'] != '' and r['submit_s'] < w1 for r in win) / len(win):.0%}", flush=True)
+            print(
+                f"A3 rate={rate} s={s}: decided {sum(r['status'] in ('finalized', 'rejected', 'failed') for r in win) / len(win):.0%}"
+                f" | throughput {len(done) / x['duration_s']:.1f}/s | round p50 {st.median(v[0] for v in batches.values()):.0f} ms"
+                f" x batch p50 {st.median(v[1] for v in batches.values()):.0f} | revalidations/request "
+                f"{sum(int(r['revalidations']) for r in win) / len(win):.2f} | on time "
+                f"{sum(r['submit_s'] != '' and r['submit_s'] < w1 for r in win) / len(win):.0%}",
+                flush=True,
+            )
     if sys_cpus and cfg["ledger"]["backend"] == "besu":
         cpus.pin_besu(None)
 
