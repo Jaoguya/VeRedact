@@ -30,6 +30,7 @@ fi
 echo "[2/5] launch $N x $TYPE (same subnet as veredact-bench)"
 AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text)
 IIDS=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --count "$N" \
+        --instance-initiated-shutdown-behavior terminate \
         --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" --subnet-id "$SUBNET" \
         --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=30,VolumeType=gp3,DeleteOnTermination=true}" \
         --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
@@ -58,6 +59,9 @@ for IID in $IIDS; do
     echo "[4/5] $IID: start prover service"
     "${SSH[@]}" "cd $REPO_REMOTE_DIR && VRPQ_PROVER_KEY='$KEY' VRPQ_SIG_BACKEND=oqs setsid nohup .venv/bin/python \
       scripts/prover_service.py --port $PORT > /tmp/prover.log 2>&1 < /dev/null & sleep 3; tail -1 /tmp/prover.log"
+    # self-termination (shutdown = terminate): hard cap 4 h; idle 15 min after a run used it; 45 min if never used
+    "${SSH[@]}" "sudo shutdown -h +240 veredact-prover-hard-cap; sudo cp $REPO_REMOTE_DIR/deploy/server/prover_watchdog.sh /usr/local/bin/ \
+      && echo '* * * * * root /usr/local/bin/prover_watchdog.sh $PORT' | sudo tee /etc/cron.d/veredact-prover >/dev/null"
   ) &
 done
 wait
