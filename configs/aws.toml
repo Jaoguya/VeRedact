@@ -2,7 +2,7 @@
 # Credentials are NOT stored here: scripts use the AWS CLI profile below (aws configure --profile <name>).
 
 [aws]
-profile = "default"              # AWS CLI profile with EC2 permissions
+profile = "veredact"             # AWS CLI profile with EC2 permissions
 region = "ap-southeast-1"        # Singapore (closest to Thailand)
 instance_type = "c7i.4xlarge"    # = config/experiment.toml [environment].instance_type (16 vCPU / 32 GiB)
 volume_gb = 100

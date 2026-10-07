@@ -229,3 +229,24 @@ def test_remote_prover_service_reproduces_the_requesters(cfg, ds, tmp_path):
     finally:
         svc.terminate()
         svc.wait()
+
+
+def test_s1_authorization_cost_does_not_grow_with_history(cfg, ds):
+    """A8: S1's 'already redacted?' check is a full node's local set test, so authorizing after many redactions
+    costs about the same as at the start (it was O(history) with a per-request non-membership witness)."""
+    s = open_system(cfg, "S1", ds)
+    fresh = [r for r in ds.trace if not r.fault]
+    first = [authorize(s, r, None).crypto_ms for r in fresh[:5]]
+    build_history(s, ds.trace, 1)
+    assert s.redacted
+    redacted_block = s.redacted[0][1]
+    again = next(r for r in fresh if s.block_of[r.tid][0] == redacted_block)
+    assert not authorize(s, again, None).ok  # one redaction per block still enforced
+    done = {b for _, b in s.redacted}
+    open_tx = [t for t in ds.transactions if s.block_of[t.tid][0] not in done][:5]
+    later = [
+        authorize(s, RedactionRequest(10_000 + k, t.owner, t.tid, b"new", 0.0), None).crypto_ms
+        for k, t in enumerate(open_tx)
+    ]
+    assert later and max(later) < 10 * max(first) + 5.0
+    s.teardown()

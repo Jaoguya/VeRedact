@@ -88,7 +88,8 @@ class ImprovedDCHScheme(Scheme):
         nums = rsa.generate_private_key(public_exponent=65537, key_size=self.acc_bits).private_numbers()
         self.N = nums.public_numbers.n
         self.g = pow(3, 2, self.N)
-        self.acc, self.members, self.u = self.g, [], 1  # acc = g^u, u = product of redacted-header primes
+        # acc = g^(prod of redacted-header primes); every full node also holds the accumulated set itself
+        self.acc, self.members, self.member_set = self.g, [], set()
         N_leaves = self.cfg["baselines"]["S1"]["txs_per_block"]  # S1's own block size (s01_improved_dch.yaml)
         self.blocks, self.block_of, self.sig = [], {}, {}
         prev = b"genesis"
@@ -116,15 +117,14 @@ class ImprovedDCHScheme(Scheme):
         new_sig = owner.sign(req.new_payload)  # the new transaction tx' is signed by its creator (untimed)
         blk = self.blocks[b]
         t0 = time.perf_counter()
-        if blk["redacted"]:  # membership in acc (Jia: one redaction per block) -> rejected
-            return Authorization(req, False, (time.perf_counter() - t0) * 1000, reason="block already redacted")
-        # "not yet redacted" is shown against acc by a non-membership witness (a, B): a*u + b*x = 1, B = g^b,
-        # checked as acc^a * B^x = g; the initiating node P builds it once, every approving node verifies it
+        # Li et al. Sec. III-B3: P, then each approving full node, "checks whether B has been redacted through the
+        # RSA accumulator acc" -- a full node holds the accumulated set (it keeps the chain), so the check is a
+        # local membership test of the header prime. No non-membership WITNESS is built: witnesses are for
+        # clients (consistency check, Sec. III-C4; audit A6). Building one per request cost O(history)
+        # (|b| ~ |u|): ~3 s per request at 3,500 redactions (audit A8).
         x = _hprime(blk["msg"])
-        g_, a_, b_ = gmpy2.gcdext(self.u, x)
-        B = gmpy2.powmod(self.g, b_, self.N)
-        for _ in range(self.t):  # each approving full node
-            if gmpy2.powmod(self.acc, a_, self.N) * gmpy2.powmod(B, x, self.N) % self.N != self.g:
+        for _ in range(self.t):  # P and each approving full node
+            if x in self.member_set:  # Jia: one redaction per block -> rejected
                 return Authorization(req, False, (time.perf_counter() - t0) * 1000, reason="block already redacted")
             pk = owner.public_key
             if not (pk.verify(self.sig[req.tid], blk["payloads"][pos]) and pk.verify(new_sig, req.new_payload)):
@@ -150,12 +150,13 @@ class ImprovedDCHScheme(Scheme):
             r_new = self.dch.collision(blk["msg"], msg_new, blk["r"], blk["h"], self.parties)
             ok = self.dch.verify(msg_new, r_new, blk["h"])
             x = _hprime(msg_new)
-            self.acc = int(gmpy2.powmod(self.acc, x, self.N))
-            self.u *= x
+            if ok:  # accumulator update ACC.Insert (only a valid redaction enters acc)
+                self.acc = int(gmpy2.powmod(self.acc, x, self.N))
             crypto_ms += (time.perf_counter() - t0) * 1000
             if ok:
                 blk.update(payloads=payloads, msg=msg_new, r=r_new, redacted=True)
                 self.members.append(x)
+                self.member_set.add(x)
                 # pipelined like VeRedact's anchoring: finality is tracked by the Future, not awaited here
                 futs.append(
                     self.anchor.submit(

@@ -19,6 +19,7 @@ exact witnesses: response bytes and verification are measured directly; generati
 single-core witness times of its blocks + the directly measured challenge-dependent aggregation.
 """
 
+import multiprocessing
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -126,7 +127,8 @@ class EAQVRBCScheme(Scheme):
         blocks = sorted({s for _, s in self.redacted})
         xs = [self.p.H1(i, self.L.tags[i][2]) for i in blocks]
         workers = max(1, min(self.cfg["environment"]["vcpus"] // 2, os.cpu_count() or 1))
-        with ProcessPoolExecutor(workers, initializer=_wit_init, initargs=(u, N, theta)) as ex:
+        ctx = multiprocessing.get_context("forkserver")  # fork from a multi-threaded process can deadlock
+        with ProcessPoolExecutor(workers, mp_context=ctx, initializer=_wit_init, initargs=(u, N, theta)) as ex:
             built = list(ex.map(_wit_job, xs))
         _wit_init(u, N, theta)
         k = min(4, len(xs))

@@ -15,14 +15,16 @@ adapter: `adapter.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `reprod
 
 ## Boundaries
 
-- `authorize`: the initiating node builds a non-membership witness (a, B) of the block's header prime
-  against acc (a·u + b·x = 1, B = g^b); t approving nodes each (a) verify it (acc^a · B^x = g), i.e. the block
-  was not redacted before, (b) verify the ECDSA signatures of tx and tx'. tx' is signed by its creator before
-  the timer.
+- `authorize`: the initiating node P and each of the t approving full nodes check locally that the block's
+  header prime is not in the accumulated set (Sec. III-B3: "checks whether B has been redacted through the RSA
+  accumulator acc"; a full node holds the set) and verify the ECDSA signatures of tx and tx'. tx' is signed by
+  its creator before the timer. No non-membership witness is built per request: witnesses serve clients
+  (consistency check, Sec. III-C4; audit A6), and building one per request cost O(history) — ~3 s per request
+  at 3,500 redactions (audit A8).
 - `redact`: threshold `Collision` over the new header content with t parties, `Verify`, accumulator
   update `acc ← acc^{H_prime(header')}`, one ledger write.
-- `audit`: witness `g^{∏ other primes}` built by the service; the client checks Improved DCH and
-  `wit^{H_prime(header)} = acc` per record.
+- `audit`: membership proofs `g^{∏ other primes}` held locally by the node (built once with RootFactor, audit
+  A6); the client checks Improved DCH and `wit^{H_prime(header)} = acc` per record.
 
 ## Instantiation and deviations
 

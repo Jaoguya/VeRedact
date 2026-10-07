@@ -139,13 +139,13 @@ def s01_ops(cfg):
         u *= p
     acc = int(gmpy2.powmod(g, u, N))
     x = int(gmpy2.next_prime(int.from_bytes(os.urandom(32), "big") | 1))
-    _, a_, b_ = gmpy2.gcdext(u, x)
-    B = gmpy2.powmod(g, b_, N)
+    # what S1 pays per redaction: ACC.Insert acc <- acc^x (the "already redacted?" check is a full node's local
+    # set lookup, Sec. III-B3; audit A8)
     ops.append(
         (
             "T_Acc",
-            f"RSA-{b1['accumulator_rsa_bits']} accumulator non-membership verify [1]",
-            lambda: gmpy2.powmod(acc, a_, N) * gmpy2.powmod(B, x, N) % N == g,
+            f"RSA-{b1['accumulator_rsa_bits']} accumulator update acc^x [1]",
+            lambda: gmpy2.powmod(acc, x, N),
         )
     )
     return ops

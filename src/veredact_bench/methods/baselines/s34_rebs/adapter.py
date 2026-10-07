@@ -19,6 +19,7 @@ Deviations (bias direction in docs/baselines/S34-rebs.md):
 """
 
 import hashlib
+import multiprocessing
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -100,7 +101,7 @@ class REBSScheme(Scheme):
         txs = [self.by_tid[t] for t in tids]
         jobs = [(self.amc.n, self.amc.e_big, tx.payload, tx.ts, self.bits) for tx in txs]
         workers = min(self.cfg["environment"]["vcpus"], os.cpu_count() or 1)
-        with ProcessPoolExecutor(workers) as ex:
+        with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("forkserver")) as ex:
             parts = ex.map(_chash_rsa, jobs, chunksize=max(1, len(jobs) // (8 * workers)))
             for tx, (n_t, p_t, q_t, r, h) in zip(txs, parts):
                 ch[tx.tid] = R.chash_ct(self.attr_auth, self.policies[tx.policy], h, tx.ts, r, n_t, p_t, q_t, self.bits)
