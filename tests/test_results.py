@@ -131,3 +131,21 @@ def test_exp2_veredact_amortized_is_phase4_only(tmp_path):
     assert rows
     for r in rows:
         assert abs(float(r["auth_per_request_ms"]) - float(r["phase4_batch_ms"]) / int(r["batch_size"])) < 1e-9
+
+
+def test_exp1_point_leaves_no_thread_behind(tmp_path):
+    """A saturated Exp. 1 point leaves a queue backlog; its worker/client/revalidator threads must all have
+    exited when run_point returns, or they would load the next point (found in the scale run 2026-10-07)."""
+    import threading
+
+    from veredact_bench.evaluation.experiments.exp01_redaction_throughput import run_point
+
+    cfg = _cfg(tmp_path, "exp01_redaction_throughput")
+    cfg["experiment"].update(warmup_s=0, duration_s=1, drain_s=1, requester_cores=0)
+    out = RunWriter(cfg)
+    assert out.begin("S34")
+    before = {t.ident for t in threading.enumerate()}
+    # S34 authorizes with an ABE decryption (ms each) on 8 VPS workers: 4,000 req/s leaves an admission backlog
+    run_point(cfg, "S34", 4000, 0.8, out, "rate")
+    left = [t.name for t in threading.enumerate() if t.ident not in before and not t.name.startswith("besu")]
+    assert not left, left

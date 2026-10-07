@@ -150,7 +150,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         pin_to("requesters")
         while True:
             r = revalq.get()
-            if r is None:
+            if r is None or stop.is_set():
                 return
             if remote is not None:
                 request_async(r, first=False)
@@ -169,7 +169,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     def worker():
         while True:
             item = admit.get()
-            if item is None:
+            if item is None or stop.is_set():  # the point is over: never carry its backlog into the next point
                 return
             r, p = item
             with lock.read():
@@ -256,6 +256,10 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     for _ in workers_r:
         revalq.put(None)
     ex.join()  # returns after the batch in progress: the next point's anchor must not share the account
+    # every thread of this point must be gone before the next point starts: a saturated point leaves
+    # thousands of queued requests, and workers still authorizing them would load the next point's cores/GIL
+    for th in clients + workers + workers_r:
+        th.join()
     if pool is not None:
         pool.terminate()
         pool.join()
