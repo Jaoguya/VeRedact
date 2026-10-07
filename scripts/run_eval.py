@@ -9,6 +9,7 @@ unless --force.
 """
 
 import argparse
+import os
 from pathlib import Path
 
 from veredact_bench.evaluation.runner import run
@@ -22,7 +23,10 @@ def main():
     g.add_argument("--experiment", nargs="+", choices=[*experiments(), "all"])
     g.add_argument("--config", nargs="+", type=Path, help="configs/experiments/<id>.yaml")
     ap.add_argument("--force", action="store_true", help="re-run methods whose metrics.json already exists")
+    ap.add_argument("--systems", help="comma-separated subset of the experiments' systems (e.g. veredact)")
     a = ap.parse_args()
+    if a.systems:
+        os.environ["VRPQ_SYSTEMS"] = a.systems
     run(a.tier, a.experiment or [p.stem for p in a.config], a.force)
 
 

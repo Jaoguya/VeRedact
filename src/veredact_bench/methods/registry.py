@@ -10,6 +10,7 @@ t = floor(2n/3)+1: VeRedact committee, S1 full nodes, S27 redactors, S34 attribu
 """
 
 import importlib
+import os
 
 from veredact_bench.methods.veredact.protocol.veredact_scheme import VeRedactScheme
 from veredact_bench.utils.config import threshold
@@ -28,8 +29,12 @@ def _baseline_class(key: str):
 
 
 def system_keys(cfg: dict) -> list[str]:
-    """Systems of the experiment being run (cfg["experiment"]), in config order."""
-    return list(cfg["experiment"]["systems"])
+    """Systems of the experiment being run (cfg["experiment"]), in config order; VRPQ_SYSTEMS="veredact,S1"
+    (run_eval.py --systems) restricts a run to some of them, e.g. VeRedact-PQ's Exp. 1 while the paid
+    prover hosts are up. It never adds a system and never changes a configured axis."""
+    keys = list(cfg["experiment"]["systems"])
+    only = [k for k in os.environ.get("VRPQ_SYSTEMS", "").split(",") if k]
+    return [k for k in keys if k in only] if only else keys
 
 
 def make(cfg: dict, key: str, committee_n: int | None = None):

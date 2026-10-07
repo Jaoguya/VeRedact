@@ -209,3 +209,13 @@ def test_rwlock_executor_not_starved_by_overlapping_readers():
     threading.Thread(target=writer, daemon=True).start()
     assert wrote.wait(timeout=2), "executor starved by overlapping readers"
     stop.set()
+
+
+def test_system_filter_restricts_and_never_adds(monkeypatch):
+    from veredact_bench.methods.registry import system_keys
+
+    cfg = {"experiment": {"systems": ["veredact", "S1", "S13"]}}
+    monkeypatch.delenv("VRPQ_SYSTEMS", raising=False)
+    assert system_keys(cfg) == ["veredact", "S1", "S13"]
+    monkeypatch.setenv("VRPQ_SYSTEMS", "veredact,S99")
+    assert system_keys(cfg) == ["veredact"]

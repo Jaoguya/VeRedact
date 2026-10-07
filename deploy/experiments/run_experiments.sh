@@ -27,7 +27,7 @@ fi
 mkdir -p results/logs
 LOG="results/logs/${TIER}_${EXPS// /_}_$(date +%Y%m%d-%H%M%S).log"
 echo "running $EXPS on tier $TIER (ledger=$LEDGER_BACKEND) -> $LOG"
-"$PY" scripts/run_eval.py --tier "$TIER" --experiment $EXPS 2>&1 | tee "$LOG"
+"$PY" scripts/run_eval.py --tier "$TIER" --experiment $EXPS ${SYSTEMS:+--systems $SYSTEMS} 2>&1 | tee "$LOG"
 { "$PY" scripts/make_tables.py --tier "$TIER" && "$PY" scripts/make_figures.py --tier "$TIER"; } 2>&1 | tee -a "$LOG" \
   || echo "tables/figures failed (results are intact)"
 if [[ -n "${RUN_S3_URI}" ]]; then
