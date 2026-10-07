@@ -26,7 +26,7 @@ def _keys(d, prefix=""):
 
 def validate(tier: str) -> tuple[list[str], list[str]]:
     c = load_all(tier)
-    final = tier == "experiment"
+    final = tier in ("experiment", "scale")  # scale: full-size check run, same rules as the paper run
     err, warn = [], []
     E = err.append
     W = warn.append

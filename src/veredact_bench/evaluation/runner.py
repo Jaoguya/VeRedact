@@ -31,7 +31,7 @@ def check(tier: str) -> None:
     backend = load_pqsig().name
     if "sim" in backend.lower():
         raise RefuseToRun(f"signature backend {backend!r} is an HMAC stand-in: refusing to run experiments")
-    if tier == "experiment" and "liboqs" not in backend:
+    if tier in ("experiment", "scale") and "liboqs" not in backend:
         raise RefuseToRun(
             f"experiment tier requires the liboqs ML-DSA-65 backend, got {backend!r}: export "
             "VRPQ_SIG_BACKEND=oqs (deploy/server/bootstrap_server.sh installs liboqs)"

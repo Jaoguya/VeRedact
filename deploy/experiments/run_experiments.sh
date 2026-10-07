@@ -14,7 +14,7 @@ EXPS=${*:-all}
 export TIER
 PY="$ROOT/.venv/bin/python"
 [[ -x "$PY" ]] || { echo "missing $PY — run deploy/server/bootstrap_server.sh or make venv"; exit 1; }
-[[ "$TIER" == experiment ]] && export VRPQ_SIG_BACKEND=oqs   # the runner refuses any other backend in this tier
+[[ "$TIER" == experiment || "$TIER" == scale ]] && export VRPQ_SIG_BACKEND=oqs   # liboqs, as in the paper's run
 eval "$("$PY" deploy/aws/aws_config.py)"
 
 "$PY" scripts/validate_config.py "$TIER"

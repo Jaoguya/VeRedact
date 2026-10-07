@@ -1,0 +1,13 @@
+# Tier "scale": a smoke test at FULL scale — every axis value of the paper's figures, the 10^5-transaction ledger,
+# Besu and liboqs, exactly as in "experiment" — but minimal measurement effort (short Exp. 1 windows, 2 samples
+# per point). Purpose: prove every scheme reaches every x point without error before the full run
+# (scripts/check_coverage.py --tier scale). Its numbers are a code-path check only, never results.
+meta:
+  tier: scale
+experiments:
+  exp00_primitives: {samples_per_point: 5}
+  exp01_redaction_throughput: {warmup_s: 3, duration_s: 10, drain_s: 10}
+  exp02_authorization_latency: {samples_per_point: 2}
+  exp03_audit_efficiency: {samples_per_point: 2, samples_override: {S13: {"10000": 1}}}
+  exp04_verification_time: {samples_per_point: 2}
+  exp05_gas_consumption: {requests_per_point: 256}

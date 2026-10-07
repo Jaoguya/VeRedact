@@ -18,7 +18,7 @@ from omegaconf import OmegaConf
 
 REPO_ROOT = Path(__file__).resolve().parents[3]  # src/veredact_bench/utils/config.py -> repo
 CONFIG_DIR = REPO_ROOT / "configs"
-TIERS = ("smoke", "pilot", "experiment")
+TIERS = ("smoke", "pilot", "scale", "experiment")
 
 
 def experiments() -> list[str]:

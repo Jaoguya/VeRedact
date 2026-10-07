@@ -64,8 +64,9 @@ def main():
     for key in e["systems"]:
         for n in e["committee_sizes"]:
             for m in e["batch_sizes"]:
-                need("exp02_authorization_latency", key, {"committee_n": n, "batch_size": m}, "auth_per_request_ms", "median")
-                need("exp02_authorization_latency", key, {"committee_n": n, "batch_size": m}, "batch_total_ms", "median")
+                at = {"committee_n": n, "batch_size": m}
+                need("exp02_authorization_latency", key, at, "auth_per_request_ms", "median")
+                need("exp02_authorization_latency", key, at, "batch_total_ms", "median")
     for exp in ("exp03_audit_efficiency", "exp04_verification_time"):
         e = load(tier, exp)["experiment"]
         field = "retrieval_ms" if exp.startswith("exp03") else "verify_ms"
