@@ -56,12 +56,14 @@ for IID in $IIDS; do
       ./ "$AWS_SSH_USER@$PUB:$REPO_REMOTE_DIR/"
     "${SSH[@]}" "sudo REPO_URL=$REPO_URL REPO_BRANCH=$REPO_BRANCH REMOTE_DIR=$REPO_REMOTE_DIR bash /tmp/bootstrap_server.sh" \
       > "/tmp/veredact-prover-$IID.log" 2>&1
-    echo "[4/5] $IID: start prover service"
-    "${SSH[@]}" "cd $REPO_REMOTE_DIR && VRPQ_PROVER_KEY='$KEY' VRPQ_SIG_BACKEND=oqs setsid nohup .venv/bin/python \
-      scripts/prover_service.py --port $PORT > /tmp/prover.log 2>&1 < /dev/null & sleep 3; tail -1 /tmp/prover.log"
-    # self-termination (shutdown = terminate): hard cap 4 h; idle 15 min after a run used it; 45 min if never used
+    # self-termination FIRST (shutdown = terminate): hard cap 4 h; idle 15 min after a run used it; 45 min if
+    # never used — set before anything that could hang or fail (2026-10-08: it was skipped once)
     "${SSH[@]}" "sudo shutdown -h +240 veredact-prover-hard-cap; sudo cp $REPO_REMOTE_DIR/deploy/server/prover_watchdog.sh /usr/local/bin/ \
       && echo '* * * * * root /usr/local/bin/prover_watchdog.sh $PORT' | sudo tee /etc/cron.d/veredact-prover >/dev/null"
+    echo "[4/5] $IID: start prover service"
+    # the backgrounded service keeps the ssh channel open: bounded by timeout, and its exit status ignored
+    timeout 20 "${SSH[@]}" "cd $REPO_REMOTE_DIR && VRPQ_PROVER_KEY='$KEY' VRPQ_SIG_BACKEND=oqs setsid nohup .venv/bin/python \
+      scripts/prover_service.py --port $PORT > /tmp/prover.log 2>&1 < /dev/null & sleep 3; tail -1 /tmp/prover.log" || true
   ) &
 done
 wait
