@@ -219,3 +219,13 @@ def test_system_filter_restricts_and_never_adds(monkeypatch):
     assert system_keys(cfg) == ["veredact", "S1", "S13"]
     monkeypatch.setenv("VRPQ_SYSTEMS", "veredact,S99")
     assert system_keys(cfg) == ["veredact"]
+
+
+def test_system_skip_pairs(monkeypatch):
+    from veredact_bench.methods.registry import system_keys
+
+    monkeypatch.delenv("VRPQ_SYSTEMS", raising=False)
+    monkeypatch.setenv("VRPQ_SKIP", "exp01_redaction_throughput:veredact")
+    e1 = {"experiment": {"id": "exp01_redaction_throughput", "systems": ["veredact", "S1"]}}
+    e2 = {"experiment": {"id": "exp02_authorization_latency", "systems": ["veredact", "S1"]}}
+    assert system_keys(e1) == ["S1"] and system_keys(e2) == ["veredact", "S1"]

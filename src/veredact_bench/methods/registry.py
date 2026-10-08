@@ -34,7 +34,10 @@ def system_keys(cfg: dict) -> list[str]:
     prover hosts are up. It never adds a system and never changes a configured axis."""
     keys = list(cfg["experiment"]["systems"])
     only = [k for k in os.environ.get("VRPQ_SYSTEMS", "").split(",") if k]
-    return [k for k in keys if k in only] if only else keys
+    keys = [k for k in keys if k in only] if only else keys
+    # VRPQ_SKIP="exp01_redaction_throughput:veredact,...": (experiment, system) pairs another step owns
+    skip = {tuple(p.split(":", 1)) for p in os.environ.get("VRPQ_SKIP", "").split(",") if ":" in p}
+    return [k for k in keys if (cfg["experiment"].get("id"), k) not in skip]
 
 
 def make(cfg: dict, key: str, committee_n: int | None = None):
