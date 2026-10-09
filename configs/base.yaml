@@ -74,9 +74,6 @@ workload:
   target_distribution: zipf     # [DERIVED] manuscript: Zipf targets over transaction batches
   zipf_s: 0.8                   # [DERIVED] manuscript Table VII default s = [0.8]
   arrival: poisson              # [DERIVED] manuscript: Poisson arrivals, rate varied per experiment
-  bursty_on_s: 2.0              # [PROPOSED] on/off phases for ABRRR adaptation (manuscript "bursty")
-  bursty_off_s: 2.0
-  bursty_peak_factor: 4.0
 
 output:
   dir: results                  # results/<experiment id>/<method>/<tier>/
