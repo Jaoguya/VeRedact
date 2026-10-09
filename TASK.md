@@ -149,3 +149,5 @@ results recomputed from the unchanged rows on the server (`scripts/resummarize.p
 - Exp. 2 / Exp. 5: baselines measured at every batch size m (m independent authorizations / transactions);
   Fig. 4(b) per batch of m0 for every system (`batch_total_ms`).
 - To re-run on the server: Exp. 1 (all), Exp. 2 (baselines), Exp. 3–4 (S1), Exp. 5 (baselines). Not started.
+
+- 2026-10-09 — Revised manuscript preview: every overleaf/newchange.md item (A1–A6, B1–B4, D1–D2, E1–E12, F1) applied to a copy, changes in red. Script `scripts/apply_newchange.py`; output `overleaf/revised/VeRedact-2-revised.{tex,pdf}` (compiled on veredact-bench, 21 pages). The original .tex is unchanged.
