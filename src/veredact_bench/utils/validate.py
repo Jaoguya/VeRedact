@@ -87,6 +87,8 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
         E(f"committee t={t} must satisfy floor(2n/3)+1 <= t <= n (n={n})")
     if not 1 <= v["B_min"] <= v["reference_batch"] <= v["B_max"]:
         E("need 1 <= B_min <= reference_batch <= B_max")
+    if not 1 <= v["fixed_batch"] <= v["B_max"]:
+        E("need 1 <= fixed_batch <= B_max")
     if v["vps_workers"] > c["environment"]["vcpus"]:
         W("vps_workers exceeds vcpus: Exp. 1 would measure CPU contention, not the design")
     for s, (tk, nk) in {"S1": ("threshold_t", "nodes_n"), "S27": ("threshold_t", "redactors_n")}.items():
@@ -113,10 +115,10 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
         E("exp2.batch_sizes must include 1 (the per-request point every baseline shares)")
     if min(x["exp2"]["committee_sizes"]) < 4:
         E("exp2.committee_sizes must be >= 4")
-    if final and x["exp3"]["records_per_batch"] != [c["veredact"]["reference_batch"]]:
-        E("exp3.records_per_batch must be [veredact.reference_batch]: one VeRedact-PQ setting per figure")
-    if x["exp5"]["zipf_sweep"] != [c["workload"]["zipf_s"]]:
-        E("exp5.zipf_sweep must be [workload.zipf_s]: one skew per figure")
+    if 1 not in x["exp3"]["records_per_batch"]:
+        E("exp3.records_per_batch must include 1 (shared-evidence savings disappear there)")
+    if c["workload"]["zipf_s"] not in x["exp5"]["zipf_sweep"]:
+        E("exp5.zipf_sweep must include workload.zipf_s")
     if max(x["exp3"]["n_Q"]) > w["total_requests"] and final:
         E("exp3.n_Q exceeds the number of redactions the trace can produce")
     if not 0 < x["exp1"]["saturation_tolerance"] < 1 or x["exp1"]["client_threads"] < 1:

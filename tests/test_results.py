@@ -42,16 +42,16 @@ def test_tiny_end_to_end_run(tmp_path):
     assert all(v["n"] == 2 and v["median"] > 0 for v in m["points"].values())
 
 
-def test_paper_artifacts_show_only_the_five_schemes(monkeypatch):
+def test_paper_artifacts_show_the_schemes_and_the_manuscript_variants(monkeypatch):
     from veredact_bench.reporting import figures, style, tables
 
-    keys = ["veredact", "S99", "S1", "S13", "S27", "S34"]  # S99: a method the paper does not compare
+    keys = ["veredact", "S99", "S1", "veredact:no_bimc", "S13", "S27", "S34"]  # S99: a method the paper does not have
     monkeypatch.setattr(figures, "_all_metrics", lambda exp, tier: {k: {"points": {}} for k in keys})
-    assert list(figures.metrics("exp01_redaction_throughput", "smoke")) == list(style.PAPER_METHODS)
+    assert list(figures.metrics("exp01_redaction_throughput", "smoke")) == [*style.PAPER_METHODS, "veredact:no_bimc"]
     assert tables.ORDER == ["veredact", "S1", "S13", "S27", "S34"]
 
 
-def test_gas_figure_draws_one_line_per_scheme(monkeypatch, tmp_path):
+def test_gas_figure_draws_one_line_per_scheme_and_skew(monkeypatch, tmp_path):
     from veredact_bench.reporting import figures, style
 
     def fake(exp, tier):  # two skews x two batch sizes per scheme, as Exp. 5 records them
@@ -64,7 +64,7 @@ def test_gas_figure_draws_one_line_per_scheme(monkeypatch, tmp_path):
     monkeypatch.setattr(figures, "_save", lambda fig, name, w: drawn.update({name: [len(a.lines) for a in fig.axes]}))
     style.apply()
     figures.fig_exp5("smoke", [])
-    assert drawn["exp5_gas_consumption"] == [len(style.PAPER_METHODS)] * 2
+    assert drawn["exp5_gas_consumption"] == [2 * len(style.PAPER_METHODS)] * 2  # manuscript: s in {0, 0.8}
 
 
 def test_exp1_adaptations_count_every_finalized_redaction():

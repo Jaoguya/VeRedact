@@ -4,6 +4,7 @@ schemes:
     label: VeRedact-PQ
     ref: 0
     implementation: veredact_bench.methods.veredact.protocol.veredact_scheme:VeRedactScheme
+    variants: [per_request, fixed_batch, no_bimc, re_zk, per_record_evidence]   # manuscript internal variants
 
 veredact:
   committee_n: 7                # [DERIVED] manuscript Table VII n = [7]
@@ -11,6 +12,7 @@ veredact:
   B_min: 8                      # [DERIVED] manuscript Table VII
   B_max: 256                    # [DERIVED] manuscript Table VII
   T_max_ms: 500                 # [DERIVED] manuscript Table VII
+  fixed_batch: 64               # [DERIVED] manuscript Exp. 1 Fixed-Batch variant: static batch size [64]
   reference_batch: 64           # [DERIVED] the manuscript's reference ABRRR batch size [64]: authorization batch for
                                 #   building the Exp. 3-4 redaction histories and the per-batch panel of Fig. 4
   rli_shards: 16                # [DERIVED] manuscript Table VII S = [16]

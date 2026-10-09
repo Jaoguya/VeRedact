@@ -1,7 +1,8 @@
 # TASK — full-experiment tracker
 
-Updated 2026-10-03. The manuscript (`overleaf/VeRedact-2.tex`) is final: it is never edited here; text it
-needs goes to `overleaf/newchange.md`. Update §1 and the run ledger (§1.1) as each step finishes.
+Updated 2026-10-09. The manuscript (`overleaf/VeRedact-2.tex`) is final: it is never edited here, and every
+formula and section outside the evaluation is final. `overleaf/newchange.md` changes only the experiment text of
+Section V-C (ZK-Redact journal style); the code runs what the manuscript's experiments describe. Update §1 and the run ledger (§1.1) as each step finishes.
 
 ## 1. Progress
 
@@ -26,7 +27,7 @@ compared or reported; results come only from the experiment tier on the server.
 | 8 | Full experiment | `deploy/aws/launch_run.sh experiment` | **done** 2026-10-05 21:00 ICT (RUN_EXIT=0, server auto-stopped) | server: `results/<exp>/<method>/experiment/`, log `results/logs/experiment_*.log` |
 | 9 | Fetch results + paper artifacts | `deploy/aws/fetch_results.sh` | to do | laptop: `results/`, `paper/tables/*.tex`, `paper/figures/*.pdf` |
 | 10 | Stop paying | `deploy/aws/teardown_ec2.sh` | to do | — (the idle watchdog powers off after 30 min idle anyway) |
-| 11 | Fill the manuscript from the run | `overleaf/newchange.md` §C | to do | `overleaf/newchange.md` |
+| 11 | Fill the manuscript from the run | `overleaf/newchange.md` "After the full run" | to do | `overleaf/newchange.md` |
 
 ### 1.1 Run ledger
 
@@ -60,15 +61,17 @@ Mapping to the manuscript: `paper/MANIFEST.md`.
 | D3a | `ledger.validators` | 7 [CONFIRM] | keep 7 (one per organisation); the manuscript's "[TBD]-validator" takes this value |
 | D3b | `ledger.netem_delay_ms` | 10 [CONFIRM] | keep 10 unless the paper should model a WAN |
 | D3c | `exp01_redaction_throughput.zipf_rate` | **100 [DERIVED]** | see D10 |
-| D3d | repetitions | **decided 2026-10-03: one run per point** | manuscript text fix in `newchange.md` D1–D2 |
+| D3d | repetitions | **decided 2026-10-03, confirmed 2026-10-09: one run per point** | `newchange.md` items 6–7 (parameter table row, setup text) |
 | D8 | new dependencies `scipy` and `ruff` | **decided 2026-10-03: both added** | scipy 1.18.1 (Mann–Whitney U, t-based CI in `metrics/`); ruff 0.16.10 (`make lint`: check + format, clean on 82 files) |
 | D4 | SIS-PQCH distributed perturbation is spherical → statistical leakage of R over many adaptations | open | state as a limitation, or implement the distributed Genise–Micciancio perturbation (cost rises) |
 | D6 | SIS n = 256, q = 2^16 not checked with a lattice estimator for NIST level 3 | open | run the estimator before claiming level 3 for PQCH; does not change timings already measured |
 | D7 | Exp. 1 load generator | **diagnosed 2026-10-05 (core-isolation test, results/diagnostics/core_isolation.json)**: not the load generator — at 100 req/s requesters submit 99.5 % on time but proofs are 5–8 s old at validation; executor holds the harness write lock 84–87 % of the time at storming points (59–68 % at good ones). Snapshot-read test SKIPPED by author decision: whether the lock overstates the storm is UNVERIFIED — do not call the storm a protocol property | cause vs effect unproven — re-proving load and staleness can feed each other on one shared host; core-isolation test proposed. Data: full run: requesters re-prove every stale request (2.0-2.3 revalidations per request at the storming points); single-core T_ZP = 20.8 ms, so the load generator itself is not the limit. "client-bound" now counts toward the same 2-consecutive-points rule as saturation; `submitted_on_time` reported per point |
-| D9 | S1 in Exp. 1: one redaction per block (Jia's rule) | **decided 2026-10-04** | kept as a real limit of S1; text item `overleaf/newchange.md` F1 |
+| D9 | S1 in Exp. 1: one redaction per block (Jia's rule) | **decided 2026-10-04** | kept as a real limit of S1; stated when the Exp. 1 results paragraph is rewritten from the run |
 | D10 | Exp. 1 rates and `zipf_rate` | **decided 2026-10-04** | rates = manuscript [100]–[5,000] unchanged; `zipf_rate` = 100 (manuscript: skew sweep "at a fixed arrival rate", its lowest rate); Fig. 3(c) counts every finalized redaction of a point so saturated schemes still have a value |
 | D11 | S13 audit cost in Exp. 3–4 | **decided 2026-10-04** | Exp. 4: each S13 response built once per (n_Q, fault fraction), verified samples_per_point times (`AuditQuery.reuse_response`, fidelity-tested); Exp. 3: 5 samples for S13 at n_Q = 10^4 (`samples_override`) |
 | D13 | Paper artifacts not in the manuscript | **decided 2026-10-04** | `exp4_granularity` figure and `tab_significance` table deleted (with the Mann–Whitney code); only the manuscript's 5 figures and 2 tables are produced |
+| D14 | Experiments vs manuscript | **decided 2026-10-09** | experiments follow the manuscript as written: internal variants restored (Per-Request, Fixed-Batch, No-BIMC in Exp. 1; Re-ZK in Exp. 2; Per-Record Evidence and records per batch 1, 4, 16, 64 in Exp. 3), Normal and Deep Audit in Exp. 4, Zipf skews 0 and 0.8 in Exp. 5; one run per point kept |
+| D15 | "bursty on/off phases" (manuscript setup) | **open** | configured (`workload.bursty_*`) but no experiment or figure uses it; `newchange.md` item 7 drops the phrase. Alternative: add a bursty Exp. 1 point (no figure panel shows it) |
 | D12 | Exp. 1 early stop vs VeRedact-PQ revalidation storms | **decided 2026-10-04** | full run 2026-10-05: storms are not tied to hot batches — at 100 req/s s=0.0 decided 42 % (14,386 revalidations) while s=0.4-1.2 decided 100 %; any batch touched by an ABRRR round stales every in-flight request on it. stop only after `saturation_patience` = 2 consecutive saturated rates (same rule for every scheme; literally every rate would cost S34 ~8 h of untimed setup); metrics.json reports `decided` and `revalidations` per point. Warm-up point removed (cold start disproven) |
 | F1 | Pilot false-positive check (2026-10-04) | **fixed** | (1) block watcher fetched one receipt per tx serially → finality inflated for every scheme above ~80 tx/s: now one `eth_getBlockReceipts` per block; (2) S13 recomputed the accumulated product per audited record: now once per audit (identical witnesses, tested); (3) STARK proofs used all cores and only 4 requester threads: now winterfell built without `concurrent` (each proof single-core on its requester thread; T_ZP single-core) and `client_threads: 16`; (4) idle watchdog never powered off (system python3 cannot import veredact_bench → `set -u` exit): venv python + 30 min fail-safe; (5) reader-preferring RWLock starved the executor under continuous authorizations (S1 at 250 req/s: 4,865 authorized, 0 executed): now writer-preferring, regression-tested; (6) queue_ms < 0 after a resubmission: timings now describe the last attempt. Pilot exp00 + exp01 re-run with these fixes: done 2026-10-04 08:41 UTC, fetched to `results/exp0{0,1}_*/<method>/pilot/`; server stopped |
 
@@ -93,8 +96,9 @@ Mapping to the manuscript: `paper/MANIFEST.md`.
 | Laptop backend | pqcrypto ML-DSA signing retried when its rejection-sampling cap is hit (FIPS 204 loops until success) | sporadic test failure |
 | Setup cost | data-owner keys and signatures cached per process (seeded salts) | Exp. 1 re-runs setup per point: saves ≈ 13 h |
 
-Manuscript text the code now differs from: `overleaf/newchange.md` §A (cost-table cells for rc_i and the
-Phase 5 Auth check, f in ABRRR, Docker wording) and §B ([TBD]s the code already fixes).
+The cost tables and formulas are final (author 2026-10-09) and are not changed: Table IV/V do not count the
+admission receipt rc_i or the Phase 5 approval check that Phases 3 and 5 perform, and Phase 4 leaves f
+undefined (the code uses lambda_e * T_max). Only the evaluation text is updated (`overleaf/newchange.md`).
 
 ### 3.2 Restructure to the IEEE evaluation-code layout (option B)
 
@@ -150,4 +154,5 @@ results recomputed from the unchanged rows on the server (`scripts/resummarize.p
   Fig. 4(b) per batch of m0 for every system (`batch_total_ms`).
 - To re-run on the server: Exp. 1 (all), Exp. 2 (baselines), Exp. 3–4 (S1), Exp. 5 (baselines). Not started.
 
-- 2026-10-09 — Revised manuscript preview: every overleaf/newchange.md item (A1–A6, B1–B4, D1–D2, E1–E12, F1) applied to a copy, changes in red. Script `scripts/apply_newchange.py`; output `overleaf/revised/VeRedact-2-revised.{tex,pdf}` (compiled on veredact-bench, 21 pages). The original .tex is unchanged.
+- 2026-10-09 — Old `overleaf/newchange.md` (it changed formulas and non-evaluation text) and the red preview copy deleted (author). New `overleaf/newchange.md`: 7 items, Section V-C experiment text only, ZK-Redact journal style, no formula changes.
+- 2026-10-09 — Experiments re-aligned with the manuscript (decision D14): variants, deep audit, Exp. 5 skew 0 restored in configs, protocol, runners, figures, coverage check; test `test_manuscript_variants_behave_as_described`; 61 tests pass (server). Smoke: `results/logs/smoke_variants.out` on the server.

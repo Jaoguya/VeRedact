@@ -1,7 +1,8 @@
 """System key -> Scheme instance. The ONLY place the runners learn which systems exist.
 
-Keys match configs/experiments/*.yaml systems (the paper compares exactly these five):
+Keys match configs/experiments/*.yaml systems and variants:
   veredact                 VeRedact-PQ (ABRRR + BIMC)
+  veredact:<variant>       the manuscript's internal variants (protocol/veredact_scheme.py VARIANTS)
   S1 S13 S27 S34           the four re-implemented baselines (methods/baselines/<scheme>/adapter.py)
 
 committee_n is the Exp. 2 sweep axis. Each system maps it to ITS OWN distribution parameter with
@@ -12,7 +13,7 @@ t = floor(2n/3)+1: VeRedact committee, S1 full nodes, S27 redactors, S34 attribu
 import importlib
 import os
 
-from veredact_bench.methods.veredact.protocol.veredact_scheme import VeRedactScheme
+from veredact_bench.methods.veredact.protocol.veredact_scheme import VARIANTS, VeRedactScheme
 from veredact_bench.utils.config import threshold
 
 BASELINES = {  # key -> (package under methods/baselines/, adapter class)
@@ -32,18 +33,22 @@ def system_keys(cfg: dict) -> list[str]:
     """Systems of the experiment being run (cfg["experiment"]), in config order; VRPQ_SYSTEMS="veredact,S1"
     (run_eval.py --systems) restricts a run to some of them, e.g. VeRedact-PQ's Exp. 1 while the paid
     prover hosts are up. It never adds a system and never changes a configured axis."""
-    keys = list(cfg["experiment"]["systems"])
+    x = cfg["experiment"]
+    keys = list(x["systems"]) + [f"veredact:{v}" for v in x.get("variants", [])]
     only = [k for k in os.environ.get("VRPQ_SYSTEMS", "").split(",") if k]
-    keys = [k for k in keys if k in only] if only else keys
+    keys = [k for k in keys if k in only or k.split(":")[0] in only] if only else keys  # veredact -> + variants
     # VRPQ_SKIP="exp01_redaction_throughput:veredact,...": (experiment, system) pairs another step owns
     skip = {tuple(p.split(":", 1)) for p in os.environ.get("VRPQ_SKIP", "").split(",") if ":" in p}
-    return [k for k in keys if (cfg["experiment"].get("id"), k) not in skip]
+    return [k for k in keys if (x.get("id"), k) not in skip and (x.get("id"), k.split(":")[0]) not in skip]
 
 
 def make(cfg: dict, key: str, committee_n: int | None = None):
     t = threshold(committee_n) if committee_n else None
-    if key == "veredact":
-        return VeRedactScheme(cfg, committee_n, t)
+    if key == "veredact" or key.startswith("veredact:"):
+        variant = key.split(":", 1)[1] if ":" in key else "veredact"
+        if variant not in VARIANTS:
+            raise KeyError(f"unknown VeRedact variant {variant}")
+        return VeRedactScheme(cfg, variant, committee_n, t)
     cls = _baseline_class(key)
     if key == "S1":
         return cls(cfg, nodes_n=committee_n, threshold_t=t)
@@ -60,7 +65,7 @@ def distribution_param(key: str) -> str:
         "S27": "redactors",
         "S34": "policy attributes (AVN keys)",
         "S13": "none (single System Manager)",
-    }.get(key, "committee members")
+    }.get(key.split(":")[0], "committee members")
 
 
 def capability_matrix(cfg: dict) -> str:

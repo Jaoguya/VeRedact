@@ -4,6 +4,6 @@ experiment:
   paper: [fig:exp4_verify]
   systems: [veredact, S13, S1]
   n_Q: [10, 100, 1000, 10000]
-  levels: [normal]              # [METHOD] routine (normal) audit only (author decision 2026-10-04)
+  levels: [normal, deep]        # [DERIVED] manuscript Exp. 4: Normal Audit and Deep Audit
   inject_fractions: [0.01, 0.05, 0.10]       # [DERIVED] manuscript [1%-10%]
   samples_per_point: 30         # [PROPOSED] verified responses per (system, n_Q, level, fraction) in the one run

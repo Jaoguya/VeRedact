@@ -4,8 +4,8 @@ experiment:
   paper: [fig:exp3_audit]
   systems: [veredact, S13, S1]  # only systems with an audit/consistency path
   n_Q: [10, 100, 1000, 10000]                # [DERIVED] manuscript
-  records_per_batch: [64]       # [DERIVED] = veredact.reference_batch: one VeRedact-PQ setting (author decision
-                                #   2026-10-04: one line per scheme, no second setting)
+  variants: [per_record_evidence]            # [DERIVED] manuscript Exp. 3 internal variant
+  records_per_batch: [1, 4, 16, 64]          # [DERIVED] manuscript: returned records per authorization batch 1 .. [64]
   samples_per_point: 30         # [PROPOSED] audit queries per (system, records per batch, n_Q) in the one run
   samples_override: {S13: {"10000": 5}}   # [METHOD] S13 builds one RSA-accumulator non-membership witness per record
                                 #   (pilot: 106 s per audit at n_Q = 10^3): 5 samples at 10^4 (author decision 2026-10-04)

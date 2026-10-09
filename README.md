@@ -67,7 +67,7 @@ exp00 minutes · exp01 ~1.5–2.5 h · exp02 ~0.5 h · exp03 + exp04 ~0.5–1 h 
 | `data/` | README only: the dataset is generated from the seed |
 | `deploy/` | AWS provisioning + launch + idle watchdog, server bootstrap, Besu QBFT network, tier runner |
 | `Scheme/` | the four baseline papers (PDF, full text, summary) |
-| `overleaf/` | final manuscript `VeRedact-2.tex` (never edited here), generated `VeRedact.md`, `newchange.md` (text changes still to paste) |
+| `overleaf/` | final manuscript `VeRedact-2.tex` (never edited here), generated `VeRedact.md`, `newchange.md` (experiment-section text changes still to paste; nothing else in the manuscript changes) |
 | `docs/` | `experiments.md` (rules, boundaries), `baselines/*.md`, `paper-conformance.md`, `aws-runbook.md` |
 | `tools/` | PDF→Markdown and TeX→Markdown converters |
 

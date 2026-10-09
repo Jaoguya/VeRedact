@@ -1,13 +1,13 @@
 """Paper figures from results/<experiment>/<method>/<tier>/ -> paper/figures/<name>.pdf (+ .png).
 
-Names match the manuscript's \\includegraphics (exp1_redaction_throughput, ...). Each figure draws exactly ONE line
-per scheme (VeRedact-PQ and Schemes [1], [13], [27], [34]), never a second setting of a scheme —
-Fig. 5 at VeRedact-PQ's default batch (veredact.reference_batch), Fig. 6 normal audit, Fig. 7 the default skew
-(workload.zipf_s). Panels follow the captions:
+Names match the manuscript's \\includegraphics (exp1_redaction_throughput, ...). Each figure draws what the
+manuscript's experiment text describes: VeRedact-PQ, Schemes [1], [13], [27], [34], and the internal variants of
+that experiment (Per-Request, Fixed-Batch, No-BIMC in Fig. 3; Re-ZK in Fig. 4; Per-Record Evidence and the returned
+records per batch in Fig. 5; normal and deep audit in Fig. 6; skews 0 and 0.8 in Fig. 7). Panels follow the captions:
   Fig. 3  (a) throughput, (b) p95 end-to-end latency vs arrival rate, (c) PQCH adaptations per 1,000 vs skew
   Fig. 4  (a) amortized authorization per request vs batch size, (b) per-batch authorization vs committee size
   Fig. 5  (a) response-generation time, (b) response size vs returned records
-  Fig. 6  (a) verification time vs records (normal audit), (b) VeRedact-PQ verification-time breakdown
+  Fig. 6  (a) verification time vs records (normal and deep audit), (b) VeRedact-PQ verification-time breakdown
   Fig. 7  (a) total gas per authorization round, (b) amortized gas per redaction vs redactions per batch
 No other figure is drawn: only what the manuscript shows (author decision 2026-10-04).
 """
@@ -28,9 +28,9 @@ OUT = REPO_ROOT / "paper" / "figures"
 
 
 def metrics(experiment: str, tier: str) -> dict:
-    """metrics.json of the paper's five schemes only, in style.PAPER_METHODS order."""
+    """metrics.json of the schemes and VeRedact-PQ variants, in style.FIGURE_METHODS order."""
     ms = _all_metrics(experiment, tier)
-    return {k: ms[k] for k in style.PAPER_METHODS if k in ms}
+    return {k: ms[k] for k in style.FIGURE_METHODS if k in ms}
 
 
 def _points(m: dict) -> dict:
@@ -91,9 +91,12 @@ def _legend(ax, keys=()):
             handles.append(plt.Line2D([], [], color=col, marker=mk, linestyle="-"))
             labels.append(lab)
     if handles:
-        order = [style.label(k) for k in style.PAPER_METHODS]
+        order = [style.label(k) for k in style.FIGURE_METHODS]
         pairs = sorted(zip(handles, labels), key=lambda p: order.index(p[1]) if p[1] in order else 99)
-        ax.legend(*zip(*pairs), frameon=False, ncol=2)
+        if len(pairs) > 5:  # schemes + variants: below the panel so no line is covered
+            ax.legend(*zip(*pairs), frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.28))
+        else:
+            ax.legend(*zip(*pairs), frameon=False, ncol=2)
 
 
 def _saturated(ax, key, xs):
@@ -101,7 +104,7 @@ def _saturated(ax, key, xs):
     (a zero cannot be drawn on a log axis, and silently dropping it would hide the result)."""
     if xs:
         _, col, _, _ = style.METHODS[key]
-        f = 1 + 0.06 * (style.PAPER_METHODS.index(key) - 2)  # log-x offset per scheme: coinciding x stay distinct
+        f = 1 + 0.06 * (style.FIGURE_METHODS.index(key) % 5 - 2)  # log-x offset per scheme: coinciding x stay distinct
         ax.plot(
             [x * f for x in xs],
             [0.0] * len(xs),
@@ -204,38 +207,33 @@ def fig_exp2(tier, written):
     _save(fig, "exp2_authorization_latency", written)
 
 
+_RPB_STYLE = {1: ":", 4: "-.", 16: "--", 64: "-"}
+
+
 def fig_exp3(tier, written):
     ms = metrics("exp03_audit_efficiency", tier)
     if not ms:
         return
-    cfg = load(tier, "exp03_audit_efficiency")
     fig, (a, b) = _panels(2)
     for key, m in ms.items():
         by_rpb = defaultdict(list)
         for k, v in _points(m).items():
             if v.get("status") == "ok":
                 by_rpb[k[0]].append((k[1], v))
-        if not by_rpb:
-            continue
-        # one line per scheme: VeRedact-PQ at its default batch (or the largest one run); baselines have none
-        nums = [r for r in by_rpb if isinstance(r, float)]
-        rpb = (
-            (
-                float(cfg["veredact"]["reference_batch"])
-                if float(cfg["veredact"]["reference_batch"]) in nums
-                else max(nums)
-            )
-            if nums
-            else next(iter(by_rpb))
-        )
-        pts = sorted(by_rpb[rpb], key=lambda p: p[0])
-        style.line(a, key, [x for x, _ in pts], [v["retrieval_ms"]["median"] for _, v in pts])
-        style.line(b, key, [x for x, _ in pts], [v["evidence_bytes"]["median"] for _, v in pts])
+        # VeRedact-PQ (and Per-Record Evidence): one line per returned-records-per-batch value; baselines: one line
+        for rpb, pts in sorted(by_rpb.items(), key=lambda kv: (not isinstance(kv[0], float), kv[0])):
+            pts.sort(key=lambda p: p[0])
+            suffix = f" ($m$={int(rpb)})" if isinstance(rpb, float) else ""
+            style.line(a, key, [x for x, _ in pts], [v["retrieval_ms"]["median"] for _, v in pts], suffix)
+            style.line(b, key, [x for x, _ in pts], [v["evidence_bytes"]["median"] for _, v in pts], suffix)
+            if isinstance(rpb, float):
+                for ax in (a, b):
+                    ax.lines[-1].set_linestyle(_RPB_STYLE.get(int(rpb), "-"))
     a.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel="Response generation (ms)")
     b.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel="Response size (bytes)")
     _tag(a, "a")
     _tag(b, "b")
-    _legend(b)
+    b.legend(frameon=False, ncol=3, fontsize=style.FONT_PT - 2, loc="upper center", bbox_to_anchor=(0.5, -0.28))
     _save(fig, "exp3_audit_efficiency", written)
 
 
@@ -245,6 +243,7 @@ BREAKDOWN = (
     ("committee_ms", "Committee approvals"),
     ("attest_ms", "Attestations"),
     ("state_ms", "State + PQCH"),
+    ("zk_ms", "PQZK (deep audit)"),
 )
 
 
@@ -255,34 +254,34 @@ def fig_exp4(tier, written):
     fig, (a, b) = _panels(2)
     for key, m in ms.items():
         pts = _points(m)
-        xs = sorted(  # normal audit only: one line per scheme
-            (k[0], v["verify_ms"]["median"])
-            for k, v in pts.items()
-            if k[1] == "normal" and k[2] == 0 and v.get("status") == "ok"
-        )
-        if xs:
-            style.line(a, key, [x for x, _ in xs], [y for _, y in xs])
+        for level in ("normal", "deep"):
+            xs = sorted(
+                (k[0], v["verify_ms"]["median"])
+                for k, v in pts.items()
+                if k[1] == level and k[2] == 0 and v.get("status") == "ok"
+            )
+            if xs:
+                style.line(a, key, [x for x, _ in xs], [y for _, y in xs], " (deep)" if level == "deep" else "")
+                if level == "deep":
+                    a.lines[-1].set_linestyle("--")
     a.set(xscale="log", yscale="log", xlabel="Verified records $n_Q$", ylabel="Verification time (ms)")
     vr = [
         r
         for r in rows("exp04_verification_time", tier)
-        if r["system"] == "veredact"
-        and r.get("status") == "ok"
-        and num(r["inject_fraction"]) == 0
-        and r["level"] == "normal"
+        if r["system"] == "veredact" and r.get("status") == "ok" and num(r["inject_fraction"]) == 0
     ]
     if vr:
         n_max = max(int(r["n_Q"]) for r in vr)
-        levels = ["normal"]
+        levels = [lv for lv in ("normal", "deep") if any(r["level"] == lv for r in vr)]
         bottom = [0.0] * len(levels)
         for col, name in BREAKDOWN:
             h = [
-                M.median([num(r[f"verify_{col}"]) for r in vr if r["level"] == lv and int(r["n_Q"]) == n_max])
+                M.median([num(r[f"verify_{col}"]) or 0.0 for r in vr if r["level"] == lv and int(r["n_Q"]) == n_max])
                 for lv in levels
             ]
             b.bar(levels, h, bottom=bottom, label=name, width=0.5)
             bottom = [x + y for x, y in zip(bottom, h)]
-        b.set(ylabel="Verification time (ms)", title=f"VeRedact-PQ normal audit, $n_Q$ = {n_max}")
+        b.set(ylabel="Verification time (ms)", title=f"VeRedact-PQ, $n_Q$ = {n_max}")
         b.legend(
             frameon=False, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.12)
         )  # below: no swatch on its own colour
@@ -297,30 +296,24 @@ def fig_exp5(tier, written):
     if not ms or not any(v["gas_per_redaction"] for m in ms.values() for v in m["points"].values()):
         get_logger().info("exp5: no receipts (in_process ledger) - no gas figure drawn")
         return
-    s0 = float(load(tier, "exp05_gas_consumption")["workload"]["zipf_s"])  # one line per scheme: default skew
     fig, (a, b) = _panels(2)
     for key, m in ms.items():
         by_s = defaultdict(list)
         for k, v in _points(m).items():
             if v["gas_per_redaction"]:
                 by_s[k[0]].append((k[1], v))
-        if not by_s:
-            continue
-        s = s0 if s0 in by_s else max(by_s)
-        pts = sorted(by_s[s], key=lambda p: p[0])
-        style.line(a, key, [x for x, _ in pts], [v["gas_per_redaction"] * x for x, v in pts])
-        style.line(b, key, [x for x, _ in pts], [v["gas_per_redaction"] for _, v in pts])
+        for s, pts in sorted(by_s.items()):  # one line per Zipf skew (manuscript: s in {0, 0.8}); s = 0 dashed
+            pts.sort(key=lambda p: p[0])
+            style.line(a, key, [x for x, _ in pts], [v["gas_per_redaction"] * x for x, v in pts], f" $s$={s:g}")
+            style.line(b, key, [x for x, _ in pts], [v["gas_per_redaction"] for _, v in pts], f" $s$={s:g}")
+            if not s:
+                for ax in (a, b):
+                    ax.lines[-1].set_linestyle("--")
     a.set(xscale="log", yscale="log", xlabel="Redactions per batch $m$", ylabel="Total gas per round")
-    b.set(
-        xscale="log",
-        yscale="log",
-        xlabel="Redactions per batch $m$",
-        ylabel="Gas per redaction",
-        title=f"Zipf skew $s$ = {s0:g}",
-    )
+    b.set(xscale="log", yscale="log", xlabel="Redactions per batch $m$", ylabel="Gas per redaction")
     _tag(a, "a")
     _tag(b, "b")
-    _legend(b)
+    b.legend(frameon=False, ncol=3, fontsize=style.FONT_PT - 2, loc="upper center", bbox_to_anchor=(0.5, -0.28))
     _save(fig, "exp5_gas_consumption", written)
 
 

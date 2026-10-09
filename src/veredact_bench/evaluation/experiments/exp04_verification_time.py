@@ -4,8 +4,8 @@ History as in Exp. 3 (VeRedact-PQ submitted in batches of veredact.reference_bat
 injected fraction f: a seeded f * n_Q of the returned records are tampered (modified content,
 substituted evidence, stale version — cycled), the auditor verifies, and every record's decision is
 written. f = 0 (no injection) is always run: it is the clean verification time.
-Levels: VeRedact-PQ distinguishes normal/deep; a baseline whose audit has one level runs it for both and
-the row says so (level_supported = 0). S13 decides for the whole query (one bad record rejects all):
+Levels: VeRedact-PQ runs the Normal Audit and the Deep Audit (manuscript Exp. 4); the baselines' audits have
+one level, run once as "normal" (level_supported = 0). S13 decides for the whole query (one bad record rejects all):
 that shows up here as false rejections, which is the protocol's real behaviour.
 """
 
@@ -23,9 +23,10 @@ BREAKDOWN = ("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms"
 def run(cfg, out):
     x = cfg["experiment"]
     for key, rpb, s, counts, ds in histories(cfg, out, [cfg["veredact"]["reference_batch"]]):
+        levels = x["levels"] if key.startswith("veredact") else ["normal"]  # deep audit: VeRedact-PQ only
 
-        def specs(s, n):
-            for level in x["levels"]:
+        def specs(s, n, levels=levels):
+            for level in levels:
                 for f in [0.0, *x["inject_fractions"]]:
                     rng = random.Random(cfg["meta"]["seed"] + n)
                     idx = rng.sample(range(n), round(f * n))

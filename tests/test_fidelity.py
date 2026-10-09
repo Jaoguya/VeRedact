@@ -120,7 +120,7 @@ def test_s13_prebuilt_witnesses_give_the_identical_audit_response(cfg, ds):
 
 def test_registry_knows_every_configured_system(cfg):
     for _exp, x in load_all("smoke")["experiments"].items():
-        for key in x.get("systems", []):
+        for key in x.get("systems", []) + [f"veredact:{v}" for v in x.get("variants", [])]:
             make(cfg, key)
 
 
@@ -250,3 +250,37 @@ def test_s1_authorization_cost_does_not_grow_with_history(cfg, ds):
     ]
     assert later and max(later) < 10 * max(first) + 5.0
     s.teardown()
+
+
+def test_manuscript_variants_behave_as_described(cfg, ds):
+    """Sec. V-C internal variants: Per-Request batches 1, Fixed-Batch uses the static size, No-BIMC makes one root
+    transition (PQCH adaptation) per modification, Per-Record Evidence repeats authorization evidence per record,
+    Re-ZK re-verifies each PQZK proof in Phase 4."""
+    sys = {k: open_system(cfg, k, ds) for k in ("veredact", "veredact:per_request", "veredact:fixed_batch")}
+    assert sys["veredact:per_request"].p.target_batch_size(1000.0) == 1
+    assert sys["veredact:fixed_batch"].p.target_batch_size(1.0) == cfg["veredact"]["fixed_batch"]
+    assert sys["veredact"].p.target_batch_size(1.0) == cfg["veredact"]["B_min"]
+
+    def transitions(key):  # root transitions = distributed PQCH adaptations over the whole history
+        s = open_system(cfg, key, ds)
+        counts = build_history(s, ds.trace, 16)
+        s.index_records()  # RAI epoch closed, as in Exp. 3
+        return s, counts, sum(b.v for b in s.ledger.batches.values())
+
+    s_b, c_b, t_b = transitions("veredact")
+    s_n, c_n, t_n = transitions("veredact:no_bimc")
+    assert c_b["redacted"] == c_n["redacted"] and t_n == c_n["redacted"] and t_b < t_n
+
+    s_r = open_system(cfg, "veredact:per_record_evidence", ds)
+    build_history(s_r, ds.trace, 16)
+    s_r.index_records()
+    n = min(len(s_b.p.records), len(s_r.p.records), 16)
+    assert s_r.audit(AuditQuery(n)).evidence_bytes > s_b.audit(AuditQuery(n)).evidence_bytes
+
+    zv = {}
+    for key in ("veredact", "veredact:re_zk"):  # same 8 requests: Re-ZK adds one PQZK verification per request
+        s = open_system(cfg, key, ds)
+        build_history(s, ds.trace[:8], 8)
+        zv[key] = s.crypto.counts["T_ZV"]
+    assert zv["veredact:re_zk"] > zv["veredact"]
+    assert make(cfg, "veredact:re_zk").auth_cost().proof_verifications == 2

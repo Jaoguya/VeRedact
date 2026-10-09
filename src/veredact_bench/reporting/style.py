@@ -1,5 +1,6 @@
 """One visual identity for every figure: IEEE sizes, 8 pt fonts, Okabe-Ito colorblind-safe colours, and a fixed
-colour, line style and marker per scheme."""
+colour, line style and marker per scheme (VeRedact-PQ's internal variants keep its colour family and differ by
+line style / marker)."""
 
 import matplotlib
 
@@ -11,13 +12,26 @@ DOUBLE_IN = 7.16  # IEEE double column
 FONT_PT = 8
 
 # Okabe & Ito (2008) palette
-_BLUE, _ORANGE, _GREEN, _VERMILION, _PURPLE = "#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7"
-# The schemes compared in the paper's figures and tables: VeRedact-PQ and Schemes [1], [13], [27], [34].
-# Nothing else is drawn or ranked.
+_BLUE, _ORANGE, _GREEN, _VERMILION, _PURPLE, _SKY = "#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9"
+# The schemes compared in the paper: VeRedact-PQ and Schemes [1], [13], [27], [34] (tables rank only these)
 PAPER_METHODS = ("veredact", "S1", "S13", "S27", "S34")
+# The manuscript's internal variants of VeRedact-PQ (Experiments 1-3), drawn in the figures next to the schemes
+VARIANT_METHODS = (
+    "veredact:per_request",
+    "veredact:fixed_batch",
+    "veredact:no_bimc",
+    "veredact:re_zk",
+    "veredact:per_record_evidence",
+)
+FIGURE_METHODS = PAPER_METHODS + VARIANT_METHODS
 
 METHODS = {  # key -> (label, colour, line style, marker)
     "veredact": ("VeRedact-PQ", _BLUE, "-", "o"),
+    "veredact:per_request": ("Per-Request", _BLUE, ":", "v"),
+    "veredact:fixed_batch": ("Fixed-Batch", _BLUE, "--", "s"),
+    "veredact:no_bimc": ("No-BIMC", _BLUE, "-.", "D"),
+    "veredact:re_zk": ("Re-ZK", _SKY, "--", "^"),
+    "veredact:per_record_evidence": ("Per-Record Evidence", _SKY, ":", "P"),
     "S1": ("Scheme [1]", _ORANGE, "-", "o"),
     "S13": ("Scheme [13]", _GREEN, "-", "s"),
     "S27": ("Scheme [27]", _VERMILION, "-", "^"),
