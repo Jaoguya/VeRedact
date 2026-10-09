@@ -56,6 +56,10 @@ done
 wait
 printf '%s\n%s\n' "$KEY" "$(IFS=,; echo "${ADDRS[*]}")" > deploy/aws/.provers
 chmod 600 deploy/aws/.provers
-echo "[3/4] check every prover answers on $PORT"
-for a in "${ADDRS[@]}"; do timeout 5 bash -c "echo > /dev/tcp/${a%:*}/${a#*:}" || { echo "prover $a not reachable"; exit 1; }; done
+echo "[3/4] check every prover completes the authenticated handshake on $PORT (a bare TCP probe is not enough)"
+for a in "${ADDRS[@]}"; do
+  VRPQ_PROVER_KEY="$KEY" timeout 15 .venv/bin/python -c "import os,sys; from multiprocessing.connection import Client; \
+Client((sys.argv[1], int(sys.argv[2])), authkey=os.environ['VRPQ_PROVER_KEY'].encode()).close()" "${a%:*}" "${a#*:}" \
+    || { echo "prover $a not reachable"; exit 1; }
+done
 echo "[4/4] provers ready: $(sed -n 2p deploy/aws/.provers)"

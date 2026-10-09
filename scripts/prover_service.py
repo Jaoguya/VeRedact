@@ -6,6 +6,7 @@ import argparse
 import os
 import threading
 from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import AuthenticationError
 from multiprocessing.connection import Listener
 
 _STATE = {}
@@ -75,7 +76,12 @@ def main():
     with Listener(("0.0.0.0", a.port), authkey=os.environ["VRPQ_PROVER_KEY"].encode()) as ls:
         print(f"prover service on :{a.port} with {a.workers} workers", flush=True)
         while True:
-            threading.Thread(target=serve, args=(ls.accept(), a.workers), daemon=True).start()
+            try:  # a connection that fails the authkey handshake (port probe, stray client) must not end the service
+                conn = ls.accept()
+            except (AuthenticationError, EOFError, OSError) as e:
+                print(f"rejected connection: {e!r}", flush=True)
+                continue
+            threading.Thread(target=serve, args=(conn, a.workers), daemon=True).start()
 
 
 if __name__ == "__main__":
