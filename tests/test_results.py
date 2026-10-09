@@ -149,3 +149,44 @@ def test_exp1_point_leaves_no_thread_behind(tmp_path):
     run_point(cfg, "S34", 4000, 0.8, out, "rate")
     left = [t.name for t in threading.enumerate() if t.ident not in before and not t.name.startswith("besu")]
     assert not left, left
+
+
+def test_anchor_never_waits_forever_for_a_mined_transaction():
+    """Full run 2026-10-09: a mined transaction's Future was never resolved (3.5 h hang). _recheck resolves it
+    from its receipt, re-sends a transaction the node does not know, and fails one past the timeout."""
+    import threading
+    import time
+    from concurrent.futures import Future
+
+    from veredact_bench.evaluation.anchor import BesuAnchor
+
+    class Eth:
+        def __init__(self):
+            self.sent = []
+
+        def get_transaction_receipt(self, h):
+            if h == b"mined":
+                return {"status": 1, "gasUsed": 21000}
+            raise ValueError("not found")
+
+        def get_transaction(self, h):
+            raise ValueError("not found")
+
+        def send_raw_transaction(self, raw):
+            self.sent.append(raw)
+
+    a = object.__new__(BesuAnchor)
+    a.w3 = type("W3", (), {"eth": Eth()})()
+    a._plock, a.recheck_s, a.timeout_s = threading.Lock(), 30.0, 600.0
+    a.recovered = {"late_receipt": 0, "resent": 0, "timed_out": 0}
+    now = time.perf_counter()
+    futs = {h: Future() for h in (b"mined", b"lost", b"expired", b"fresh")}
+    t0 = {b"mined": now - 60, b"lost": now - 60, b"expired": now - 700, b"fresh": now}
+    a._pending = {h: (futs[h], t0[h]) for h in futs}
+    a._raw = {h: b"raw-" + h for h in futs}
+    a._recheck()
+    assert futs[b"mined"].result()[1] == 21000  # resolved from its receipt
+    assert a.w3.eth.sent == [b"raw-lost"] and not futs[b"lost"].done()  # sent again, still pending
+    assert isinstance(futs[b"expired"].exception(), RuntimeError)  # loud failure, not a hang
+    assert not futs[b"fresh"].done()  # too young to look up
+    assert a.recovered == {"late_receipt": 1, "resent": 1, "timed_out": 1}

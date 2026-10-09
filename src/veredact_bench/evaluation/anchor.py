@@ -18,6 +18,9 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 
 from veredact_bench.utils.config import REPO_ROOT
+from veredact_bench.utils.log import get_logger
+
+log = get_logger()
 
 
 class _Metered:
@@ -108,6 +111,9 @@ class BesuAnchor(_Metered):
         self.receipts = []
         self._ver = {}  # batch -> anchored version (contract enforces v_b' = v_b + 1)
         self._pending: dict[bytes, tuple] = {}  # tx hash -> (Future, submit time)
+        self._raw: dict[bytes, bytes] = {}  # tx hash -> signed raw transaction (re-sent if the node lost it)
+        self.recheck_s = 30.0  # [METHOD] a transaction pending this long is looked up directly (see _recheck)
+        self.recovered = {"late_receipt": 0, "resent": 0, "timed_out": 0}
         self._mined: dict[bytes, float] = {}  # tx hash -> time its block was observed (for late registration)
         self._plock = threading.Lock()
         self._stop = threading.Event()
@@ -147,6 +153,7 @@ class BesuAnchor(_Metered):
         until it is filled). Registered before sending, so a failed send always resolves its Future."""
         stx = self._sign(fn)
         h = bytes(stx.hash)
+        self._raw[h] = bytes(stx.raw_transaction)
         fut = self._register(h, t0)
         self._senders.submit(self.w3.eth.send_raw_transaction, stx.raw_transaction).add_done_callback(
             lambda f: f.exception() is not None and self._fail(h, f.exception())
@@ -156,6 +163,7 @@ class BesuAnchor(_Metered):
     def _fail(self, h: bytes, e: BaseException):
         with self._plock:
             item = self._pending.pop(h, None)
+        self._raw.pop(h, None)
         if item is not None:
             item[0].set_exception(e)
 
@@ -177,6 +185,7 @@ class BesuAnchor(_Metered):
         """Resolve every pending transaction when the block containing it is observed."""
         while not self._stop.is_set():
             head = self.w3.eth.block_number
+            self._recheck()
             if head <= self._last_block:
                 self._stop.wait(self.poll_s)
                 continue
@@ -188,11 +197,53 @@ class BesuAnchor(_Metered):
                         if item is None:  # submitted but not yet registered: resolved on registration
                             self._mined[h] = (seen, ok, gas)
                             continue
-                    self._resolve(h, *item, seen, ok, gas)
+                    self._resolve_and_forget(h, *item, seen, ok, gas)
             self._last_block = head
             with self._plock:  # forget unclaimed hashes after a while (deploys, other senders)
                 for h in [h for h, m in self._mined.items() if seen - m[0] > self.timeout_s]:
                     del self._mined[h]
+
+    def _recheck(self):
+        """Full run 2026-10-09: a Future of a MINED transaction (account nonce latest == pending) was never
+        resolved and the harness waited 3.5 h. The block-receipt path missed it (cause not reproduced:
+        scripts/diag_block_receipts.py). Safety net, so no Future can wait forever: a transaction pending
+        > recheck_s is looked up by hash; a receipt resolves it (late_receipt), an unknown transaction is sent
+        again (resent), and one pending > receipt_timeout_s fails its Future (timed_out). Counts are logged."""
+        now = time.perf_counter()
+        with self._plock:
+            old = [(h, item) for h, item in self._pending.items() if now - item[1] > self.recheck_s]
+        for h, (fut, t0) in old:
+            try:
+                r = self.w3.eth.get_transaction_receipt(h)
+            except Exception:  # web3 TransactionNotFound: not mined (yet)
+                r = None
+            if r is not None:
+                with self._plock:
+                    if self._pending.pop(h, None) is None:
+                        continue
+                self.recovered["late_receipt"] += 1
+                log.warning(f"anchor: receipt found by hash for {h.hex()[:16]} (missed by the block watcher)")
+                self._resolve_and_forget(h, fut, t0, time.perf_counter(), r["status"] == 1, r["gasUsed"])
+            elif now - t0 > self.timeout_s:
+                self.recovered["timed_out"] += 1
+                self._fail(h, RuntimeError(f"anchoring transaction {h.hex()} not mined within {self.timeout_s} s"))
+            elif self._raw.get(h) is not None:
+                try:
+                    known = self.w3.eth.get_transaction(h) is not None
+                except Exception:
+                    known = False
+                if not known:  # sent at most once more; afterwards only the receipt or the timeout ends it
+                    raw = self._raw.pop(h, None)
+                    self.recovered["resent"] += 1
+                    log.warning(f"anchor: node does not know {h.hex()[:16]}; sending it again")
+                    try:
+                        self.w3.eth.send_raw_transaction(raw)
+                    except Exception as e:  # e.g. nonce too low: it was mined after all; the receipt resolves it
+                        log.warning(f"anchor: re-send of {h.hex()[:16]} failed: {e}")
+
+    def _resolve_and_forget(self, h, fut, t0, seen, ok, gas):
+        self._raw.pop(h, None)
+        self._resolve(h, fut, t0, seen, ok, gas)
 
     @staticmethod
     def _resolve(h, fut, t0, seen, ok, gas):
@@ -208,7 +259,7 @@ class BesuAnchor(_Metered):
             if mined is None:
                 self._pending[h] = (fut, t0)
                 return fut
-        self._resolve(h, fut, t0, *mined)
+        self._resolve_and_forget(h, fut, t0, *mined)
         return fut
 
     def _submit(self, op: str, **f) -> Future:
@@ -256,6 +307,8 @@ class BesuAnchor(_Metered):
         self._stop.set()
         self._watcher.join()
         self._senders.shutdown()
+        if any(self.recovered.values()):
+            log.warning(f"anchor recoveries (block watcher missed or node lost a transaction): {self.recovered}")
         if self._pending:
             raise RuntimeError(f"{len(self._pending)} anchoring transactions not mined within {self.timeout_s} s")
 
