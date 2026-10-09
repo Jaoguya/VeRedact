@@ -33,6 +33,8 @@ VRPQ_SKIP=exp01_redaction_throughput:veredact deploy/experiments/run_experiments
 echo "RUN_EXIT=$?"
 .venv/bin/python scripts/check_coverage.py --tier experiment
 echo "COV_EXIT=$?"
+.venv/bin/python scripts/make_tables.py --tier experiment; echo "TABLES_EXIT=$?"
+.venv/bin/python scripts/make_figures.py --tier experiment; echo "FIGURES_EXIT=$?"
 echo "full run end $(date -u +%FT%TZ)"
 echo DONE
 sudo shutdown -h +2 veredact-full-run-done
