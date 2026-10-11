@@ -1,0 +1,1067 @@
+\documentclass[lettersize,journal]{IEEEtran}
+
+% ---- Unicode sanitization (IMPORTANT) ----
+\DeclareUnicodeCharacter{202A}{}
+\DeclareUnicodeCharacter{202C}{}
+\DeclareUnicodeCharacter{200E}{}
+\DeclareUnicodeCharacter{200F}{}
+
+% ---- Math & theorem support ----
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+\usepackage{bm}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{definition}{Definition}
+\newtheorem{game}{Game}
+\usepackage{amssymb}
+
+% ---- Algorithms ----
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% ---- Figures & tables ----
+\usepackage{graphicx}
+\usepackage{enumitem}
+
+% Plot placeholder: draws the figure once cmd/plot has produced the file,
+% and a framed note until then, so the labels resolve and the document
+% compiles before the measurement run has finished.
+\newcommand{\plotfig}[1]{%
+  \IfFileExists{#1}{%
+    \includegraphics[width=\linewidth]{#1}%
+  }{%
+    \fbox{\parbox[c][0.5\linewidth][c]{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+      \centering\ttfamily\footnotesize plot pending: #1}}%
+  }%
+}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{adjustbox}
+
+\usepackage{array}
+\usepackage{pifont}
+\newcommand{\cmark}{\ding{51}} % checkmark
+\newcommand{\xmark}{\ding{55}} % cross mark
+
+% ---- Text & formatting ----
+\usepackage{cite}
+\usepackage{textcomp}
+\usepackage{url}
+\usepackage{verbatim}
+\usepackage{stfloats}
+\usepackage{enumitem}
+\usepackage{setspace}
+\usepackage{bm}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{makecell}
+
+% ---- References ----
+\usepackage[capitalize]{cleveref}
+
+\hyphenation{op-tical net-works semi-conduc-tor IEEE-Xplore}
+
+% updated with editorial comments 8/9/2021
+
+\begin{document}
+
+\title{ZK-Redact: Efficient Zero-Knowledge Authorized Redaction and Provenance Auditing for Permissioned Blockchains}
+
+%\IEEEpubid{0000--0000/00\$00.00~\copyright~2021 IEEE}
+% Remember, if you use this you must call \IEEEpubidadjcol in the second
+% column for its text to clear the IEEEpubid mark.
+
+\author{
+\IEEEauthorblockN{Rangsimann Sattayarom, Ratchanon Wongwitutai, Natthawat Tungsriworakan, \\
+Tagrid Chongkolrattanapond, Somchart Fugkeaw\\}
+\IEEEauthorblockA{Sirindhorn International Institute of Technology, Thammasat University, Thailand\\
+6622771747@g.siit.tu.ac.th,
+6622780268@g.siit.tu.ac.th,
+6622772364@g.siit.tu.ac.th,
+guyhd9119@gmail.com,
+somchart@siit.tu.ac.th}
+}
+
+\maketitle
+
+\begin{abstract}
+Redactable permissioned blockchains allow legitimate modification of
+committed transactions, but controlled mutability raises two challenges:
+verifying redaction authorization efficiently, and preserving auditable
+evidence once the original ledger state has changed. Existing approaches
+variously disclose authorization information, verify each proof
+independently, or require costly traversal of redaction history. This
+paper proposes \textbf{ZK-Redact}, a privacy-preserving framework for
+authorized redaction and provenance auditing in permissioned
+blockchains. Requesters prove compliance with a registered redaction
+policy in zero knowledge, without revealing the private attributes that
+satisfy it. Authenticated requests are pre-filtered and their proofs
+verified through a batch-parallel workflow before redaction execution,
+reducing per-request overhead. Each successful redaction yields an
+authenticated provenance record binding the target transaction, its
+previous and updated states, the applicable policy, and the verified
+authorization evidence. These records are maintained in an authenticated
+history structure, letting auditors verify current transaction integrity
+and the sequence of authorized redactions with compact cryptographic
+proofs.
+\end{abstract}
+
+
+\begin{IEEEkeywords}
+Redactable Blockchain, Zero-Knowledge Proof, Verifiable Redaction, Redaction Provenance, Integrity Auditing,
+Permissioned Blockchain.
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Permissioned blockchains provide shared, tamper-evident records for
+multi-organization applications, yet strict immutability conflicts with
+practical needs such as correcting erroneous data, removing sensitive
+content, and satisfying privacy regulations. Redactable blockchains
+resolve this by enabling authorized modification while preserving ledger
+consistency, commonly via chameleon hashes (CHs) \cite{ref1,ref2,ref9}.
+Recent work extends CH-based redaction with decentralized authorization,
+fine-grained access control, anonymity, dynamic updates, and
+verifiability \cite{ref4,ref6,ref14,ref15,ref16,ref20}.
+
+Supporting \emph{large-scale} privacy-preserving redaction nonetheless
+remains challenging. First, \emph{privacy-preserving authorization
+becomes a verification bottleneck}. Anonymous mechanisms protect
+requester identity and authorization information
+\cite{ref4,ref14,ref17}, but processing cryptographic evidence
+independently for each of many concurrent requests inflates verification
+overhead. Existing scalability-oriented schemes optimize blockchain
+structures or redaction processing \cite{ref10,ref14,ref21}, leaving
+authorization under massive concurrency insufficiently addressed. Second, \emph{redaction execution is computationally expensive at
+scale}. Each CH modification requires authorized collision computation
+and ledger-state updates \cite{ref1,ref2,ref6,ref19}, while policy
+enforcement, distributed authorization, and accountability add further
+processing \cite{ref15,ref20}. Handling validated requests
+individually repeats chaincode, transaction, and ledger operations that
+could otherwise be amortized.
+Third, \emph{verifying redaction history is inefficient}. Since a valid
+CH redaction preserves blockchain linkage, the current ledger state does
+not reveal how a transaction evolved. Existing traceability and
+auditing mechanisms \cite{ref10,ref13,ref16,ref20} still require
+locating and examining each historical record, whereas efficient
+auditing needs authenticated provenance supporting direct retrieval and
+compact verification of both individual redactions and the continuity of
+a transaction's history.
+
+We therefore propose \textbf{ZK-Redact}, a privacy-preserving framework
+for scalable redaction and provenance auditing in permissioned blockchains. State- and policy-bound zero-knowledge proofs (ZKPs) authorize redactions without exposing private credentials or attributes, while logical proof shards and intra-shard batching enable parallel
+verification. Verified requests are batch-processed for CH-based redaction to amortize common ledger overhead, and transaction-specific hash-linked provenance is Merkle-authenticated and blockchain-anchored for efficient, independently verifiable auditing.
+
+The main contributions of \textbf{ZK-Redact} are summarized as follows:
+\begin{enumerate}
+
+\item \textbf{Sharded Privacy-Preserving ZK Authorization:}
+We combine state- and policy-bound ZK authorization with logical proof
+sharding for parallel verification and optional intra-shard batching,
+reducing verification bottlenecks while preserving request-level
+authorization and failure isolation.
+
+\item \textbf{Optimized Batch Redaction Processing:}
+We separate ZKP verification from execution and batch verified requests
+for redaction. State revalidation prevents stale updates, while common
+validation, chaincode, and ledger costs are amortized without aggregating
+request-specific CH computations.
+
+\item \textbf{Authenticated Provenance and Verifiable Auditing:}
+Transaction-specific hash-linked histories, Merkle-authenticated entries,
+and blockchain anchors enable direct provenance retrieval and verification
+of authorization, history completeness, ordering, and state continuity
+without exhaustive ledger traversal.
+\end{enumerate}
+
+\section{Related Work}
+\label{sec:related}
+
+Redactable blockchains have evolved from CH-based rewriting
+\cite{ref9} to controlled redaction in consortium and IIoT settings
+\cite{ref2}. Subsequent schemes distribute trapdoor control
+\cite{ref1,ref6,ref19}, enforce attribute- or policy-based
+authorization \cite{ref15}, and support dynamic or
+trust-aware control \cite{ref16}. These mechanisms strengthen
+redaction security and access control, but largely focus on secure
+modification rather than scaling the complete authorization--redaction
+pipeline under high request concurrency.
+
+Privacy-preserving authorization and accountability introduce further
+processing overhead. Huang \emph{et al.}~\cite{ref14} support scalable
+anonymous redaction, PriChain~\cite{ref4} provides privacy-preserving
+fine-grained control, and Wang \emph{et al.}~\cite{ref17} combine
+anonymity with accountability for IIoT. However, these approaches do not
+distribute large concurrent authorization workloads through sharded,
+batch ZKP verification. ZK-Redact addresses this limitation by
+partitioning independent proofs across logical shards for parallel
+processing, with intra-shard batching when supported.
+
+Scalability has also been studied through efficient data structures and
+redaction mechanisms. Wu \emph{et al.}~\cite{ref10} use an extended
+Merkle tree for inserted-data redaction, while Fugkeaw \emph{et
+al.}~\cite{ref21} target large-scale GDPR-compliant blockchain e-KYC.
+Other designs improve dynamic or distributed redaction
+\cite{ref1,ref6,ref19}. Nevertheless, authorization, CH
+adaptation, and ledger processing are commonly performed on a
+per-request basis, repeatedly incurring shared processing costs.
+ZK-Redact instead separates proof verification from redaction execution
+and batch-processes verified requests to amortize common chaincode,
+validation, and ledger operations.
+
+Verifiability and traceability are addressed by VRBC~\cite{ref13},
+which supports verifiable redaction and integrity auditing, and by
+schemes providing trust-based traceability~\cite{ref16} or lightweight
+storage and permission supervision~\cite{ref20}.
+Authenticated structures such as
+EMT~\cite{ref10} further improve verification of modified data.
+However, efficiently retrieving and verifying the ordered redaction
+history of a specific transaction remains insufficiently addressed,
+particularly when authorization evidence, history completeness, and
+state continuity must be verified together. 
+\section{The Proposed ZK-Redact Framework}
+\label{sec:scheme}
+
+\subsection{System Model}
+\label{sec:system}
+
+ZK-Redact operates over a permissioned blockchain shared among multiple organizations, as shown in Fig.~\ref{fig:system_model}.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\linewidth]{zk_redact_system_model.PNG}
+\caption{System model of the proposed ZK-Redact framework}
+\label{fig:system_model}
+\end{figure}
+
+\begin{enumerate}
+
+\item \textbf{Requester (RQ):} a registered user or organization that submits transaction-redaction requests and generates a ZKP demonstrating compliance with the applicable policy without revealing private authorization information.
+
+\item \textbf{Redaction Gateway (RG):} serves as the admission-control layer. It authenticates and pre-validates requests, filters stale or duplicate submissions, and removes unnecessary requester-identifying information before forwarding accepted requests for proof verification.
+
+\item \textbf{Proof Verification Layer (PVL):} provides scalable ZKP authorization verification by distributing proofs across logical shards for parallel processing, with intra-shard batch verification when supported. Only verified requests proceed to redaction.
+
+\item \textbf{Permissioned Blockchain (PB):} maintains transactions, redaction policies, and authenticated states. It executes verified CH-based redactions and batch-processes validated requests to reduce common chaincode and ledger overhead.
+
+\item \textbf{Provenance Audit Index (PAI):} maintains authenticated transaction-specific redaction histories by linking successive states and anchoring Merkle-based commitments on the PB for efficient provenance retrieval and verification.
+
+\item \textbf{Auditor (AU):} retrieves and independently verifies a target transaction's provenance, including redaction authorization, history integrity and completeness, and state continuity, without accessing private ZKP witnesses or unrelated blockchain records.
+
+\end{enumerate}
+
+
+\subsection{System Process}
+
+\subsubsection*{\textbf{Phase 1: System Setup}}
+\label{sec:phase1}
+
+This phase initializes the cryptographic, authorization, blockchain,
+proof-processing, and provenance components of ZK-Redact.
+
+\noindent\textbf{Step 1: System and Entity Initialization}
+
+The system administrator initializes
+\begin{equation}
+PP=(H,\mathsf{Sig},\mathsf{CH},\mathsf{ZK},
+N,B,\Delta,B_R,\Delta_R)
+\label{eq:pp}
+\end{equation}
+where $H$ is a collision-resistant hash function; $\mathsf{Sig}$,
+$\mathsf{CH}$, and $\mathsf{ZK}$ denote the signature, chameleon-hash,
+and zero-knowledge proof schemes; $N$ is the number of proof shards;
+and $(B,\Delta)$ and $(B_R,\Delta_R)$ are the size and waiting bounds
+for proof-verification and redaction batches.
+
+Each requester $U_u$ generates and registers
+\begin{equation}
+(pk_u,sk_u)\leftarrow\mathsf{Sig.KeyGen}(1^\lambda),
+\qquad
+E_u=(ID_u,pk_u)
+\label{eq:user-keygen}
+\end{equation}
+retaining $sk_u$ for request authentication. Similarly, auditor $AU_a$
+generates $(pk_a,sk_a)\leftarrow\mathsf{Sig.KeyGen}(1^\lambda)$ and
+registers
+\begin{equation}
+E_a^{\mathrm{AU}}
+=
+(AID_a,pk_a,\Pi_a^{\mathrm{audit}})
+\label{eq:auditor-registration}
+\end{equation}
+where $\Pi_a^{\mathrm{audit}}$ defines its authorized scope for
+provenance queries in Phase~5.
+
+\noindent\textbf{Step 2: Redaction Policy Registration}
+
+For each protected transaction class, the policy administrator defines
+\begin{equation}
+P_q=
+(PID_q,\mathcal{A}_q,\mathcal{C}_q,
+\mathcal{W}_q,\mathcal{V}_q)
+\label{eq:redaction-policy}
+\end{equation}
+where $\mathcal{A}_q$, $\mathcal{C}_q$, $\mathcal{W}_q$, and
+$\mathcal{V}_q$ specify the authorization predicates, additional
+conditions, permitted redaction scope, and validity period. Its
+commitment
+\begin{equation}
+C_{P_q}
+=
+H\!\left(
+PID_q\parallel\mathcal{A}_q\parallel\mathcal{C}_q
+\parallel\mathcal{W}_q\parallel\mathcal{V}_q
+\right)
+\label{eq:policy-commitment}
+\end{equation}
+is recorded on the PB with $v_{P_q}$ as current policy version and subsequently bound to the public ZKP
+statement.
+
+\noindent\textbf{Step 3: ZKP and Chameleon-Hash Setup}
+
+The system generates
+\begin{equation}
+(pp_{\mathrm{zk}},vk_{\mathrm{zk}})
+\leftarrow
+\mathsf{ZK.Setup}(1^\lambda,\mathcal{R}_{\mathrm{red}})
+\label{eq:zk-setup}
+\end{equation}
+where $\mathcal{R}_{\mathrm{red}}$ defines policy-compliant redaction
+authorization; $pp_{\mathrm{zk}}$ is available to requesters and
+$vk_{\mathrm{zk}}$ to the PVL. It also generates
+\begin{equation}
+(pk_{\mathrm{ch}},tk_{\mathrm{ch}})
+\leftarrow
+\mathsf{CH.KeyGen}(1^\lambda)
+\label{eq:ch-setup}
+\end{equation}
+where $tk_{\mathrm{ch}}$ is retained by the trusted redaction component
+for authorized CH adaptation.
+
+For each redactable transaction, the PB initializes content
+$m_i^{(0)}$ with randomness $r_i^{(0)}$ and commits
+\begin{equation}
+h_i^{\mathrm{ch}}
+=
+\mathsf{CH.Hash}
+(pk_{\mathrm{ch}},m_i^{(0)},r_i^{(0)})
+\label{eq:initial-ch-commitment}
+\end{equation}
+as its redactable ledger digest. Subsequent authorized redactions preserve
+$h_i^{\mathrm{ch}}$ through CH adaptation in Phase~4.
+
+\noindent\textbf{Step 4: Blockchain and Proof-Shard Initialization}
+
+The PB deploys chaincode for entity/policy registration, audit
+authorization, transaction updates, redaction results, and provenance
+commitments. The PVL initializes
+\begin{equation}
+\mathbb{S}
+=
+\{\mathcal{S}_1,\ldots,\mathcal{S}_N\}
+\label{eq:proof-shards}
+\end{equation}
+where each $\mathcal{S}_j$ maintains an independent proof queue.
+Runtime shard assignment and batch formation are performed in Phase~3.
+
+\noindent\textbf{Step 5: Provenance Audit Index Initialization}
+
+For each transaction $TID_i$ with authenticated initial state
+$T_i^{(0)}$, the PAI initializes
+\begin{equation}
+v_i=0,\qquad
+\mathcal{H}_i^{(0)}=\emptyset,\qquad
+d_i^{(0)}=H(T_i^{(0)})
+\label{eq:initial-history}
+\end{equation}
+and computes
+\begin{equation}
+c_i^{(0)}
+=
+H(TID_i\parallel0\parallel d_i^{(0)})
+\end{equation}
+\begin{equation}
+A_i^{(0)}
+=
+H(TID_i\parallel0\parallel c_i^{(0)})
+\label{eq:initial-provenance}
+\end{equation}
+The initial PAI root is
+\begin{equation}
+R_{\mathrm{PAI}}^{(0)}
+=
+\mathsf{MerkleRoot}
+\left(
+\{A_i^{(0)}\}_{i\in\mathcal{I}}
+\right)
+\label{eq:initial-pai-root}
+\end{equation}
+where $\mathcal{I}$ is the set of transactions indexed by the PAI.
+The PB anchors $R_{\mathrm{PAI}}^{(0)}$ as the trusted initial
+provenance state.
+\smallskip
+
+\subsubsection*{\textbf{Phase 2: Redaction Request and Privacy-Preserving Authorization}}
+\label{sec:phase2}
+
+This phase authenticates redaction requests, proves policy compliance
+without revealing private attributes, and filters invalid, stale, or
+duplicate requests before ZKP verification.
+
+\noindent\textbf{Step 1: Redaction Request Construction}
+
+Requests are indexed by $\rho$, with $i=\mathsf{tx}(\rho)$ denoting the
+target transaction. For $TID_i$ at version $v_i$, requester $U_u$ constructs
+\begin{equation}
+R_\rho=
+(TID_i,v_i,Loc_\rho,M_\rho,PID_\rho,t_\rho,n_\rho)
+\label{eq:redaction-request}
+\end{equation}
+where $(Loc_\rho,M_\rho)$ specifies the target and modification,
+$PID_\rho$ identifies policy $P_q$, and $(t_\rho,n_\rho)$ provides
+freshness.
+
+\noindent\textbf{Step 2: Policy-Bound ZK Authorization and Authentication}
+
+Using the registered current policy version $v_{P_q}$ and commitment
+$C_{P_q}$, the requester forms
+\begin{equation}
+x_\rho=
+(TID_i,v_i,Loc_\rho,M_\rho,PID_\rho,v_{P_q},C_{P_q},t_\rho,n_\rho),
+\label{eq:zk-statement}
+\end{equation}
+\begin{equation}{
+\eta_\rho = H(x_\rho)
+}
+\end{equation}
+with private witness
+\begin{equation}
+w_\rho=(Cred_u,\mathsf{attr}_\rho,\zeta_\rho).
+\label{eq:zk-witness}
+\end{equation}
+The relation $\mathcal{R}_{\mathrm{red}}(x_\rho,w_\rho)=1$ holds iff
+$Cred_u$ is valid and non-revoked, $\mathsf{attr}_\rho$ satisfies the
+policy identified by $(PID_\rho,v_{P_q},C_{P_q})$, and
+$(Loc_\rho,M_\rho)$ is permitted.
+
+The requester generates
+\begin{equation}
+\pi_\rho\leftarrow
+\mathsf{ZK.Prove}(pp_{\mathrm{zk}},x_\rho,w_\rho)
+\label{eq:zk-proof}
+\end{equation}
+and authenticates the request context by
+\begin{equation}
+\sigma_\rho=
+\mathsf{Sig.Sign}
+\left(
+sk_u,H(R_\rho\parallel v_{P_q}\parallel C_{P_q}\parallel\eta_\rho)
+\right).
+\label{eq:request-signature}
+\end{equation}
+It submits
+\begin{equation}
+Q_\rho=
+(R_\rho,v_{P_q},C_{P_q},\eta_\rho,\sigma_\rho,\pi_\rho)
+\label{eq:redaction-query}
+\end{equation}
+to the RG.
+
+\noindent\textbf{Step 3: Gateway Pre-Validation and Deduplication}
+
+The RG retrieves $pk_u$ and verifies
+\begin{equation}
+\mathsf{Sig.Verify}
+\left(
+pk_u,H(R_\rho\parallel v_{P_q}\parallel C_{P_q}\parallel\eta_\rho),
+\sigma_\rho
+\right)=1.
+\label{eq:signature-verification}
+\end{equation}
+From $(R_\rho,v_{P_q},C_{P_q})$, the RG reconstructs $x_\rho$ and
+checks $\eta_\rho=H(x_\rho)$. It validates $(t_\rho,n_\rho)$ and
+confirms that $v_i$ is current and $(PID_\rho,v_{P_q},C_{P_q})$
+matches the current registered policy. Invalid or stale requests are
+rejected.
+
+For an accepted request, the RG computes
+\begin{equation}
+DID_\rho=
+H(TID_i\parallel v_i\parallel Loc_\rho\parallel M_\rho
+\parallel PID_\rho\parallel v_{P_q})
+\label{eq:deduplication-id}
+\end{equation}
+and accepts it only if $DID_\rho\notin\mathcal D$, where $\mathcal D$
+tracks pending and processed requests. The accepted $DID_\rho$ is
+inserted into $\mathcal D$; its version bindings prevent duplicate
+processing while permitting a new request after the relevant state
+advances.
+
+\noindent\textbf{Step 4: Identity-Minimized Downstream Submission}
+
+The RG removes explicit requester identity and constructs
+\begin{equation}
+Q_\rho^{*}=(DID_\rho,x_\rho,\eta_\rho,\pi_\rho).
+\label{eq:identity-minimized-query}
+\end{equation}
+It retains the $DID_\rho\!\rightarrow\!U_u$ mapping for accountability,
+while downstream components receive only $Q_\rho^{*}$. Thus, requester
+identity is hidden downstream, but not from the RG. The request then
+proceeds to Phase~3 for proof-shard assignment and ZKP verification.
+\smallskip
+
+\subsubsection*{\textbf{Phase 3: Sharded Batch ZKP Verification}}
+\label{sec:phase3}
+
+This phase distributes accepted ZK proofs across logical shards for parallel verification, with intra-shard batching when supported.
+
+\noindent\textbf{Step 1: Proof-Shard Assignment}
+
+For each accepted $Q_\rho^{*}$, the PVL assigns
+\begin{equation}
+j_\rho=
+1+\big(\mathsf{Int}(H(DID_\rho))\bmod N\big),
+\qquad
+Q_\rho^{*}\rightarrow\mathcal{S}_{j_\rho}
+\label{eq:phase3-shard}
+\end{equation}
+providing uniform distribution in expectation across the $N$ shards. Each $\mathcal{S}_j$ maintains an independent queue and executes concurrently with other active shards.
+
+\noindent\textbf{Step 2: Shard-Level Batch Formation}
+
+In verification round $s$, each active shard forms
+\begin{equation}
+\mathcal{B}_j^{(s)}
+=
+\{(x_\rho,\pi_\rho,Q_\rho^{*})\}_{\rho\in\mathcal{Q}_j^{(s)}},
+\qquad
+|\mathcal{B}_j^{(s)}|\leq B
+\label{eq:proof-batch}
+\end{equation}
+where $\mathcal{Q}_j^{(s)}$ denotes the selected requests. The batch closes when
+\begin{equation}
+|\mathcal{B}_j^{(s)}|=B
+\quad\lor\quad
+\tau_j^{(s)}\geq\Delta
+\label{eq:batch-close}
+\end{equation}
+where $\tau_j^{(s)}$ is the oldest request's waiting time, thereby bounding delay under sparse arrivals.
+
+\noindent\textbf{Step 3: Parallel ZKP Verification and Verified Request Pool}
+
+Active shards process their batches concurrently. Each proof is verified as
+\begin{equation}
+V_\rho=
+\mathsf{ZK.Verify}(vk_{\mathrm{zk}},x_\rho,\pi_\rho)\in\{0,1\}
+\label{eq:individual-zk-verification}
+\end{equation}
+When supported, a shard may instead apply
+$\mathsf{ZK.BatchVerify}$ to its batch; otherwise, proofs are verified
+individually, so native batching is optional. If an aggregate batch fails,
+it is recursively divided to isolate invalid proofs. Successfully verified
+requests form
+\begin{equation}
+\mathcal{P}_{\mathrm{ver}}
+=
+\{Q_\rho^{*}\mid V_\rho=1\}
+\label{eq:verified-pool}
+\end{equation}
+while invalid requests are rejected and their pending identifiers released.
+\smallskip
+
+\subsubsection*{\textbf{Phase 4: Batch Redaction and Authenticated Provenance Update}}
+
+This phase batch-processes verified requests, executes authorized CH
+redactions, and updates authenticated transaction-specific provenance.
+CH adaptation remains request-specific, while common blockchain and
+provenance operations are amortized across each batch.
+
+\noindent\textbf{Step 1: Batch Formation and Revalidation}
+
+Verified requests are grouped into
+\begin{equation}
+\mathcal{B}_{R}^{(e)}
+=
+\{Q_\rho^{*}\}_{\rho\in\mathcal{Q}_R^{(e)}},
+\qquad
+|\mathcal{B}_{R}^{(e)}|\le B_R
+\label{eq:redaction-batch}
+\end{equation}
+which closes at size $B_R$ or after the oldest request waits $\Delta_R$.
+Immediately before execution, the PB checks
+\begin{equation}
+\mathsf{Fresh}_\rho=
+[v_i=v_i^{\mathrm{cur}}]\land
+[v_{P_q}=v_{P_q}^{\mathrm{cur}}]
+\label{eq:redaction-revalidation}
+\end{equation}
+and forms
+$\mathcal{Q}_F^{(e)}
+=\{\rho\in\mathcal{Q}_R^{(e)}:\mathsf{Fresh}_\rho=1\}$.
+Requests sharing a transaction are ordered; since $x_\rho$ binds $v_i$,
+at most one remains fresh per transaction in a round. The fresh set is
+committed by
+\begin{equation}
+R_B^{(e)}
+=
+\mathsf{MerkleRoot}
+\left(
+\{H(DID_\rho\parallel\eta_\rho)\}_{\rho\in\mathcal{Q}_F^{(e)}}
+\right)
+\label{eq:redaction-batch-root}
+\end{equation}
+
+\noindent\textbf{Step 2: Authorized CH Redaction}
+
+For each $\rho\in\mathcal{Q}_F^{(e)}$, the trusted redaction component
+modifies $m_i^{(v_i)}$ to $m_i^{(v_i+1)}$ and computes
+\begin{equation}
+r_i^{(v_i+1)}
+\leftarrow
+\mathsf{CH.Adapt}
+(tk_{\mathrm{ch}},m_i^{(v_i)},r_i^{(v_i)},m_i^{(v_i+1)})
+\label{eq:ch-adapt}
+\end{equation}
+such that
+\begin{equation}
+\begin{aligned}
+&\mathsf{CH.Hash}(pk_{\mathrm{ch}},m_i^{(v_i)},r_i^{(v_i)})\\
+&\qquad=
+\mathsf{CH.Hash}(pk_{\mathrm{ch}},m_i^{(v_i+1)},r_i^{(v_i+1)})
+\end{aligned}
+\label{eq:ch-collision}
+\end{equation}
+
+Thus, $T_i^{(v_i)}$ advances to $T_i^{(v_i+1)}$ while its CH-based
+ledger commitment, block Merkle root, and blockchain links remain
+unchanged. Batching amortizes common validation, chaincode, commitment,
+and ledger operations.
+
+\noindent\textbf{Step 3: Provenance Record Generation}
+
+For each successful request $\rho$, ZK-Redact computes
+\begin{equation}
+d_i^{\mathrm{old},(v_i+1)}=H(T_i^{(v_i)}),\qquad
+d_i^{\mathrm{new},(v_i+1)}=H(T_i^{(v_i+1)})
+\label{eq:state-digests}
+\end{equation}
+and binds its authorization evidence by
+\begin{equation}
+C_\rho^{\mathrm{auth}}
+=
+H(DID_\rho\parallel\eta_\rho\parallel H(\pi_\rho))
+\label{eq:authorization-evidence}
+\end{equation}
+It constructs
+\begin{equation}
+\begin{split}
+PR_i^{(v_i+1)}
+=\big(&TID_i,v_i,v_i+1,PID_\rho,v_{P_q},DID_\rho,e,\\
+&d_i^{\mathrm{old},(v_i+1)},d_i^{\mathrm{new},(v_i+1)},
+C_\rho^{\mathrm{auth}},R_B^{(e)},t_\rho'\big)
+\end{split}
+\label{eq:provenance-record}
+\end{equation}
+where $(x_\rho,\pi_\rho)$ is retained off-chain under $DID_\rho$ and
+authenticated by $C_\rho^{\mathrm{auth}}$.
+
+\noindent\textbf{Step 4: Batch-Result Commitment}
+
+Let $\mathcal{Q}_{\mathrm{succ}}^{(e)}\subseteq\mathcal{Q}_F^{(e)}$
+be the successful requests and
+$\mathcal{T}^{(e)}
+=\{\mathsf{tx}(\rho):\rho\in\mathcal{Q}_{\mathrm{succ}}^{(e)}\}$
+ZK-Redact computes
+\begin{equation}
+R_{PR}^{(e)}
+=
+\mathsf{MerkleRoot}
+\left(
+\{H(PR_i^{(v_i+1)})\}_{i\in\mathcal{T}^{(e)}}
+\right)
+\end{equation}
+\begin{equation}
+C_B^{(e)}
+=
+H(R_B^{(e)}\parallel e\parallel R_{PR}^{(e)})
+\end{equation}
+The PB applies the successful state updates; stale or failed requests
+are excluded.
+
+\noindent\textbf{Step 5: Transaction-Specific Provenance Update}
+
+For each $i\in\mathcal{T}^{(e)}$, the PAI appends
+$PR_i^{(v_i+1)}$ to $\mathcal{H}_i$ and updates
+\begin{equation}
+c_i^{(v_i+1)}
+=H\!\left(c_i^{(v_i)}\parallel H(PR_i^{(v_i+1)})\right)
+\end{equation}
+\begin{equation}
+A_i^{(v_i+1)}
+=H(TID_i\parallel(v_i+1)\parallel c_i^{(v_i+1)})
+\label{eq:pai-update}
+\end{equation}
+History continuity requires
+\begin{equation}
+d_i^{\mathrm{old},(1)}=d_i^{(0)},\qquad
+d_i^{\mathrm{new},(k)}=d_i^{\mathrm{old},(k+1)},
+\quad 1\le k<v_i^{(e)}
+\label{eq:history-continuity}
+\end{equation}
+where $d_i^{(0)}$ is the authenticated initial-state digest from
+Phase~1. Unmodified PAI entries remain unchanged.
+
+\noindent\textbf{Step 6: PAI Authentication and Anchoring}
+
+After round $e$, the PAI computes
+\begin{equation}
+R_{\mathrm{PAI}}^{(e)}
+=
+\mathsf{MerkleRoot}
+\left(
+\{A_i^{(v_i^{(e)})}\}_{i\in\mathcal I}
+\right)
+\label{eq:pai-root}
+\end{equation}
+and the PB records
+\begin{equation}
+AC^{(e)}
+=
+H\!\left(
+e\parallel R_{\mathrm{PAI}}^{(e)}
+\parallel R_{\mathrm{PAI}}^{(e-1)}
+\parallel C_B^{(e)}
+\right)
+\label{eq:pai-anchor}
+\end{equation}
+with
+\begin{equation}
+AR^{(e)}
+=
+\big(
+e,R_{\mathrm{PAI}}^{(e)},R_{\mathrm{PAI}}^{(e-1)},
+R_B^{(e)},R_{PR}^{(e)},C_B^{(e)},AC^{(e)}
+\big)
+\label{eq:anchor-record}
+\end{equation}
+This binds the authenticated provenance state to its predecessor and
+redaction batch; $R_{PR}^{(e)}$ supports subsequent verification of
+transaction-specific provenance records.
+\smallskip
+
+\subsubsection*{\textbf{Phase 5: Provenance Retrieval and Audit Verification}}
+\label{sec:phase5}
+
+This phase enables an authorized auditor to retrieve and independently
+verify a transaction's redaction history without traversing unrelated
+blockchain records.
+
+\noindent\textbf{Step 1: Auditor Authentication and Authorization}
+
+For target $TID_i$ and PAI state $e$, auditor $AU_a$ signs
+\begin{equation}
+R_a^{\mathrm{audit}} = (AID_a, TID_i, e, t_a, n_a)
+\end{equation}
+\begin{equation}
+\sigma_a = \mathsf{Sig.Sign}\big(sk_a, H(R_a^{\mathrm{audit}})\big)
+\end{equation}
+The PB verifies $\sigma_a$ and freshness and requires
+\begin{equation}
+\mathsf{AuditAuth}(AID_a, TID_i, e, \Pi_a^{\mathrm{audit}}) = 1
+\label{eq:auditor-authorization}
+\end{equation}
+
+\noindent\textbf{Step 2: Provenance and Audit-Evidence Retrieval}
+
+Let $\bar v_i$ be the version of $TID_i$ committed at PAI state $e$.
+The PAI returns
+\begin{equation}
+\mathcal{E}_i^{(e)}
+=
+\left(
+\mathcal{H}_i^{(\bar v_i)},\bar v_i,c_i^{(\bar v_i)},
+\mu_i^{(e)},\{\psi_{i,k}\}_{k=1}^{\bar v_i}
+\right)
+\label{eq:audit-evidence}
+\end{equation}
+where $\mu_i^{(e)}$ authenticates
+$A_i^{(\bar v_i)}$ under $R_{\mathrm{PAI}}^{(e)}$, and
+\begin{equation}
+\psi_{i,k}
+=
+\mathsf{MerkleProof}
+\left(H(PR_i^{(k)}),R_{PR}^{(e_k)}\right)
+\label{eq:record-path}
+\end{equation}
+authenticates record $PR_i^{(k)}$ in its redaction round $e_k$.
+Using each $DID_{i,k}$, the auditor retrieves $(x_{i,k},\pi_{i,k})$
+and the corresponding anchored $AR^{(e_k)}$, together with target
+anchor $AR^{(e)}$ and authenticated boundary state digests.
+
+\noindent\textbf{Step 3: Provenance Integrity and Completeness Verification}
+
+The auditor computes
+\begin{equation}
+\widehat A_i
+=
+H(TID_i\parallel\bar v_i\parallel c_i^{(\bar v_i)})
+\label{eq:audit-entry}
+\end{equation}
+and verifies its membership under $R_{\mathrm{PAI}}^{(e)}$ using
+$\mu_i^{(e)}$. 
+
+For each $1\le k\le\bar v_i$, it verifies
+\begin{equation}
+\mathsf{MerkleVerify}
+\left(H(PR_i^{(k)}),\psi_{i,k},R_{PR}^{(e_k)}\right)=1
+\label{eq:audit-record-merkle}
+\end{equation}
+and confirms that $R_{PR}^{(e_k)}$ belongs to the corresponding
+blockchain anchor $AR^{(e_k)}$.
+
+Starting from the authenticated $c_i^{(0)}$, it reconstructs
+\begin{equation}
+\widehat c_i^{(k)}
+=
+H\left(
+\widehat c_i^{(k-1)}\parallel H(PR_i^{(k)})
+\right),
+\quad
+1\le k\le\bar v_i
+\label{eq:audit-chain}
+\end{equation}
+with $\widehat c_i^{(0)}=c_i^{(0)}$. Integrity and completeness require
+\begin{equation}
+|\mathcal H_i^{(\bar v_i)}|=\bar v_i,\qquad
+\widehat c_i^{(\bar v_i)}=c_i^{(\bar v_i)}
+\label{eq:audit-completeness}
+\end{equation}
+
+\noindent\textbf{Step 4: Authorization, Continuity, and Anchor Verification}
+
+For each $PR_i^{(k)}$, the auditor verifies
+\begin{equation}
+H(DID_{i,k}\parallel H(x_{i,k})\parallel H(\pi_{i,k}))
+=C_{i,k}^{\mathrm{auth}}
+\end{equation}
+\begin{equation}
+\mathsf{ZK.Verify}(vk_{\mathrm{zk}},x_{i,k},\pi_{i,k})=1
+\end{equation}
+and checks consistency of its transaction, policy, and version information.
+History continuity requires
+\begin{equation}
+d_i^{\mathrm{old},(1)}=d_i^{(0)},\qquad
+d_i^{\mathrm{new},(k)}=d_i^{\mathrm{old},(k+1)},
+\quad 1\le k<\bar v_i
+\label{eq:audit-continuity}
+\end{equation}
+with consecutive versions from $0$ to $\bar v_i$ and terminal digest
+$d_i^{\mathrm{new},(\bar v_i)}$ matching the authenticated state at $e$.
+
+For each required anchor $r\in\{e,e_1,\ldots,e_{\bar v_i}\}$, the auditor
+further verifies
+\begin{equation}
+AC^{(r)}
+\stackrel{?}{=}
+H(r\parallel R_{\mathrm{PAI}}^{(r)}
+\parallel R_{\mathrm{PAI}}^{(r-1)}\parallel C_B^{(r)})
+\end{equation}
+\begin{equation}
+C_B^{(r)}
+\stackrel{?}{=}
+H(R_B^{(r)}\parallel r\parallel R_{PR}^{(r)})
+\end{equation}
+The audit succeeds only if the provenance membership, authorization,
+history integrity and continuity, and blockchain anchors are valid,
+enabling transaction-specific verification without exhaustive ledger
+traversal.
+
+
+\section{Security Discussion}
+
+ZK-Redact relies on the security of the underlying signature, ZKP,
+chameleon-hash, and collision-resistant hash schemes. Unauthorized
+redaction is prevented by signature verification and ZK proofs of policy
+compliance, while version binding, freshness checks, and pre-execution
+revalidation prevent replay and stale requests. Zero knowledge protects
+private authorization attributes, and requester identity is removed
+before downstream verification. Authorized CH adaptation preserves
+blockchain consistency without exposing the trapdoor. Finally, provenance
+records bind each redaction to its authorization and state transition,
+while hash-linked histories, Merkle commitments, and blockchain anchors
+make modification, deletion, or reordering detectable during auditing.
+Assuming secure CH-trapdoor management and permissioned consensus,
+ZK-Redact therefore provides privacy-preserving authorization, controlled
+redaction, and tamper-evident provenance.
+
+\section{Performance Evaluation}
+
+\subsection{Experimental Setup}
+\label{sec:setup}
+
+ZK-Redact and three baselines~\cite{ref10,ref13,ref22} are implemented
+in Go at 128-bit security using SHA-256, Groth16 over BLS12-381,
+P-256 chameleon hashing, Schnorr signatures, and a 3072-bit RSA group
+for universal accumulation~\cite{ref22}. The ledger uses Hyperledger
+Fabric with four organizations (two peers each) and a three-node Raft
+ordering service, with 100 transactions/block and a 1-s block timeout.
+Experiments run on a 32-vCPU, 64-GB Ubuntu 22.04 host, with each peer
+limited to 1 vCPU and 2 GB RAM. The dataset contains 100{,}000
+transactions with a 256-byte immutable core and 512-byte redactable
+payload, 100 requesters, and 10 redaction policies of predicate depth
+three. Each scheme replays 5{,}000 requests at conflict ratios
+${0,0.25,0.50}$. Off-chain cryptographic and on-chain ledger costs are
+measured separately; ~\cite{ref10} is evaluated both in-process
+and on Fabric to isolate consensus overhead.
+
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=0.47\columnwidth]{Images/1.pdf}
+    \hfill
+    \includegraphics[width=0.47\columnwidth]{Images/2.pdf}
+    \hfill
+    \includegraphics[width=0.47\columnwidth]{Images/3.pdf}
+    \captionsetup{justification=centering}
+    \caption{Experimental results: (a) Verification Throughput (b) Redaction Processing Overhead (c) Provenance Retrieval and Audit Verification Cost}
+    \label{fig:combined_3_panel}
+\end{figure}
+
+\subsubsection*{\textbf{Experiment 1: Verification Throughput}}
+\label{exp:verification-throughput}
+
+This experiment evaluates verification scalability as request concurrency
+increases from $1$ to $512$. We compare ZK-Redact with in-process EMT,
+Fabric-hosted EMT, and an ablation without sharding and batching.
+
+As shown in Fig.~\ref{fig:combined_3_panel}(a), ZK-Redact and in-process
+EMT achieve comparable throughput at low concurrency, but diverge beyond
+approximately $32$ concurrent requests. EMT approaches saturation, whereas
+ZK-Redact continues scaling by distributing proofs across shards and
+amortizing verification within batches. In contrast, the ablation remains
+nearly flat, confirming that the scalability gain stems from the proposed
+sharding and batching rather than the underlying proof primitive.
+Fabric-hosted EMT performs substantially worse because each verification
+incurs chaincode and consensus overhead. Overall, ZK-Redact provides little
+advantage for isolated requests, but increasingly outperforms the baselines
+as concurrency grows, demonstrating its benefit under high verification
+load.
+\subsubsection*{\textbf{Experiment 2: Redaction Processing Overhead}}
+\label{exp:redaction-overhead}
+
+This experiment evaluates the average processing overhead per redaction
+request as the number of requests increases, comparing ZK-Redact with
+the three baselines~\cite{ref10,ref13,ref22}. As shown in Fig.~\ref{fig:combined_3_panel}(b), ZK-Redact consistently
+achieves the lowest per-request overhead and remains nearly stable as the
+workload grows. Ref.~\cite{ref10} incurs moderately higher cost, whereas
+Refs.~\cite{ref13,ref22} are substantially more expensive, with
+Ref.~\cite{ref22} exhibiting the largest overhead. The advantage of
+ZK-Redact results from batch-oriented redaction, which amortizes common
+validation, chaincode, and commitment-update costs across multiple
+requests. Thus, ZK-Redact reduces redaction cost while maintaining stable
+processing overhead under increasing workload.
+
+\subsubsection*{\textbf{Experiment 3: Provenance Retrieval and Audit Verification Cost}}
+\label{exp:provenance-audit}
+
+This experiment evaluates provenance retrieval and audit verification as
+the ledger grows from $10^2$ to $10^3$ blocks, comparing ZK-Redact with
+the three baselines~\cite{ref10,ref13,ref22}.As shown in Fig.~\ref{fig:combined_3_panel}(c), ZK-Redact maintains low,
+nearly constant audit latency as ledger size increases and remains
+competitive with Refs.~\cite{ref10,ref13}. In contrast,
+Ref.~\cite{ref22} incurs orders-of-magnitude higher cost that increases
+with ledger size. This difference stems from the PAI, which retrieves
+transaction-specific provenance and verifies it against authenticated
+commitments without traversing the ledger history. The results therefore
+show that ZK-Redact provides scalable provenance auditing while adding
+only modest overhead relative to lightweight baselines.
+
+\section{Conclusion}
+
+This paper presented ZK-Redact, a privacy-preserving framework for scalable redaction and provenance auditing in permissioned blockchains. The proposed framework integrates state- and policy-bound zero-knowledge authorization, logical proof sharding with intra-shard batching for parallel verification, batch-oriented redaction processing that amortizes chaincode and ledger overhead,
+and a Merkle-authenticated, blockchain-anchored Provenance Audit Index for efficient auditing. Experimental results demonstrated sustained verification throughput under high request concurrency, reduced redaction-processing overhead through batching, and audit verification cost that remains independent of the number of unrelated ledger blocks, compared with representative redactable-blockchain baselines. 
+
+\begin{thebibliography}{99}
+
+\bibitem{ref1}
+M. Jia, J. Chen, K. He, R. Du, L. Zheng, M. Lai, D. Wang, and F. Liu,
+``Redactable Blockchain from Decentralized Chameleon Hash Functions,''
+\textit{IEEE Trans. Inf. Forensics Security}, vol. 17, pp. 2771--2783, 2022,
+doi: 10.1109/TIFS.2022.3192716.
+
+\bibitem{ref2}
+K. Huang, X. Zhang, Y. Mu, X. Wang, G. Yang, X. Du, F. Rezaeibagha, Q. Xia, and M. Guizani,
+``Building Redactable Consortium Blockchain for Industrial Internet-of-Things,''
+\textit{IEEE Trans. Ind. Informat.}, vol. 15, no. 6, pp. 3670--3679, Jun. 2019,
+doi: 10.1109/TII.2019.2901011.
+
+\bibitem{ref4}
+H. Guo, W. Gan, M. Zhao, C. Zhang, T. Wu, L. Zhu, and J. Xue,
+``PriChain: Efficient Privacy-Preserving Fine-Grained Redactable Blockchains in Decentralized Settings,''
+\textit{Chinese Journal of Electronics}, vol. 34, no. 1, pp. 82--97, 2025.
+
+\bibitem{ref6}
+X. Wu, X. Du, Q. Yang, N. Wang, and W. Wang,
+``Redactable consortium blockchain based on verifiable distributed chameleon hash functions,''
+\textit{J. Parallel Distrib. Comput.}, vol. 183, Art. no. 104777, 2024.
+
+\bibitem{ref9}
+G. Ateniese, B. Magri, D. Venturi, and E. R. Andrade,
+``Redactable Blockchain -- or -- Rewriting History in Bitcoin and Friends,''
+in \textit{Proc. 2nd IEEE Eur. Symp. Security Privacy (EuroS\&P)},
+Paris, France, pp. 111--126, 2017.
+
+\bibitem{ref10}
+Z. Wu, L. Wang, X. Zhang and X. Feng, ``EMT: Extended Merkle Tree Structure for Inserted Data Redaction in Permissioned Blockchain," in IEEE Transactions on Network Science and Engineering, vol. 12, no. 4, pp. 3025-3038, July-Aug. 2025.
+
+\bibitem{ref13}
+G. Tian, J. Wei, M. Kutylowski, W. Susilo, X. Huang, and X. Chen,
+``VRBC: A Verifiable Redactable Blockchain with Efficient Query and Integrity Auditing,''
+\textit{IEEE Trans. Comput.}, vol. 72, no. 7, pp. 1928--1942, Jul. 2023.
+
+\bibitem{ref14}
+K. Huang, X. Zhang, Y. Mu, F. Rezaeibagha, and X. Du,
+``Scalable and redactable blockchain with update and anonymity,''
+\textit{Information Sciences}, vol. 546, pp. 25--41, 2021.
+
+\bibitem{ref15}
+Y. Dong, Y. Li, Y. Cheng, and D. Yu,
+``Redactable consortium blockchain with access control: Leveraging chameleon hash and multi-authority attribute-based encryption,''
+\textit{High-Confidence Computing}, vol. 4, no. 1, Art. no. 100168, 2024.
+
+\bibitem{ref16}
+Y. Zhang, Z. Ma, S. Luo, and P. Duan,
+``Dynamic Trust-Based Redactable Blockchain Supporting Update and Traceability,''
+\textit{IEEE Trans. Inf. Forensics Security}, vol. 19, pp. 821--834, 2024.
+
+\bibitem{ref17}
+F. Wang, R. Dong, J. Cui, Q. Zhang and H. Zhong, ``Blockchain-Based Anonymous and Accountable Data Redaction for the Industrial Internet of Things," in IEEE Transactions on Cloud Computing, doi: 10.1109/TCC.2026.3725253.
+
+\bibitem{ref19}
+X. Huang, Y. Wang, Y. Ding, Q. Wu, C. Yang, and H. Liang,
+``Dynamically redactable Blockchain based on decentralized Chameleon hash,''
+\textit{Digital Communications and Networks}, vol. 11, no. 3, pp. 757--767, 2025.
+
+\bibitem{ref20}
+M. Miao, X. Yang, J. Wei, G. Tian, and W. Susilo,
+``A Verifiable and Redactable Blockchain with Lightweight Storage and Permission Supervision,''
+\textit{Information}, vol. 17, no. 2, Art. no. 176, 2026.
+
+\bibitem{ref21}
+S. Fugkeaw, S. Sungchai, S. Nakprame, and P. Sreekongpan,
+``Enabling Secure and Scalable GDPR-Compliant Blockchain-Based e-KYC With Efficient Redaction,''
+\textit{IEEE Access}, vol. 13, pp. 136834--136853, 2025.
+
+\bibitem{ref22}
+Y. Shen, et al.,
+``Verifiable and Redactable Blockchains With Fully Editing Operations,''
+\textit{IEEE Transactions on Information Forensics and Security}, vol. 18, pp. 3792--3805, 2023.
+
+\end{thebibliography}
+
+\end{document}
