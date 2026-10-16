@@ -228,7 +228,56 @@ def s34_ops(cfg):
     ]
 
 
-OPS = {"veredact": veredact_ops, "S1": s01_ops, "S13": s13_ops, "S27": s27_ops, "S34": s34_ops}
+def s99_ops(cfg):
+    import numpy as np
+
+    from veredact_bench.methods.baselines.s99_leta.adapter import params
+
+    s99 = _mod("s99_leta")
+    S = s99.setup(params(cfg))
+    vs = [s99.register(S, b"V%d" % i) for i in range(4)]
+    m0 = cfg["veredact"]["reference_batch"]  # one platoon = one authorization batch of VeRedact-PQ's default size
+    msg = os.urandom(32)
+    sig = s99.sign(S, vs[0], msg)
+
+    def platoon():  # m0 signed requests (untimed): vehicles cycle over the registered keys
+        sigs = [(vs[i % len(vs)], os.urandom(32)) for i in range(m0)]
+        sigs = [(v, s99.sign(S, v, m)) for v, m in sigs]
+        leaves = [s99.vpd_leaf(v.pseudonym, s, b"\0" * 32, 1) for v, s in sigs]
+        members = [(v.pseudonym, 1, s.mu) for v, s in sigs]
+        return sigs, leaves, members
+
+    def aggregate(p):
+        sigs, leaves, members = p
+        return s99.aggregate(S, [s for _, s in sigs], members, s99.vpd_root(leaves), 1)
+
+    def verify_prep():
+        sigs, leaves, members = platoon()
+        agg = s99.aggregate(S, [s for _, s in sigs], members, s99.vpd_root(leaves), 1)
+        return agg, members, [s.mu for _, s in sigs], [v.b for v, _ in sigs], [s.c for _, s in sigs]
+
+    def poly(_=None):
+        rng = np.random.default_rng()
+        return rng.integers(0, s99.Q, s99.N), rng.integers(0, s99.Q, s99.N)
+
+    def polymul(ab):
+        return s99.intt(s99.ntt(ab[0]) * s99.ntt(ab[1]) % s99.Q)
+
+    k = cfg["baselines"]["S99"]["module_k"]
+    return [
+        ("T_m^L", "LETA polynomial multiplication in R_q (NTT), n=256 [S99]", _Op(poly, polymul)),
+        ("T_S^L", f"LETA Sign + ZKP Z_Vi (Eqs. 6-8), rank {k} [S99]", lambda: s99.sign(S, vs[0], os.urandom(32))),
+        ("T_ZV^L", "LETA ZKP verify (Eqs. 14-15) [S99]", lambda: s99.zkp_verify(S, vs[0].b, msg, sig)),
+        ("T_AG^L", f"LETA VPD-Tree + aggregation, {m0} signatures (Eqs. 9-12) [S99]", _Op(platoon, aggregate)),
+        (
+            "T_AV^L",
+            f"LETA aggregate verification, {m0} signatures (Eq. 13) [S99]",
+            _Op(verify_prep, lambda a: s99.agg_verify(S, *a, now=1, dt=1)),
+        ),
+    ]
+
+
+OPS = {"veredact": veredact_ops, "S1": s01_ops, "S13": s13_ops, "S27": s27_ops, "S34": s34_ops, "S99": s99_ops}
 
 
 def run(cfg, out):

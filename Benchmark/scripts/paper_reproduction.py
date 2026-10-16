@@ -9,7 +9,7 @@ Parameters: configs/methods/<scheme>.yaml (reproduction); output: results/reprod
 import runpy
 import sys
 
-SCHEMES = ("s01_improved_dch", "s13_eaq_vrbc", "s27_etch", "s34_rebs")
+SCHEMES = ("s01_improved_dch", "s13_eaq_vrbc", "s27_etch", "s34_rebs", "s99_leta")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in (*SCHEMES, "all"):

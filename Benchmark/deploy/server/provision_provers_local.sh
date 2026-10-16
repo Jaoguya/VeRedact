@@ -11,19 +11,30 @@ A=(aws --region "$AWS_REGION")      # the instance role, never a stored profile
 N=${1:-2}; TYPE=${2:-c7i.48xlarge}; PORT=7700; NAME=veredact-prover
 KEY_FILE="$HOME/.ssh/veredact-prover"
 TOKEN=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
-SUBNET=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" \
-  "http://169.254.169.254/latest/meta-data/network/interfaces/macs/$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" \
-  http://169.254.169.254/latest/meta-data/mac)/subnet-id")
+MD="http://169.254.169.254/latest/meta-data/network/interfaces/macs/$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/mac)"
+SUBNET=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" "$MD/subnet-id")
+VPC=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" "$MD/vpc-id")
+# the server's own subnet first, then the VPC's other subnets (other AZs): c7i.48xlarge capacity is per AZ
+# (2026-10-16: InsufficientInstanceCapacity in ap-southeast-1a). Same VPC + security group: private network as before
+OTHER=$("${A[@]}" ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC" --query 'Subnets[].SubnetId' --output text 2>/dev/null || true)
+SUBNETS=("$SUBNET")
+for s in $OTHER; do [[ "$s" != "$SUBNET" ]] && SUBNETS+=("$s"); done
 SG=$("${A[@]}" ec2 describe-security-groups --filters "Name=group-name,Values=$NAME" --query 'SecurityGroups[0].GroupId' --output text)
 [[ "$SG" == sg-* ]] || { echo "security group $NAME missing (deploy/aws/provision_provers.sh creates it once)"; exit 1; }
 AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text)
 
 echo "[1/4] launch $N x $TYPE"
-IIDS=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --count "$N" \
-        --instance-initiated-shutdown-behavior terminate --key-name "$NAME" --security-group-ids "$SG" --subnet-id "$SUBNET" \
-        --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=30,VolumeType=gp3,DeleteOnTermination=true}" \
-        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
-        --query 'Instances[].InstanceId' --output text)
+IIDS=""
+for SN in "${SUBNETS[@]}"; do
+  IIDS=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --count "$N" \
+          --instance-initiated-shutdown-behavior terminate --key-name "$NAME" --security-group-ids "$SG" --subnet-id "$SN" \
+          --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=30,VolumeType=gp3,DeleteOnTermination=true}" \
+          --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
+          --query 'Instances[].InstanceId' --output text) && break
+  echo "      no $TYPE capacity in subnet $SN, trying the next AZ"
+done
+[[ -n "$IIDS" ]] || { echo "no subnet of $VPC has $N x $TYPE capacity"; exit 1; }
 echo "$IIDS" > deploy/aws/.prover_ids
 echo "      $IIDS"
 "${A[@]}" ec2 wait instance-status-ok --instance-ids $IIDS

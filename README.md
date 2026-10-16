@@ -68,7 +68,7 @@ VeRedact/
 ├── Benchmark/                            the experiment code (the server runs everything from here)
 │   ├── Makefile  pyproject.toml
 │   ├── configs/                          base.yaml, datasets/, methods/, experiments/, tiers/, aws.toml
-│   ├── src/veredact_bench/               data/, methods/ (VeRedact-PQ + 4 baselines), metrics/, evaluation/,
+│   ├── src/veredact_bench/               data/, methods/ (VeRedact-PQ + 4 baselines + LETA), metrics/, evaluation/,
 │   │                                     reporting/, utils/
 │   ├── native/pqzk_stark/                Rust winterfell STARK (PQZK policy relation)
 │   ├── contracts/                        Solidity contracts anchored on Besu
@@ -78,7 +78,7 @@ VeRedact/
 │   │                                     besu/ (QBFT network), experiments/ (tier runner, full run)
 │   └── results/                          raw runs <experiment>/<method>/<tier>/ (gitignored)
 ├── Reference/                            papers: PDF, LaTeX/Markdown full text, summary, figures
-│   ├── S1_Li2025_ImprovedDCH/  S13_Zhang2025_EAQ-VRBC/  S27_Liu2026_ETCH/  S34_Xue2025_REBS/
+│   ├── S1_Li2025_ImprovedDCH/  S13_Zhang2025_EAQ-VRBC/  S27_Liu2026_ETCH/  S34_Xue2025_REBS/  S99_Li2026_LETA/
 │   └── zkredact/                         ZK-Redact journal version (writing-style reference)
 └── Other/
     ├── docs/                             experiments.md, baselines/*.md, paper-conformance.md,

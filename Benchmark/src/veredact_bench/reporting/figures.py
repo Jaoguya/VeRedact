@@ -2,7 +2,7 @@
 Result/Picture/<name>.png.
 
 Names match the manuscript's \\includegraphics (exp1_redaction_throughput, ...). Each figure draws exactly ONE line
-per scheme (VeRedact-PQ and Schemes [1], [13], [27], [34]), never a second setting of a scheme —
+per scheme (VeRedact-PQ, Schemes [1], [13], [27], [34], LETA where it runs), never a second setting of a scheme —
 Fig. 5 at VeRedact-PQ's default batch (veredact.reference_batch), Fig. 6 normal audit, Fig. 7 the default skew
 (workload.zipf_s). Panels follow the captions:
   Fig. 3  (a) throughput, (b) p95 end-to-end latency vs arrival rate, (c) PQCH adaptations per 1,000 vs skew
@@ -29,7 +29,7 @@ OUT = RESULT_DIR
 
 
 def metrics(experiment: str, tier: str) -> dict:
-    """metrics.json of the paper's five schemes only, in style.PAPER_METHODS order."""
+    """metrics.json of the paper's schemes only (style.PAPER_METHODS), in that order."""
     ms = _all_metrics(experiment, tier)
     return {k: ms[k] for k in style.PAPER_METHODS if k in ms}
 
@@ -84,7 +84,7 @@ def _save(fig, name: str, written: list):
 
 def _legend(ax, keys=()):
     """Legend of the drawn lines, plus every scheme in keys that has no drawn line (e.g. saturated
-    everywhere in Fig. 3), so all five schemes are always listed."""
+    everywhere in Fig. 3), so every scheme of the figure is always listed."""
     handles, labels = ax.get_legend_handles_labels()
     for k in keys:
         if style.label(k) not in labels:
@@ -129,10 +129,16 @@ def fig_exp1(tier, written):
         ok = [(x, v) for x, v in rate if v["completed_in_window"]]
         if ok:
             style.line(a, key, [x for x, _ in ok], [v["throughput_per_s"] for _, v in ok])
-            style.line(b, key, [x for x, _ in ok], [v["latency_ms"]["p95"] for _, v in ok])
-        zero = [x for x, v in rate if not v["completed_in_window"]]
-        _saturated(a, key, zero)
-        _saturated(b, key, zero)
+        _saturated(a, key, [x for x, v in rate if not v["completed_in_window"]])
+        # end-to-end p95 exists at every rate (unfinished requests enter censored); a hollow marker = lower bound
+        lat = [(x, v) for x, v in rate if v["latency_ms"].get("n")]
+        if lat:
+            style.line(b, key, [x for x, _ in lat], [v["latency_ms"]["p95"] for _, v in lat])
+            lb = [(x, v["latency_ms"]["p95"]) for x, v in lat if v.get("latency_p95_lower_bound")]
+            if lb:
+                _, col, _, mk = style.METHODS[key]
+                xs, ys = [x for x, _ in lb], [y for _, y in lb]
+                b.plot(xs, ys, linestyle="none", marker=mk, color=col, markerfacecolor="white", zorder=4)
         skew = sorted(
             (k[2], v["pqch_adaptations_per_1000"])
             for k, v in pts.items()
@@ -145,7 +151,7 @@ def fig_exp1(tier, written):
             skews |= {x for x, _ in skew}
     for ax, xl, yl in (
         (a, "Arrival rate (req/s)", "Throughput (red./s)"),
-        (b, "Arrival rate (req/s)", "p95 latency (ms)"),
+        (b, "Arrival rate (req/s)", "p95 end-to-end latency (ms)"),
         (c, "Zipf skew $s$", "PQCH adapt. / 1,000"),
     ):
         ax.set_xlabel(xl)
@@ -165,6 +171,8 @@ def fig_exp1(tier, written):
         _tag(ax, t)
     if any(ln.get_marker() == "x" for ln in a.lines):  # explain the x only when one is drawn
         a.set_title(r"$\times$ = nothing finalized during the window", loc="right", fontsize=style.FONT_PT - 1)
+    if any(ln.get_markerfacecolor() == "white" for ln in b.lines):
+        b.set_title("hollow = lower bound", loc="right", fontsize=style.FONT_PT - 1)
     _legend(a, keys=ms)
     _save(fig, "exp1_redaction_throughput", written)
 

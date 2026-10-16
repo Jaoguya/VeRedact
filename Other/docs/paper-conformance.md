@@ -16,6 +16,15 @@ needs is in `Overleaf/newchange.md` with line numbers. Line numbers below refer 
 | Exp. 5 | VeRedact-PQ vs Exp. 1 baselines | all five | wording only |
 | Tables IV, V | rows for [14], [17], [27], [33] | — | replaced with [1], [13], [27], [34] rows derived from the papers (row comments cite the sections) |
 
+## 1b. Open since 2026-10-16 (code and results done, manuscript text NOT written)
+
+| Where | Manuscript says | Implemented | Action |
+|:--|:--|:--|:--|
+| Sec. Evaluation intro, Table I | four classical baselines; no post-quantum comparison | + S99 LETA (Li et al., IEEE JSAC 2026), lattice-based, in Exp. 0 and Exp. 2 | cite it (reference number), add its Table I row (capabilities: `make capabilities`), say why it enters only Exp. 0 and 2 |
+| tab:primitives | VeRedact-PQ + four baselines | + LETA rows (T_m, Sign + ZKP, ZKP verify, aggregation, Eq. 13) | regenerated in `Overleaf/tables/tab_primitives.tex` |
+| Exp. 2 / Fig. 4 | VeRedact-PQ vs [1], [34] | + LETA line (flat in n: no committee) | text for the LETA line |
+| Exp. 1 / Fig. 3(b) | p95 latency, "submission → finalized"; blue text: VeRedact-PQ "12.8–45.0 s beyond 500 req/s" | end-to-end arrival → finalized, unfinished requests censored at the cutoff (lower bound, hollow marker) | rewrite the latency definition and the Fig. 3(b) paragraph from the 2026-10-16 results |
+
 ## 2. Table I vs. the generated capability matrix (`make capabilities`) — applied to the .tex 2026-10-01
 
 | Row | Column | Table I | Code | Why |

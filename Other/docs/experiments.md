@@ -45,6 +45,7 @@ authorization timer. The registry (`veredact_bench/registry.py`) is the only pla
 | `S13` | Zhang et al. [13] EAQ-VRBC | `Benchmark/src/veredact_bench/methods/baselines/s13_eaq_vrbc/adapter.py` | `Other/docs/baselines/S13-eaq-vrbc.md` |
 | `S27` | Liu et al. [27] ETCH | `Benchmark/src/veredact_bench/methods/baselines/s27_etch/adapter.py` | `Other/docs/baselines/S27-etch.md` |
 | `S34` | J. Xue et al. [34] REBS | `Benchmark/src/veredact_bench/methods/baselines/s34_rebs/adapter.py` | `Other/docs/baselines/S34-rebs.md` |
+| `S99` | Q. Li et al. LETA (post-quantum batch authentication; Exp. 0 and 2 only) | `Benchmark/src/veredact_bench/methods/baselines/s99_leta/adapter.py` | `Other/docs/baselines/S99-leta.md` |
 
 VeRedact-PQ primitives are all real: ML-DSA-65 (liboqs on the server), SIS chameleon hash with MP12 gadget
 trapdoor and dealerless t-of-n distribution (`crypto/pqch_sis.py`), winterfell STARK over a Rescue-Prime
@@ -55,16 +56,16 @@ threshold bound in C_P (PrivatePolicy), the last two predicates as 32-bit range 
 
 ### Capability matrix (generated: `make capabilities`)
 
-| capability | veredact | S1 | S13 | S27 | S34 |
-|:--|:-:|:-:|:-:|:-:|:-:|
-| pq_security | ✓ | ✗ | ✗ | ✗ | ✗ |
-| distributed_auth | ✓ | ✓ | ✗ | ✓ | ✓ |
-| policy_control | ✓ | ✗ | ✗ | ✗ | ✓ |
-| batch_redaction | ✓ | ✗ | ✗ | ✗ | ✗ |
-| private_verification | ✓ | ✗ | ✗ | ✗ | ✓ |
-| verifiable_auditing | ✓ | ✓ | ✓ | ✗ | ✗ |
-| state_freshness_check | ✓ | ✗ | ✓ | ✗ | ✗ |
-| consensus_bound_auth | ✗ | ✗ | ✗ | ✗ | ✗ |
+| capability | veredact | S1 | S13 | S27 | S34 | S99 |
+|:--|:-:|:-:|:-:|:-:|:-:|:-:|
+| pq_security | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| distributed_auth | ✓ | ✓ | ✗ | ✓ | ✓ | ✗ |
+| policy_control | ✓ | ✗ | ✗ | ✗ | ✓ | ✗ |
+| batch_redaction | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| private_verification | ✓ | ✗ | ✗ | ✗ | ✓ | ✓ |
+| verifiable_auditing | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| state_freshness_check | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ |
+| consensus_bound_auth | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 Where this differs from manuscript Table I, the code is right and the table must change
 (`Other/docs/paper-conformance.md` §2).
@@ -73,15 +74,15 @@ Where this differs from manuscript Table I, the code is right and the table must
 
 | Exp | Fig. | Systems (config) | What is measured | Notes |
 |:--|:--|:--|:--|:--|
-| exp00_primitives | tab:primitives | VeRedact-PQ + each baseline's own primitives | per-operation time, `samples_per_point` calls, fresh inputs | VeRedact-PQ on the protocol's own Crypto facade; baselines on their construction modules at `[baselines.*]` parameters |
-| 1 | 3 | all five | open-loop, real time: per-request latency submit → finalized, goodput, per-stage times | client threads prove at arrival; VPS worker pool; ABRRR batcher (B_e\* from λ̂, T_max); stale requests returned for revalidation (manuscript Phases 4/5); every system runs every rate (no early stop; author rule 2026-10-05); a point is noted saturated when decided/offered or on-time < 1 − tol; throughput = redactions finalized during the window; `decided`, `revalidations`, `submitted_on_time` reported per point |
-| 2 | 4 | veredact, S1, S34 | Phase 3 per request + Phase 4 per batch, split into attestation / freshness / commitment / committee; baselines' own authorization | committee axis maps to each system's own distribution parameter (S1 nodes, S34 policy attributes); baselines have no batch axis (b = 1). S13 (key possession) and S27 (threshold only inside Adapt) define no authorization step |
+| exp00_primitives | tab:primitives | VeRedact-PQ + each baseline's own primitives (S99: NTT product, Sign + ZKP, ZKP verify, aggregation and Eq. 13 at m = `reference_batch`) | per-operation time, `samples_per_point` calls, fresh inputs | VeRedact-PQ on the protocol's own Crypto facade; baselines on their construction modules at `[baselines.*]` parameters |
+| 1 | 3 | veredact, S1, S13, S27, S34 | open-loop, real time: end-to-end latency arrival → finalized over every window arrival (a request not finalized by the point's cutoff `cutoff_s`, the end of the drain, enters censored at cutoff − arrival: a lower bound, hollow marker in Fig. 3(b); 2026-10-16), goodput, per-stage times | client threads prove at arrival; VPS worker pool; ABRRR batcher (B_e\* from λ̂, T_max); stale requests returned for revalidation (manuscript Phases 4/5); every system runs every rate (no early stop; author rule 2026-10-05); a point is noted saturated when decided/offered or on-time < 1 − tol; throughput = redactions finalized during the window; `decided`, `revalidations`, `submitted_on_time` reported per point |
+| 2 | 4 | veredact, S1, S34, S99 | Phase 3 per request + Phase 4 per batch, split into attestation / freshness / commitment / committee; baselines' own authorization; S99: PL identity check per request + VPD-Tree, aggregation and Eq. 13 per batch (amortized / m like Phase 4) | committee axis maps to each system's own distribution parameter (S1 nodes, S34 policy attributes; S99 none, flat in n); S1 and S34 have no batch protocol (a batch of m = m authorizations). S13 (key possession) and S27 (threshold only inside Adapt) define no authorization step |
 | 3 | 5 | veredact, S13, S1 | audit response generation time + size vs n_Q (VeRedact-PQ at batch size `reference_batch`) | n_Q above a system's history is recorded `unreachable` (S1: one redaction per block) |
-| 4 | 6 | veredact, S13, S1 | auditor verification time split by step (Fig. 6(b)); normal audit; injected modified/substituted/stale records | per-record decisions written; S13's aggregate decision shows as false rejections |
-| 5 | 7, VIII | all five | gas from Besu receipts per on-chain transaction, skew `workload.zipf_s` | anchor receipt log; no receipts on the in-process ledger (refused in the experiment tier) |
+| 4 | 6 | veredact, S13, S1 | auditor verification time split by step (Fig. 6(b)); normal audit; injected modified/substituted/stale records | per-record decisions written; S13's aggregate decision shows as false rejections; detection rate is empty (None) when f · n_Q rounds to 0 injected records |
+| 5 | 7, VIII | veredact, S1, S13, S27, S34 | gas from Besu receipts per on-chain transaction, skew `workload.zipf_s` | anchor receipt log; no receipts on the in-process ledger (refused in the experiment tier) |
 
 Rows 1–5 above are `exp01_redaction_throughput` … `exp05_gas_consumption`. Figures draw exactly one line per scheme
-(VeRedact-PQ and Schemes [1], [13], [27], [34]); there are no internal variants and no second setting of a
+(VeRedact-PQ, Schemes [1], [13], [27], [34], and LETA in Exp. 0 and 2); there are no internal variants and no second setting of a
 scheme (author decisions 2026-10-04, following the ZK-Redact evaluation, where ablations are points of the
 scheme's own sweep, e.g. batch size m = 1 in Exp. 2). One run per configuration point
 (no repetitions): Exp. 1 statistics come from every request of the run, Exp. 2–4 from `samples_per_point`
@@ -123,5 +124,9 @@ evaluation: `make paper-runs` → `Benchmark/results/reproduction/<S id>/*.csv`.
 - **Freshness instability.** A request binds its batch version; under Zipf hot batches a point can tip into
   a re-prove/resubmit storm by chance (pilot 2026-10-04: same point 17–61 % or 100 % decided). Reported,
   not hidden: `decided`, `revalidations` per point.
+- **Ledger capacity.** The Besu network (7 QBFT validators, 2 s blocks, one sending account, same host)
+  confirms about 150 anchoring transactions/s. A scheme that sends one transaction per redaction above that
+  rate builds a ledger backlog (S27, full run 2026-10-16: confirmation 3 s → 201 s over a 500 req/s point);
+  receipts that arrive after the cutoff are censored, not counted at full value. VeRedact-PQ sends one per batch.
 - **pqcrypto vs liboqs.** The laptop fallback signs ML-DSA-65 in ~8.7 ms (liboqs: well under 1 ms); smoke
   numbers are plumbing checks only. The experiment tier refuses any backend but liboqs.

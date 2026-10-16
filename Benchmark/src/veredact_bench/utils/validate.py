@@ -126,6 +126,13 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
     s34 = c["baselines"]["S34"]
     if not 1 <= s34["policy_threshold"] <= s34["policy_attributes"]:
         E("baselines.S34 needs 1 <= policy_threshold <= policy_attributes")
+    s99 = c["baselines"]["S99"]
+    if (s99["ring_n"], s99["q"]) != (256, 8380417):
+        E("baselines.S99 ring must be FIPS 204's (n=256, q=8380417): the NTT is built for it")
+    if s99["module_k"] < 5 and final:
+        E("baselines.S99.module_k < 5: below ML-DSA-65's rank (VeRedact-PQ runs at NIST level 3)")
+    if not (0 < s99["tau"] <= 256 and s99["gamma"] > 0 and s99["sigma_s"] > 0):
+        E("baselines.S99 needs 0 < tau <= 256, gamma > 0, sigma_s > 0")
     if final and max(x["exp1"]["rates"]) / min(x["exp1"]["rates"]) < 10:
         E("exp1.rates must span at least one order of magnitude (saturation must be shown, not assumed)")
 

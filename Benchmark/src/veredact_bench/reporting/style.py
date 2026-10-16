@@ -12,9 +12,10 @@ FONT_PT = 8
 
 # Okabe & Ito (2008) palette
 _BLUE, _ORANGE, _GREEN, _VERMILION, _PURPLE = "#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7"
-# The schemes compared in the paper's figures and tables: VeRedact-PQ and Schemes [1], [13], [27], [34].
-# Nothing else is drawn or ranked.
-PAPER_METHODS = ("veredact", "S1", "S13", "S27", "S34")
+_SKY = "#56B4E9"
+# The schemes compared in the paper's figures and tables: VeRedact-PQ, Schemes [1], [13], [27], [34] and the
+# post-quantum authentication scheme LETA (S99, Exp. 0 and Exp. 2 only). Nothing else is drawn or ranked.
+PAPER_METHODS = ("veredact", "S1", "S13", "S27", "S34", "S99")
 
 METHODS = {  # key -> (label, colour, line style, marker)
     "veredact": ("VeRedact-PQ", _BLUE, "-", "o"),
@@ -22,6 +23,7 @@ METHODS = {  # key -> (label, colour, line style, marker)
     "S13": ("Scheme [13]", _GREEN, "-", "s"),
     "S27": ("Scheme [27]", _VERMILION, "-", "^"),
     "S34": ("Scheme [34]", _PURPLE, "-", "D"),
+    "S99": ("LETA", _SKY, "-", "v"),  # [CONFIRM] label until the manuscript cites it with a reference number
 }
 
 

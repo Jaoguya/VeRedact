@@ -1,0 +1,31 @@
+# Scheme S99 — Q. Li et al.: LETA (methods/baselines/s99_leta/). The only post-quantum comparison scheme:
+# lattice-based batch authentication with a per-vehicle ZKP. Enters Exp. 0 (primitives) and Exp. 2
+# (batch authorization) only: it defines no redaction, audit or on-chain step.
+schemes:
+  S99:
+    key: li2026_leta
+    label: Q. Li et al. (LETA)
+    ref: 99                     # [CONFIRM] not cited in the manuscript yet; label until a reference number exists
+    authors: Q. Li, Y. Xia, X. Liu, X. Chen, Z. Liu, Z. Guo, Z. Liu, L. Fang
+    title: "LETA: A Lattice-Based Efficient and Traceable Privacy-Preserving Batch Authentication Scheme for Vehicle Platoon in VANETs"
+    venue: IEEE JSAC 44, 2026
+    doi: 10.1109/JSAC.2025.3636982
+    folder: Reference/S99_Li2026_LETA
+    implementation: veredact_bench.methods.baselines.s99_leta.adapter:LETAScheme
+    boundaries: Other/docs/baselines/S99-leta.md
+    reproduction:               # reproduce.py — the paper's own Table IV and Fig. 5
+      vehicles_sweep: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]   # [DERIVED] Fig. 5 x-axis
+      reps: 5                   # [DERIVED] paper Sec. VI-C: "each scenario was tested five times"
+      op_reps: 1000             # [PROPOSED] Table IV single operations (microseconds each)
+      quick: {vehicles_sweep: [10, 20], reps: 2, op_reps: 20}
+
+baselines:
+  S99:
+    ring_n: 256                 # [PROPOSED] FIPS 204 ring (the paper fixes no n): R_q = Z_q[x]/(x^256 + 1)
+    q: 8380417                  # [PROPOSED] FIPS 204 modulus (NTT-friendly; the paper: "a large prime q")
+    module_k: 5                 # [PROPOSED] A in R_q^{5x5}: rank of ML-DSA-65's secret (l = 5), NIST level 3 like
+                                #   VeRedact-PQ; square because Eq. 8 uses A^{-1}
+    tau: 49                     # [PROPOSED] h2 output weight = ML-DSA-65 challenge weight
+    sigma_s: 2.0                # [PROPOSED] width of D_{R,s} for s1, s2 (paper: "small", no value)
+    gamma: 524288               # [PROPOSED] z1, z2 in [-2^19, 2^19] = ML-DSA-65 gamma_1 (paper: "small")
+    delta_t_s: 30               # [PROPOSED] TEC freshness window T - T5 <= dT (paper: no value)

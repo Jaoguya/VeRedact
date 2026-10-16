@@ -42,13 +42,13 @@ def test_tiny_end_to_end_run(tmp_path):
     assert all(v["n"] == 2 and v["median"] > 0 for v in m["points"].values())
 
 
-def test_paper_artifacts_show_only_the_five_schemes(monkeypatch):
+def test_paper_artifacts_show_only_the_paper_schemes(monkeypatch):
     from veredact_bench.reporting import figures, style, tables
 
-    keys = ["veredact", "S99", "S1", "S13", "S27", "S34"]  # S99: a method the paper does not compare
+    keys = ["veredact", "S98", "S1", "S13", "S27", "S34", "S99"]  # S98: a method the paper does not compare
     monkeypatch.setattr(figures, "_all_metrics", lambda exp, tier: {k: {"points": {}} for k in keys})
     assert list(figures.metrics("exp01_redaction_throughput", "smoke")) == list(style.PAPER_METHODS)
-    assert tables.ORDER == ["veredact", "S1", "S13", "S27", "S34"]
+    assert tables.ORDER == ["veredact", "S1", "S13", "S27", "S34", "S99"]
 
 
 def test_gas_figure_draws_one_line_per_scheme(monkeypatch, tmp_path):
@@ -84,6 +84,7 @@ def test_exp1_adaptations_count_every_finalized_redaction():
             batch_adaptations=1,
             latency_ms=10.0,
             submit_s=1.0,
+            arrival_s=0.5,
         )
 
     rows = [row(1, 0, "finalized", 1), row(2, 0, "finalized", 2), row(3, 1, "unfinished", "")]
@@ -109,12 +110,83 @@ def test_exp1_throughput_counts_redactions_finalized_during_the_window():
             batch_adaptations=1,
             submit_s=submit_s,
             latency_ms=latency_ms,
+            arrival_s=submit_s,
         )
 
     rows = [row(1, 0, 5.0, 10_000), row(2, 1, 20.0, 1_000), row(3, 1, 25.0, 60_000)]  # done at 15 s, 21 s, 85 s
     (pt,) = _exp01(rows, {"experiment": {"duration_s": 60, "warmup_s": 10}}).values()
     assert pt["completed_in_window"] == 2 and pt["finalized"] == 2  # rows 1+2 vs arrival cohort rows 2+3
     assert abs(pt["throughput_per_s"] - 2 / 60) < 1e-9
+
+
+def test_exp1_latency_is_end_to_end_and_never_drops_unfinished_requests():
+    """Latency = arrival -> finalized over the window's arrivals; a request unfinished at the cutoff enters with
+    cutoff - arrival (lower bound), a protocol rejection is excluded. Client-side waiting is included."""
+    from veredact_bench.evaluation.summaries import _exp01
+
+    def row(seq, status, arrival, submit="", lat=""):
+        return dict(
+            sweep="rate",
+            rate_rps=100,
+            zipf_s=0.8,
+            seq=seq,
+            in_window=1,
+            fault="",
+            status=status,
+            batch_id="",
+            batch_adaptations="",
+            arrival_s=arrival,
+            submit_s=submit,
+            latency_ms=lat,
+            cutoff_s=100.0,
+        )
+
+    rows = [
+        row(1, "finalized", 10.0, 12.0, 1_000),  # 2 s client wait + 1 s system: 3 s end to end
+        row(2, "unfinished", 20.0, 21.0),  # censored: >= 80 s
+        row(3, "not_submitted", 60.0),  # censored: >= 40 s
+        row(4, "rejected", 30.0, 30.0),  # a decided outcome: not a latency sample
+        row(5, "finalized", 50.0, 50.0, 70_000),  # finalized at 120 s, after the cutoff: censored at 50 s
+    ]
+    (pt,) = _exp01(rows, {"experiment": {"duration_s": 60, "warmup_s": 10}}).values()
+    lat = pt["latency_ms"]
+    assert lat["n"] == 4 and lat["median"] == 45_000.0
+    assert abs(pt["latency_censored_fraction"] - 3 / 4) < 1e-9
+    assert pt["latency_p95_lower_bound"] and pt["latency_median_lower_bound"]
+
+
+def test_exp4_detection_rate_undefined_when_nothing_injected():
+    from veredact_bench.evaluation.summaries import _exp04
+
+    rows = [
+        dict(
+            n_Q=10,
+            level="normal",
+            inject_fraction=0.01,
+            status="ok",
+            injected=0,
+            detected=0,
+            false_rejections=0,
+            verify_ms=1.0,
+        )
+    ]
+    (pt,) = _exp04(rows, {}).values()
+    assert pt["detection_rate"] is None and pt["injected"] == 0 and pt["false_rejection_rate"] == 0.0
+
+
+def test_exp2_s99_amortized_is_its_batch_protocol(tmp_path):
+    """S99 has its own batch protocol (aggregation + Eq. 13): amortized = batch / m, like VeRedact-PQ Phase 4."""
+    import csv
+
+    cfg = _cfg(tmp_path, "exp02_authorization_latency")
+    x = cfg["experiment"]
+    x["systems"], x["committee_sizes"], x["batch_sizes"], x["samples_per_point"] = ["S99"], [4], [1, 4], 1
+    RUNNERS["exp02_authorization_latency"](cfg, RunWriter(cfg))
+    with open(tmp_path / "exp02_authorization_latency" / "S99" / "smoke" / "rows.csv") as f:
+        rows = list(csv.DictReader(f))
+    assert rows and all(r["auth_ok"] == "1" for r in rows)
+    for r in rows:
+        assert abs(float(r["auth_per_request_ms"]) - float(r["phase4_batch_ms"]) / int(r["batch_size"])) < 1e-9
 
 
 def test_exp2_veredact_amortized_is_phase4_only(tmp_path):

@@ -1,12 +1,13 @@
 """System key -> Scheme instance. The ONLY place the runners learn which systems exist.
 
-Keys match configs/experiments/*.yaml systems (the paper compares exactly these five):
+Keys match configs/experiments/*.yaml systems:
   veredact                 VeRedact-PQ (ABRRR + BIMC)
-  S1 S13 S27 S34           the four re-implemented baselines (methods/baselines/<scheme>/adapter.py)
+  S1 S13 S27 S34           the four redactable-blockchain baselines (methods/baselines/<scheme>/adapter.py)
+  S99                      LETA, the post-quantum batch-authentication baseline (Exp. 0 and Exp. 2 only)
 
 committee_n is the Exp. 2 sweep axis. Each system maps it to ITS OWN distribution parameter with
 t = floor(2n/3)+1: VeRedact committee, S1 full nodes, S27 redactors, S34 attribute authorities
-(l = n attributes, t-of-l policy). S13 has no distributed authorization and ignores it (recorded).
+(l = n attributes, t-of-l policy). S13 and S99 have no distributed authorization and ignore it (recorded).
 """
 
 import importlib
@@ -20,6 +21,7 @@ BASELINES = {  # key -> (package under methods/baselines/, adapter class)
     "S13": ("s13_eaq_vrbc", "EAQVRBCScheme"),
     "S27": ("s27_etch", "ETCHScheme"),
     "S34": ("s34_rebs", "REBSScheme"),
+    "S99": ("s99_leta", "LETAScheme"),
 }
 
 
@@ -60,6 +62,7 @@ def distribution_param(key: str) -> str:
         "S27": "redactors",
         "S34": "policy attributes (AVN keys)",
         "S13": "none (single System Manager)",
+        "S99": "none (single TEC verifier)",
     }.get(key, "committee members")
 
 

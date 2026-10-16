@@ -4,6 +4,8 @@ Boundary: admission -> authorization decision. Requester-side preparation is out
   VeRedact-PQ   per request: Phase 3 (authorize); per batch of b: Phase 4 (authorize_batch: attestation +
                 C_VR reconstruction + freshness + R_e^VR + t committee ML-DSA signatures). Reported
                 separately, as phase3 + phase4/b per request, and Phase 4 split into its four steps.
+  S99 (LETA)    per request: the platoon leader's identity check; per batch of b: VPD-Tree + aggregation (PL) and
+                Eq. 13 (TEC) — its own batch protocol, reported like Phase 4 (phase4_batch_ms, amortized / b).
   baselines     their own per-request authorization; no batch protocol, so a batch of b is b independent
                 authorizations, measured at every b of the axis (amortized per request; batch_total_ms per batch).
 committee_n sweeps each system's own distribution parameter (registry.make, t = floor(2n/3)+1).
@@ -58,10 +60,11 @@ def run(cfg, out):
                         a = authorize(s, r, prepare(s, r))
                         auths.append(a)
                     ph4, bd = "", dict.fromkeys(BREAKDOWN, "")
-                    if is_veredact(s):
+                    if hasattr(s, "authorize_batch"):  # a batch protocol of its own: VeRedact-PQ Phase 4, S99
                         _, ph4 = s.authorize_batch(auths)
+                    if is_veredact(s):
                         bd = {k: s.p.last_breakdown[k] for k in BREAKDOWN}
-                    # Fig. 4(b) per batch: VeRedact-PQ's Phase 4 for the batch; a baseline's m authorizations
+                    # Fig. 4(b) per batch: the batch protocol (VeRedact-PQ Phase 4, S99); else m authorizations
                     batch_total = ph4 if ph4 != "" else sum(a.crypto_ms for a in auths)
                     for a in auths:
                         out.row(
@@ -77,7 +80,8 @@ def run(cfg, out):
                             **{f"phase4_{k}": v for k, v in bd.items()},
                             # Exp. 2 = Phase 4 (manuscript): VeRedact-PQ amortized = its batch authorization / b
                             # (attestations, freshness, commitment, committee); Phase 3 VPS validation stays in
-                            # phase3_ms. A baseline's authorization is its own per-request protocol (Table IV).
+                            # phase3_ms. S99 likewise (aggregation + Eq. 13) / b. Any other baseline's authorization
+                            # is its own per-request protocol (Table IV).
                             auth_per_request_ms=ph4 / b if ph4 != "" else a.crypto_ms,
                         )
             out.log.info(f"  {key:28s} n={n:<3} batch axis {batch_axis} x {reps} samples")

@@ -66,6 +66,26 @@ def test_no_audit_protocol_is_not_synthesised(cfg, ds, key):
     s.teardown()
 
 
+def test_s99_batch_authentication_and_no_redaction(cfg, ds):
+    """S99 (LETA): a valid platoon passes Eq. 13, one forged vehicle signature fails the whole batch, absent
+    targets are refused, and it synthesises no redaction or audit (its paper defines none)."""
+    s = open_system(cfg, "S99", ds)
+    caps = s.capabilities()
+    assert caps.pq_security and not caps.distributed_auth and not caps.verifiable_auditing
+    assert not decide(s, faulty(ds, "absent"))
+    good = [authorize(s, r) for r in ds.trace[:5]]
+    assert all(a.ok for a in good)
+    ok, ms = s.authorize_batch(good)
+    assert ok and ms > 0
+    bad = good[:4] + [authorize(s, faulty(ds, "sig", 5))]
+    assert bad[-1].ok  # the PL's identity check cannot see a forged signature
+    assert not s.authorize_batch(bad)[0]  # Eq. 13 does
+    with pytest.raises(NotSupported):
+        s.redact(good)
+    with pytest.raises(NotSupported):
+        s.audit(AuditQuery(1))
+
+
 def test_s1_one_redaction_per_block(cfg, ds):
     s = open_system(cfg, "S1", ds)
     counts = build_history(s, ds.trace, 1)

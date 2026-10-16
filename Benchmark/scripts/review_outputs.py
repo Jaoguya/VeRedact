@@ -11,7 +11,7 @@ from collections import defaultdict
 from veredact_bench.utils.config import REPO_ROOT, load
 
 R = REPO_ROOT / "results"
-KEYS = ("veredact", "S1", "S13", "S27", "S34")
+KEYS = ("veredact", "S1", "S13", "S27", "S34", "S99")
 
 
 def med(xs):

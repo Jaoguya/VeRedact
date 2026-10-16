@@ -62,6 +62,7 @@ def _exp01(rows, cfg):
         fin_t = lambda r: _num(r["submit_s"]) + _num(r["latency_ms"]) / 1000
         completed = [r for r in done if _num(r.get("latency_ms")) is not None and start <= fin_t(r) < end]
         adapt = {r["batch_id"]: _num(r["batch_adaptations"]) for r in done if r.get("batch_id") not in ("", None)}
+        e2e, censored = _e2e_latency_ms(win, rs)
         out[k] = {
             "offered": len(win),
             "decided": sum(r["status"] in ("finalized", "rejected", "failed") for r in win),
@@ -72,10 +73,45 @@ def _exp01(rows, cfg):
             "finalized": len(fin),  # arrived in the window and finalized (any time): kept for traceability
             "completed_in_window": len(completed),
             "throughput_per_s": M.throughput(len(completed), dur),
-            "latency_ms": _stats(r["latency_ms"] for r in completed),
+            # end-to-end (arrival -> finalized) over the window's arrivals; unfinished = lower bound (_e2e_latency_ms)
+            "latency_ms": _stats(e2e),
+            "latency_censored_fraction": M.rate(censored, len(e2e)),
+            # a percentile is exact only if fewer requests than its tail were censored; else it is a lower bound
+            "latency_p95_lower_bound": censored > 0.05 * len(e2e),
+            "latency_median_lower_bound": censored > 0.5 * len(e2e),
+            # the earlier definition (submission -> finalized, only requests finished inside the window), kept for
+            # traceability: it hides client-side waiting and drops the slowest requests under overload
+            "latency_completed_from_submit_ms": _stats(r["latency_ms"] for r in completed),
             "pqch_adaptations_per_1000": M.per_thousand(sum(adapt.values()), len(done)) if done else None,
         }
     return out
+
+
+def _e2e_latency_ms(win, rs) -> tuple[list[float], int]:
+    """Arrival -> finalized of every valid request that arrived in the window, except those the protocol itself
+    rejected (a decided outcome, e.g. S1's one redaction per block). A request not finalized by the point's
+    cutoff (end of the drain), or finalized only after it, is right-censored: it enters with cutoff - arrival, a
+    lower bound of its latency.
+    Rows written before cutoff_s existed fall back to the latest finalization seen in the point."""
+    cut = next((_num(r.get("cutoff_s")) for r in rs if _num(r.get("cutoff_s")) is not None), None)
+    if cut is None:
+        fins = [_num(r["submit_s"]) + _num(r["latency_ms"]) / 1000 for r in rs if _num(r.get("latency_ms")) is not None]
+        cut = max(fins, default=0.0)
+    out, censored = [], 0
+    for r in win:
+        if r["status"] in ("rejected", "failed"):
+            continue
+        a = _num(r["arrival_s"])
+        fin = _num(r["submit_s"]) + _num(r["latency_ms"]) / 1000 if _num(r.get("latency_ms")) is not None else None
+        # one observation horizon for every request: a finalization AFTER the cutoff (a receipt that arrived while
+        # the point was torn down) is censored like an unfinished request, else a point where some requests
+        # finished late (S27 at 500-2,000 req/s, full run 2026-10-16) outranks one where none did
+        if r["status"] == "finalized" and fin is not None and fin <= cut:
+            out.append((fin - a) * 1000)
+        else:
+            out.append(max(0.0, cut - a) * 1000)
+            censored += 1
+    return out, censored
 
 
 def _exp02(rows, cfg):
@@ -115,7 +151,9 @@ def _exp04(rows, cfg):
         out[k] = {
             "status": "ok",
             "verify_ms": _stats(r["verify_ms"] for r in ok),
-            "detection_rate": M.rate(sum(int(r["detected"]) for r in ok), injected),
+            # None when nothing was injected (f * n_Q rounds to 0, e.g. 1% of 10 records): 0.0 would read as "missed"
+            "injected": injected,
+            "detection_rate": M.rate(sum(int(r["detected"]) for r in ok), injected) if injected else None,
             "false_rejection_rate": M.rate(sum(int(r["false_rejections"]) for r in ok), valid),
         }
     return out

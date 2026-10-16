@@ -11,7 +11,12 @@ Pipeline (identical for every system; only the Scheme behind it changes):
             B_e* or T_max; baselines: 1 (their papers redact per request) — and calls redact().
   finality  VeRedact returns a ledger Future; its receipt time is the request's completion. Baselines
             block on the receipt inside redact().
-Latency = finalized - submitted. Crypto and ledger time stay separate columns.
+Rows keep latency_ms = finalized - submitted (system side, per attempt chain). The reported latency
+(summaries._exp01) is END-TO-END: arrival -> finalized, over every valid request that ARRIVED in the window;
+a request still unfinished at the point's cutoff (cutoff_s, when the drain ends) enters with the lower
+bound cutoff - arrival, so overload can never make latency look shorter (2026-10-16: counting only
+requests finished inside the window, from their submission after proving, dropped VeRedact-PQ's p95 from
+41.5 s at 2,000 req/s to 12.8 s at 5,000 req/s). Crypto and ledger time stay separate columns.
 Every system runs EVERY rate (author rule 2026-10-05: no figure line may end early). A point is noted as
 saturated when decided/offered (window arrivals, valid requests; decided = any final outcome, so a
 protocol-level rejection such as S1's one-redaction-per-block is not mistaken for overload) or the on-time
@@ -250,6 +255,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         v.get("status") in (None, "pending", "revalidating") for v in stamp.values() if "submit" in v
     ):
         time.sleep(0.05)
+    cutoff = now()  # end of the drain: anything not finalized by now is censored at cutoff - arrival
     stop.set()
     for _ in workers:
         admit.put(None)
@@ -315,6 +321,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             redact_ledger_ms=st.get("redact_ledger_ms", ""),
             finality_ledger_ms=st.get("finality_ledger_ms", ""),
             latency_ms=(st["final"] - st["submit"]) * 1000 if "final" in st else "",
+            cutoff_s=cutoff,
             setup_s=s.setup_s,
             **capability_fields(s),
         )
