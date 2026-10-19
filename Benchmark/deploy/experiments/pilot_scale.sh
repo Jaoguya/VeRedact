@@ -6,7 +6,7 @@
 #   setsid nohup deploy/experiments/pilot_scale.sh > results/logs/pilot_scale.out 2>&1 &
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-sudo shutdown -h +${PILOT_HARD_CAP_MIN:-720} veredact-pilot-hard-cap
+sudo shutdown -h +${PILOT_HARD_CAP_MIN:-1800} veredact-pilot-hard-cap   # 30 h: the 10^5 histories take ~15 h
 echo "pilot start $(date -u +%FT%TZ)"
 RATES="100 5000" deploy/experiments/validate_provers_loopback.sh; echo "LOOPBACK_EXIT=$?"   # prints "first submission"
 VRPQ_SKIP=exp01_redaction_throughput:veredact deploy/experiments/run_experiments.sh scale \

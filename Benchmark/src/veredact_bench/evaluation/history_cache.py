@@ -43,6 +43,7 @@ CODE = [
     REPO_ROOT / "contracts",
 ]
 _LOCKS = (type(threading.Lock()), type(threading.RLock()))
+REPLAY_WINDOW = 2000  # anchoring transactions in flight while a saved history is replayed (~15 s of blocks)
 
 
 def enabled() -> bool:
@@ -192,7 +193,15 @@ def load(cfg, key, rpb, history_id, ds, need):
     anchor = anchor_mod.make_anchor(cfg)
     with open(d / "oplog.pkl", "rb") as f:
         oplog = pickle.load(f)
-    anchor_mod.gather([anchor.submit(op, **fields) for op, fields in oplog]).result()  # same chain state
+    # same chain state; at most REPLAY_WINDOW in flight: 10^5 submitted at once would wait ~11 min in the pool at
+    # ~150 tx/s, past ledger.receipt_timeout_s (600 s), and fail
+    window = []
+    for op, fields in oplog:
+        window.append(anchor.submit(op, **fields))
+        if len(window) >= REPLAY_WINDOW:
+            anchor_mod.gather(window).result()
+            window = []
+    anchor_mod.gather(window).result()
     with open(d / "state.pkl", "rb") as f:
         s, counts = _Unpickler(f, anchor).load()
     if counts["redacted"] < need:

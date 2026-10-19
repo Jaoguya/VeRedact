@@ -368,12 +368,16 @@ class BesuAnchor(_Metered):
         if what == "rai_checkpoint":
             return bytes(self.reg.functions.raiCheckpoints(k["epoch"]).call())
         if what == "checkpoint_history":  # CheckpointAnchored(b indexed, vb, mr) of the queried batches only
-            bs, out = sorted(set(k["batches"])), {}
-            for i in range(0, len(bs), 500):
-                logs = self.reg.events.CheckpointAnchored.get_logs(
-                    from_block=self._from_block, argument_filters={"b": bs[i : i + 500]}
-                )
-                out.update({(int(e.args.b), int(e.args.vb)): bytes(e.args.mr) for e in logs})
+            # Besu answers eth_getLogs over at most --rpc-max-logs-range blocks (default 5,000 = 2.8 h of 2-s
+            # blocks; a 10^5 history spans more): query in block ranges, and at most 100 batch topics per call
+            bs, out, head = sorted(set(k["batches"])), {}, self.w3.eth.block_number
+            for lo in range(self._from_block, head + 1, 5000):
+                hi = min(lo + 4999, head)
+                for i in range(0, len(bs), 100):
+                    logs = self.reg.events.CheckpointAnchored.get_logs(
+                        from_block=lo, to_block=hi, argument_filters={"b": bs[i : i + 100]}
+                    )
+                    out.update({(int(e.args.b), int(e.args.vb)): bytes(e.args.mr) for e in logs})
             return out
         if what == "commits":
             ids, out = list(k["ids"]), []
