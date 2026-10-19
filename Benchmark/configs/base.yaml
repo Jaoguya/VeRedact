@@ -17,8 +17,9 @@ meta:
   dataset: synthetic_ledger     # configs/datasets/<name>.yaml
   # [METHOD] One seed drives dataset generation, request-trace order, committee selection, audit challenges
   # and fault injection; the same seed is used for every method so they see the same data and trace.
-  # One run per configuration point (author decision 2026-10-03): no repetitions; statistics come from
-  # the per-request / per-sample rows of that run.
+  # One run per configuration point (author decisions 2026-10-03 and 2026-10-19: the 10-repetition plan of
+  # 2026-10-17 was revoked); statistics come from the per-request / per-sample rows of that run. Optional
+  # tooling kept: VRPQ_REP=r runs repetition r with seed + (r - 1) * 1000 into <tier>-repNN/ (aggregate_reps.py).
   seed: 20260929
 
 security:
@@ -50,8 +51,9 @@ environment:
   # [PROPOSED] One AWS EC2 host for the whole comparison (machine-to-machine variance must not be confounded
   # with the comparison). 7 Besu validators (~1 vCPU each) + load generator leave >= 8 vCPUs for the system
   # under test at veredact.vps_workers = 8.
-  instance_type: c7i.4xlarge
-  vcpus: 16                     # = 8 physical cores x 2 hyperthreads (c7i); S13 times witnesses on vcpus // 2
+  instance_type: r7i.4xlarge    # [PROPOSED] 2026-10-18: same CPU as c7i.4xlarge (Xeon 8488C, 16 vCPU), 128 GiB
+                                #   instead of 32 (the 10^6-transaction ledger ran out of memory on 32)
+  vcpus: 16                     # = 8 physical cores x 2 hyperthreads; S13 times witnesses on vcpus // 2
   region: ap-southeast-1
 
 ledger:

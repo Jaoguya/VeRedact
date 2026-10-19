@@ -140,7 +140,10 @@ def fill_history(s, ds, cfg, need: int, batch_size: int, counts: dict) -> dict:
     seq = max((r.seq for r in ds.trace), default=-1) + 1
     while counts["redacted"] < need:
         extra = []
-        for _ in range(2 * (need - counts["redacted"])):
+        # exactly the shortfall per round (rejections leave a smaller one for the next round): 2x the shortfall
+        # overshot every scheme without rejections to ~2x the largest n_Q (pilot 2026-10-18: VeRedact-PQ held
+        # 190,000 redactions for n_Q = 10^5), and S13's witness cost grows with its history
+        for _ in range(need - counts["redacted"]):
             tx = ds.transactions[rng.randrange(len(ds.transactions))]
             payload = rng.randbytes(rng.randint(d["payload_min_bytes"], d["payload_max_bytes"]))
             extra.append(RedactionRequest(seq, rng.randrange(ds.requesters), tx.tid, payload, 0.0))

@@ -62,8 +62,9 @@ ITEMS = [
         "D2",
         r"Repetitions & 30 runs, 95\% confidence interval \\",
         None,
-        R % "Runs" + " & " + R % r"1 per point; 30 samples per point (Exp.~2--4)" + r" \\",
+        R % "Runs" + " & " + R % r"1 per point; 30 samples per point (Exp.~2--4), 5 at $n_Q=10^5$" + r" \\",
     ),
+    ("D2b", r"Ledger size & [$10^5$] transactions \\", None, r"Ledger size & " + R % r"[$10^6$]" + r" transactions \\"),
     # E: variants and second settings removed (bottom-up order does not matter: each find is unique)
     (
         "E1",

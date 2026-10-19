@@ -2,7 +2,8 @@
 # the request trace are generated from meta.seed by veredact_bench.data.dataset (see Other/data/README.md).
 dataset:
   name: synthetic_ledger
-  base_transactions: 100000     # [DERIVED] manuscript Table VII: ledger size 10^5
+  base_transactions: 1000000    # [PROPOSED] author decision 2026-10-17: 10^6 (manuscript Table VII: 10^5) so the
+                                #   audit axis reaches n_Q = 10^5 for every scheme (S1: one redaction per 1-tx block)
   payload_min_bytes: 256        # [DERIVED] manuscript: payloads 256 B to 4 KB
   payload_max_bytes: 4096
   leaves_per_batch: 256         # [DERIVED] manuscript Table VII: N = [256]

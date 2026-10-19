@@ -25,15 +25,23 @@ SG=$("${A[@]}" ec2 describe-security-groups --filters "Name=group-name,Values=$N
 AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text)
 
 echo "[1/4] launch $N x $TYPE"
+# PROVER_MARKET=spot (default, 2026-10-18: ~US$3.0/h instead of US$9.88/h on demand) tries spot in every AZ first,
+# then on demand. A spot host reclaimed mid-point is detected by the client (RemoteProvers.lost) and fails the point.
 IIDS=""
-for SN in "${SUBNETS[@]}"; do
-  IIDS=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --count "$N" \
-          --instance-initiated-shutdown-behavior terminate --key-name "$NAME" --security-group-ids "$SG" --subnet-id "$SN" \
-          --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=30,VolumeType=gp3,DeleteOnTermination=true}" \
-          --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
-          --query 'Instances[].InstanceId' --output text) && break
-  echo "      no $TYPE capacity in subnet $SN, trying the next AZ"
+MARKETS=(spot ondemand); [[ "${PROVER_MARKET:-spot}" == ondemand ]] && MARKETS=(ondemand)
+for MK in "${MARKETS[@]}"; do
+  OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
+    'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}')
+  for SN in "${SUBNETS[@]}"; do
+    IIDS=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --count "$N" "${OPT[@]}" \
+            --instance-initiated-shutdown-behavior terminate --key-name "$NAME" --security-group-ids "$SG" --subnet-id "$SN" \
+            --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=30,VolumeType=gp3,DeleteOnTermination=true}" \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
+            --query 'Instances[].InstanceId' --output text) && break 2
+    echo "      no $MK $TYPE capacity in subnet $SN, trying the next AZ"
+  done
 done
+echo "      market: $MK"
 [[ -n "$IIDS" ]] || { echo "no subnet of $VPC has $N x $TYPE capacity"; exit 1; }
 echo "$IIDS" > deploy/aws/.prover_ids
 echo "      $IIDS"
@@ -48,8 +56,8 @@ for IID in $IIDS; do
   (
     SSH=(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 "$AWS_SSH_USER@$PRIV")
     for _ in $(seq 1 60); do "${SSH[@]}" true 2>/dev/null && break; sleep 3; done
-    # self-termination first (shutdown = terminate): 4 h hard cap; 15 min idle after use; 45 min if never used
-    "${SSH[@]}" "sudo shutdown -h +240 veredact-prover-hard-cap"
+    # self-termination first (shutdown = terminate): PROVER_HARD_CAP_MIN (4 h) hard cap; 15 min idle after use; 45 min if never used
+    "${SSH[@]}" "sudo shutdown -h +${PROVER_HARD_CAP_MIN:-240} veredact-prover-hard-cap"
     scp -q -i "$KEY_FILE" -o StrictHostKeyChecking=accept-new deploy/server/bootstrap_server.sh "$AWS_SSH_USER@$PRIV:/tmp/"
     "${SSH[@]}" "sudo mkdir -p $REPO_REMOTE_DIR && sudo chown $AWS_SSH_USER $REPO_REMOTE_DIR"
     rsync -az -e "ssh -i $KEY_FILE -o StrictHostKeyChecking=accept-new" --exclude .git --exclude .venv \

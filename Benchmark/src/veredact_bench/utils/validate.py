@@ -117,8 +117,11 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
         E("exp3.records_per_batch must be [veredact.reference_batch]: one VeRedact-PQ setting per figure")
     if x["exp5"]["zipf_sweep"] != [c["workload"]["zipf_s"]]:
         E("exp5.zipf_sweep must be [workload.zipf_s]: one skew per figure")
-    if max(x["exp3"]["n_Q"]) > w["total_requests"] and final:
-        E("exp3.n_Q exceeds the number of redactions the trace can produce")
+    # the history is the trace topped up with valid uniform requests (common.fill_history), so the ceiling is the
+    # ledger, not the trace: S1 allows one redaction per block (2026-10-17, n_Q up to 10^5 on a 10^6 ledger)
+    ceiling = c["dataset"]["base_transactions"] // c["baselines"]["S1"]["txs_per_block"]
+    if max([*x["exp3"]["n_Q"], *x["exp4"]["n_Q"]]) > ceiling and final:
+        E(f"exp3/exp4 n_Q exceeds {ceiling}: S1 (one redaction per block) cannot hold that many redactions")
     if not 0 < x["exp1"]["saturation_tolerance"] < 1 or x["exp1"]["client_threads"] < 1:
         E("exp1.saturation_tolerance must be in (0, 1) and exp1.client_threads >= 1")
     if x["exp5"]["requests_per_point"] % max(x["exp5"]["batch_sizes"]):

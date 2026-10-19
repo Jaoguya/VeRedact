@@ -51,24 +51,31 @@ def test_paper_artifacts_show_only_the_paper_schemes(monkeypatch):
     assert tables.ORDER == ["veredact", "S1", "S13", "S27", "S34", "S99"]
 
 
-def test_gas_figure_draws_one_line_per_scheme(monkeypatch, tmp_path):
+def test_gas_figure_never_draws_a_baseline_against_the_batch_axis(monkeypatch, tmp_path):
+    """Fig. 7: (a) one bar per baseline + VeRedact-PQ at m = 1 and at its default batch; (b) only VeRedact-PQ
+    against m, the cheapest baseline as one reference line (baselines have no batching)."""
     from veredact_bench.reporting import figures, style
 
-    def fake(exp, tier):  # two skews x two batch sizes per scheme, as Exp. 5 records them
-        pts = {f"zipf_s={s}|batch_size={b}": {"gas_per_redaction": 1000.0 + b} for s in (0.0, 0.8) for b in (1, 8)}
-        return {k: {"points": pts} for k in style.PAPER_METHODS}
+    def fake(exp, tier):  # two batch sizes per scheme at the default skew, as Exp. 5 records them
+        pts = {f"zipf_s=0.8|batch_size={b}": {"gas_per_redaction": 1000.0 + b} for b in (1, 8)}
+        return {k: {"points": pts} for k in ("veredact", "S1", "S13", "S27", "S34")}
 
     monkeypatch.setattr(figures, "_all_metrics", fake)
     monkeypatch.setattr(figures, "OUT", tmp_path)
+    cfg = {"workload": {"zipf_s": 0.8}, "veredact": {"reference_batch": 8}}
+    monkeypatch.setattr(figures, "load", lambda tier, exp: cfg)
     drawn = {}
-    monkeypatch.setattr(figures, "_save", lambda fig, name, w: drawn.update({name: [len(a.lines) for a in fig.axes]}))
+    monkeypatch.setattr(
+        figures, "_save", lambda fig, name, w: drawn.update({name: [(len(a.patches), len(a.lines)) for a in fig.axes]})
+    )
     style.apply()
     figures.fig_exp5("smoke", [])
-    assert drawn["exp5_gas_consumption"] == [len(style.PAPER_METHODS)] * 2
+    assert drawn["exp5_gas_consumption"] == [(4 + 2, 0), (0, 2)]
 
 
 def test_exp1_adaptations_count_every_finalized_redaction():
-    """Fig. 3(c): a scheme that finalizes nothing inside the window still gets an adaptation count."""
+    """pqch_adaptations_per_1000 (metrics only since Fig. 3(c) was removed): a scheme that finalizes nothing
+    inside the window still gets an adaptation count."""
     from veredact_bench.evaluation.summaries import _exp01
 
     def row(seq, in_window, status, batch):
@@ -174,6 +181,28 @@ def test_exp4_detection_rate_undefined_when_nothing_injected():
     assert pt["detection_rate"] is None and pt["injected"] == 0 and pt["false_rejection_rate"] == 0.0
 
 
+def test_exp2_complete_authorization_counts_both_steps():
+    """Fig. 4: per request = per-request step + batch step / m; per batch = m per-request steps + batch step."""
+    from veredact_bench.evaluation.summaries import _exp02
+
+    def row(sample, ph3, ph4, m=2):
+        return dict(
+            committee_n=4,
+            batch_size=m,
+            sample=sample,
+            phase3_ms=ph3,
+            phase4_batch_ms=ph4,
+            auth_per_request_ms=1.0,
+            batch_total_ms=1.0,
+            auth_ok=1,
+        )
+
+    (v,) = _exp02([row(0, 1.0, 4.0), row(0, 3.0, 4.0)], {}).values()  # batch protocol: 2 requests + 4 ms
+    assert v["auth_complete_per_request_ms"]["median"] == 4.0 and v["auth_complete_per_batch_ms"]["median"] == 8.0
+    (b,) = _exp02([row(0, 1.0, ""), row(0, 3.0, "")], {}).values()  # no batch protocol: the m authorizations
+    assert b["auth_complete_per_request_ms"]["median"] == 2.0 and b["auth_complete_per_batch_ms"]["median"] == 4.0
+
+
 def test_exp2_s99_amortized_is_its_batch_protocol(tmp_path):
     """S99 has its own batch protocol (aggregation + Eq. 13): amortized = batch / m, like VeRedact-PQ Phase 4."""
     import csv
@@ -262,3 +291,158 @@ def test_anchor_never_waits_forever_for_a_mined_transaction():
     assert isinstance(futs[b"expired"].exception(), RuntimeError)  # loud failure, not a hang
     assert not futs[b"fresh"].done()  # too young to look up
     assert a.recovered == {"late_receipt": 1, "resent": 1, "timed_out": 1}
+
+
+def test_repetition_seed_and_folder(monkeypatch):
+    """VRPQ_REP=r: seed + (r-1)*1000 (rep 1 = the single-run seed), results in <tier>-repNN."""
+    from veredact_bench.utils.config import load, results_tier
+
+    base = load("smoke")["meta"]["seed"]
+    monkeypatch.setenv("VRPQ_REP", "3")
+    c = load("smoke")
+    assert c["meta"]["seed"] == base + 2000 and c["meta"]["rep"] == 3
+    assert results_tier("experiment") == "experiment-rep03"
+    monkeypatch.setenv("VRPQ_REP", "1")
+    assert load("smoke")["meta"]["seed"] == base
+
+
+def test_aggregate_reps_mean_and_ci():
+    import importlib.util
+
+    from veredact_bench.utils.config import REPO_ROOT
+
+    spec = importlib.util.spec_from_file_location("agg", REPO_ROOT / "scripts" / "aggregate_reps.py")
+    agg = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(agg)
+    stats = lambda m, p: {"n": 10, "median": m, "mean": m, "p95": p, "ci95_halfwidth": 0.1, "instantiation": "x"}
+    a = {"p": {"lat": stats(1.0, 4.0), "tp": 10.0, "lb": False, "status": "ok"}}
+    b = {"p": {"lat": stats(3.0, 6.0), "tp": 20.0, "lb": True, "status": "ok"}}
+    out = agg.combine([a, b])["p"]
+    assert out["lat"]["median"] == 2.0 and out["lat"]["p95"] == 5.0 and out["lat"]["reps"] == 2
+    assert out["lat"]["ci95_halfwidth"] > 0 and out["lat"]["instantiation"] == "x"
+    assert out["tp"] == 15.0 and out["tp_ci95"] > 0 and out["lb"] is True and out["status"] == "ok"
+
+
+def test_remote_provers_never_dispatch_after_close():
+    """A proof arriving after close() (end of an Exp. 1 point) must not send on the closed connection: the reader
+    thread crashed with EBADF in repetition 1 (2026-10-17)."""
+    import collections
+    import threading
+
+    from veredact_bench.evaluation.provers import RemoteProvers
+
+    class Closed:
+        def send(self, msg):
+            raise OSError(9, "Bad file descriptor")
+
+    rp = RemoteProvers.__new__(RemoteProvers)
+    rp._conns, rp._load, rp._cap, rp._lock = [(Closed(), threading.Lock())], [0], [4], threading.Lock()
+    rp._cb, rp._ids, rp._pending, rp._closed = {}, iter(range(10)), collections.deque(), False
+    rp._pending.append((lambda: "job", lambda p, s: None))
+    rp._pump()  # the send fails (closed under it): no exception escapes
+    rp._closed = True
+    rp._pending.append((lambda: "job", lambda p, s: None))
+    rp._pump()  # closed: nothing is dispatched
+    assert len(rp._pending) == 1
+
+
+def test_exp4_reuses_the_exp3_history(tmp_path, monkeypatch):
+    """Exp. 3 hands its history to Exp. 4 (same dataset and largest n_Q): one build, not two."""
+    from veredact_bench.evaluation.experiments import exp03_audit_efficiency as exp03
+
+    built = []
+    real = exp03.open_system
+    monkeypatch.setattr(exp03, "open_system", lambda *a, **k: built.append(a[1]) or real(*a, **k))
+    c3, c4 = _cfg(tmp_path, "exp03_audit_efficiency"), _cfg(tmp_path, "exp04_verification_time")
+    for c in (c3, c4):
+        c["experiment"]["systems"], c["experiment"]["n_Q"], c["experiment"]["samples_per_point"] = ["S1"], [10], 1
+    monkeypatch.setattr(exp03, "KEEP", True)
+    RUNNERS["exp03_audit_efficiency"](c3, RunWriter(c3))
+    assert len(exp03.SHARED) == 1
+    RUNNERS["exp04_verification_time"](c4, RunWriter(c4))
+    assert built == ["S1"] and not exp03.SHARED
+    m = json.loads((tmp_path / "exp04_verification_time" / "S1" / "smoke" / "metrics.json").read_text())
+    assert all(p["status"] == "ok" and p["false_rejection_rate"] == 0 for p in m["points"].values())
+
+
+def test_exp3_history_not_kept_when_exp4_does_not_follow(tmp_path):
+    from veredact_bench.evaluation.experiments import exp03_audit_efficiency as exp03
+
+    c = _cfg(tmp_path, "exp03_audit_efficiency")
+    c["experiment"]["systems"], c["experiment"]["n_Q"], c["experiment"]["samples_per_point"] = ["S1"], [10], 1
+    assert exp03.KEEP is False
+    RUNNERS["exp03_audit_efficiency"](c, RunWriter(c))
+    assert not exp03.SHARED
+
+
+def test_prover_service_starts_every_worker_before_ready(monkeypatch):
+    """The first proofs of an Exp. 1 point came back 13-15 s after its start (lazily started prover workers):
+    the service must answer ready only once every worker process runs."""
+    import importlib
+    import pathlib
+
+    monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parents[1] / "scripts"))
+    ps = importlib.import_module("prover_service")  # importable by name: worker processes unpickle _warm
+    pools = []
+
+    class Pool(ps.ProcessPoolExecutor):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **{**k, "initializer": None, "initargs": ()})
+            pools.append(self)
+
+    monkeypatch.setattr(ps, "ProcessPoolExecutor", Pool)
+    monkeypatch.setattr(ps, "_check", lambda b: True)
+    alive = []
+
+    class Conn:
+        msgs = [("init", {}), ("close",)]
+
+        def recv(self):
+            return self.msgs.pop(0)
+
+        def send(self, m):
+            alive.append((m, len(pools[0]._processes)))
+
+        def close(self):
+            pass
+
+    ps.serve(Conn(), 3)
+    assert alive == [(("ready", 3), 3)]
+
+
+def test_remote_provers_report_a_host_lost_mid_point():
+    """A spot prover reclaimed during a point drops its connection: RemoteProvers must report it (the point then
+    fails instead of counting its requests as unfinished), but not after close()."""
+    import threading
+
+    from veredact_bench.evaluation.provers import RemoteProvers
+
+    class Conn:
+        def __init__(self):
+            self.gone = threading.Event()
+
+        def recv(self):
+            self.gone.wait()
+            raise EOFError
+
+        def send(self, m):
+            pass
+
+        def close(self):
+            self.gone.set()
+
+    rp = RemoteProvers.__new__(RemoteProvers)
+    rp._lock, rp._closed, rp.lost = threading.Lock(), False, []
+    a, b = Conn(), Conn()
+    rp._conns = [(a, threading.Lock()), (b, threading.Lock())]
+    t = threading.Thread(target=rp._read, args=(0,))
+    t.start()
+    a.gone.set()  # host 0 vanishes mid-point
+    t.join(5)
+    assert rp.lost == [0]
+    rp._closed = True  # after close(): a dropped connection is the normal end
+    t = threading.Thread(target=rp._read, args=(1,))
+    t.start()
+    b.gone.set()
+    t.join(5)
+    assert rp.lost == [0]

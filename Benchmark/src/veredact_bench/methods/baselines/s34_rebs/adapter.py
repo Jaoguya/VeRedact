@@ -67,8 +67,9 @@ class REBSScheme(Scheme):
     def setup(self, dataset: Dataset) -> None:
         """Keys, policies and one chameleon hash per TARGETED ledger record, kept per process for a given ledger
         and parameter set and reused by later points: only records not hashed yet are built (untimed setup;
-        ~80 ms each at RSA-3072 + 10 pairings). Without reuse every high-rate Exp. 1 point would rebuild up to
-        10^5 hashes and the sweep could not reach 5,000 req/s (author rule 2026-10-05: no capped lines). Each
+        ~80 ms each at RSA-3072 + 10 pairings). Without reuse every high-rate Exp. 1 point would rebuild a
+        hash per targeted record and the sweep could not reach 5,000 req/s (author rule 2026-10-05: no capped
+        lines). Each
         point gets its own copy of the hash table; a redaction REPLACES its entry (R.chcld returns a new
         CHValue), so the shared values are never modified."""
         key = (dataset.seed, len(dataset.transactions), dataset.policies, self.bits, self.l, self.t)

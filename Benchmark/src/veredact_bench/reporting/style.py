@@ -23,7 +23,7 @@ METHODS = {  # key -> (label, colour, line style, marker)
     "S13": ("Scheme [13]", _GREEN, "-", "s"),
     "S27": ("Scheme [27]", _VERMILION, "-", "^"),
     "S34": ("Scheme [34]", _PURPLE, "-", "D"),
-    "S99": ("LETA", _SKY, "-", "v"),  # [CONFIRM] label until the manuscript cites it with a reference number
+    "S99": ("Scheme [39]", _SKY, "-", "v"),  # LETA, ref [39] of the blue manuscript version
 }
 
 
@@ -53,6 +53,13 @@ def label(key: str) -> str:
     return METHODS.get(key, (key,))[0]
 
 
-def line(ax, key, xs, ys, suffix=""):
+def line(ax, key, xs, ys, suffix="", yerr=None, linestyle=None):
+    """One scheme's line; yerr (95% CI across repetitions) draws error bars."""
     lab, col, ls, mk = METHODS.get(key, (key, "#000000", "-", "o"))
-    ax.plot(xs, ys, color=col, linestyle=ls, marker=mk, label=lab + suffix)
+    ls = linestyle or ls
+    if yerr is not None and any(e for e in yerr):
+        ax.errorbar(
+            xs, ys, yerr=yerr, color=col, linestyle=ls, marker=mk, label=lab + suffix, capsize=2, elinewidth=0.8
+        )
+    else:
+        ax.plot(xs, ys, color=col, linestyle=ls, marker=mk, label=lab + suffix)

@@ -54,7 +54,8 @@ def main():
                 f" | throughput {len(done) / x['duration_s']:.1f}/s | round p50 {st.median(v[0] for v in batches.values()):.0f} ms"
                 f" x batch p50 {st.median(v[1] for v in batches.values()):.0f} | revalidations/request "
                 f"{sum(int(r['revalidations']) for r in win) / len(win):.2f} | on time "
-                f"{sum(r['submit_s'] != '' and r['submit_s'] < w1 for r in win) / len(win):.0%}",
+                f"{sum(r['submit_s'] != '' and r['submit_s'] < w1 for r in win) / len(win):.0%}"
+                f" | first submission {min((r['submit_s'] for r in c.rows if r['submit_s'] != ''), default=-1):.2f} s",
                 flush=True,
             )
     if sys_cpus and cfg["ledger"]["backend"] == "besu":

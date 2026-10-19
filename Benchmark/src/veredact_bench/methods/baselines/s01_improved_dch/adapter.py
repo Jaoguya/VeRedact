@@ -22,7 +22,7 @@ import gmpy2
 from coincurve import PrivateKey
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from veredact_bench.evaluation.anchor import gather, make_anchor
+from veredact_bench.evaluation.anchor import chain_digest, gather, make_anchor
 from veredact_bench.methods.baselines.s01_improved_dch.construction import ImprovedDCH, dkg
 from veredact_bench.methods.scheme import (
     AuditQuery,
@@ -50,6 +50,9 @@ def _mroot(payloads):
             level.append(level[-1])
         level = [hashlib.sha256(level[i] + level[i + 1]).digest() for i in range(0, len(level), 2)]
     return level[0]
+
+
+_SETUP: dict = {}  # (ledger, parameters) -> keys + pristine chain (setup)
 
 
 class ImprovedDCHScheme(Scheme):
@@ -81,32 +84,55 @@ class ImprovedDCHScheme(Scheme):
 
     # ------------------------------------------------------------------ setup (untimed)
     def setup(self, dataset: Dataset) -> None:
-        self.key_ = dkg(self.t, self.n)
+        """Keys and the chain (one Improved DCH hash per block, one owner signature per tx), built once per
+        process for a given ledger and parameter set and reused by later points, like S34's hash table: at a
+        10^6-tx ledger with 1-tx blocks (2026-10-18) every Exp. 1 point would otherwise rebuild 10^6 hashes.
+        Each point gets its own copy of the block headers (a redaction updates its block in place)."""
+        k = (
+            dataset.seed,
+            len(dataset.transactions),
+            dataset.requesters,
+            self.t,
+            self.n,
+            self.acc_bits,
+            self.cfg["baselines"]["S1"]["txs_per_block"],
+        )
+        if k not in _SETUP:
+            _SETUP.clear()  # one chain at a time: a 10^6-block chain is ~GBs
+            _SETUP[k] = self._chain(dataset)
+        self.key_, self.owners, self.N, self.g, blocks, self.block_of, self.sig = _SETUP[k]
         self.dch = ImprovedDCH(self.key_)
         self.parties = list(self.key_.shares)[: self.t]
-        self.owners = [PrivateKey() for _ in range(dataset.requesters)]
-        nums = rsa.generate_private_key(public_exponent=65537, key_size=self.acc_bits).private_numbers()
-        self.N = nums.public_numbers.n
-        self.g = pow(3, 2, self.N)
+        self.blocks = [dict(b) for b in blocks]  # this point's headers; the cached ones stay pristine
         # acc = g^(prod of redacted-header primes); every full node also holds the accumulated set itself
         self.acc, self.members, self.member_set = self.g, [], set()
+        self.anchor = make_anchor(self.cfg)
+        self.redacted = []  # (seq, block)
+        self.rec_id = {}  # block -> id of its redaction record on the chain
+
+    def _acc_bytes(self) -> bytes:
+        return int(self.acc).to_bytes((self.N.bit_length() + 7) // 8, "big")
+
+    def _chain(self, dataset: Dataset) -> tuple:
+        key_ = dkg(self.t, self.n)
+        dch = ImprovedDCH(key_)
+        owners = [PrivateKey() for _ in range(dataset.requesters)]
+        nums = rsa.generate_private_key(public_exponent=65537, key_size=self.acc_bits).private_numbers()
+        N = nums.public_numbers.n
         N_leaves = self.cfg["baselines"]["S1"]["txs_per_block"]  # S1's own block size (s01_improved_dch.yaml)
-        self.blocks, self.block_of, self.sig = [], {}, {}
+        blocks, block_of, sig = [], {}, {}
         prev = b"genesis"
         for off in range(0, len(dataset.transactions), N_leaves):
             chunk = dataset.transactions[off : off + N_leaves]
             payloads = [t.payload for t in chunk]
             msg = prev + _mroot(payloads)
-            hv = self.dch.hash(msg)
-            self.blocks.append(
-                {"prev": prev, "payloads": payloads, "msg": msg, "h": hv.h, "r": hv.r, "redacted": False}
-            )
+            hv = dch.hash(msg)
+            blocks.append({"prev": prev, "payloads": payloads, "msg": msg, "h": hv.h, "r": hv.r, "redacted": False})
             for pos, t in enumerate(chunk):
-                self.block_of[t.tid] = (len(self.blocks) - 1, pos)
-                self.sig[t.tid] = self.owners[t.owner].sign(t.payload)
+                block_of[t.tid] = (len(blocks) - 1, pos)
+                sig[t.tid] = owners[t.owner].sign(t.payload)
             prev = hashlib.sha256(hv.h.to_compressed_bytes()).digest()
-        self.anchor = make_anchor(self.cfg)
-        self.redacted = []  # (seq, block)
+        return key_, owners, N, pow(3, 2, N), blocks, block_of, sig
 
     # ------------------------------------------------------------------ authorize: steps 1-3
     def authorize(self, req: RedactionRequest) -> Authorization:
@@ -158,15 +184,18 @@ class ImprovedDCHScheme(Scheme):
                 self.members.append(x)
                 self.member_set.add(x)
                 # pipelined like VeRedact's anchoring: finality is tracked by the Future, not awaited here
+                # the redacted header carries the updated acc (Li et al. Alg. 1 line 16): anchored with the record
                 futs.append(
                     self.anchor.submit(
-                        "baseline_redaction",
+                        "baseline_redaction_acc",
                         tid=a.request.tid.ljust(32, b"\0")[:32],
                         commit=hashlib.sha256(msg_new).digest(),
                         version=1,
                         evidence=r_new.to_compressed_bytes(),
+                        acc=self._acc_bytes(),
                     )
                 )
+                self.rec_id[b] = self.anchor.last_record_id()
                 self.redacted.append((a.request.seq, b))
             outcomes.append(RedactionOutcome(a.request.seq, ok))
         return RedactionResult(
@@ -175,7 +204,7 @@ class ImprovedDCHScheme(Scheme):
             0.0,
             len(futs),
             finality=gather(futs) if futs else None,
-            finality_op="baseline_redaction",
+            finality_op="baseline_redaction_acc",
         )
 
     # ------------------------------------------------------------------ audit: consistency check
@@ -214,10 +243,16 @@ class ImprovedDCHScheme(Scheme):
                 )
             )
         t1 = time.perf_counter()
+        # client: the chain's view first (2026-10-19): the latest header's acc and each queried block's anchored
+        # redaction record, then integrity and membership per record
+        acc_ok = self.anchor.read("latest_acc") == chain_digest(self._acc_bytes())
+        commits = self.anchor.read("commits", ids=[self.rec_id[b] for b, _, _, _ in evidence])
         accepted = {}
-        for i, (b, msg, r, wit) in enumerate(evidence):  # client: integrity, then membership
+        for i, (b, msg, r, wit) in enumerate(evidence):
             ok = (
-                self.dch.verify(msg, r, self.blocks[b]["h"])
+                acc_ok
+                and hashlib.sha256(msg).digest() == commits[i]
+                and self.dch.verify(msg, r, self.blocks[b]["h"])
                 and int(gmpy2.powmod(wit, _hprime(msg), self.N)) == self.acc
             )
             accepted[i] = ok

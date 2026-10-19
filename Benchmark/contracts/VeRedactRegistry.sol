@@ -108,6 +108,10 @@ contract BaselineRedactionLog {
 
     mapping(uint256 => Record) public records;
     uint256 public count;
+    // S1 (Jia's chain): the RSA accumulator acc is part of every block header (Li et al. Alg. 1 line 16), so the
+    // header written by a redaction carries the updated acc; its keccak256 is kept per record
+    mapping(uint256 => bytes32) public accs;
+    uint256 public lastAcc;
 
     event Redacted(uint256 indexed id, bytes32 tid, uint64 version);
 
@@ -115,5 +119,30 @@ contract BaselineRedactionLog {
         records[count] = Record(tid, newCommit, evidence.length > 0 ? keccak256(evidence) : bytes32(0), version);
         emit Redacted(count, tid, version);
         count++;
+    }
+
+    /// @notice recordRedaction plus the header's accumulator value (S1 only; the other baselines are unchanged)
+    function recordRedactionWithAcc(
+        bytes32 tid,
+        bytes32 newCommit,
+        uint64 version,
+        bytes calldata evidence,
+        bytes calldata acc
+    ) external {
+        records[count] = Record(tid, newCommit, evidence.length > 0 ? keccak256(evidence) : bytes32(0), version);
+        accs[count] = keccak256(acc);
+        lastAcc = count;
+        emit Redacted(count, tid, version);
+        count++;
+    }
+
+    // ---------------- auditor reads (eth_call, no gas) ----------------
+    function getCommits(uint256[] calldata ids) external view returns (bytes32[] memory out) {
+        out = new bytes32[](ids.length);
+        for (uint256 i = 0; i < ids.length; i++) out[i] = records[ids[i]].newCommit;
+    }
+
+    function latestAcc() external view returns (bytes32) {
+        return accs[lastAcc];
     }
 }

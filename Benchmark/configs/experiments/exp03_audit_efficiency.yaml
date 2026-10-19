@@ -3,9 +3,12 @@ experiment:
   id: exp03_audit_efficiency
   paper: [fig:exp3_audit]
   systems: [veredact, S13, S1]  # only systems with an audit/consistency path
-  n_Q: [10, 100, 1000, 10000]                # [DERIVED] manuscript
+  n_Q: [10, 100, 1000, 10000, 100000]  # [DERIVED] manuscript 10..10^4; 10^5 added (author decision 2026-10-17)
   records_per_batch: [64]       # [DERIVED] = veredact.reference_batch: one VeRedact-PQ setting (author decision
                                 #   2026-10-04: one line per scheme, no second setting)
   samples_per_point: 30         # [PROPOSED] audit queries per (system, records per batch, n_Q) in the one run
-  samples_override: {S13: {"10000": 5}}   # [METHOD] S13 builds one RSA-accumulator non-membership witness per record
-                                #   (pilot: 106 s per audit at n_Q = 10^3): 5 samples at 10^4 (author decision 2026-10-04)
+  samples_override:             # [METHOD] fewer queries where one costs minutes to hours (same for every scheme)
+    S13: {"10000": 5, "100000": 5}   # S13 builds one RSA-accumulator non-membership witness per record (author
+                                #   decision 2026-10-04: 5 at 10^4)
+    S1: {"100000": 5}           # n_Q = 10^5 (author decision 2026-10-19: one run, 5 queries at 10^5 for every scheme)
+    veredact: {"100000": 5}

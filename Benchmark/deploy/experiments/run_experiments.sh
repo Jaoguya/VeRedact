@@ -28,8 +28,12 @@ mkdir -p results/logs
 LOG="results/logs/${TIER}_${EXPS// /_}_$(date +%Y%m%d-%H%M%S).log"
 echo "running $EXPS on tier $TIER (ledger=$LEDGER_BACKEND) -> $LOG"
 "$PY" scripts/run_eval.py --tier "$TIER" --experiment $EXPS ${SYSTEMS:+--systems $SYSTEMS} 2>&1 | tee "$LOG"
-{ "$PY" scripts/make_tables.py --tier "$TIER" && "$PY" scripts/make_figures.py --tier "$TIER"; } 2>&1 | tee -a "$LOG" \
-  || echo "tables/figures failed (results are intact)"
+# paper tables/figures only from a single experiment-tier run: a repetition's come from scripts/aggregate_reps.py,
+# and a smoke/scale run must never overwrite Result/ or Overleaf/tables (its numbers are plumbing checks)
+if [[ "$TIER" == experiment && -z "${VRPQ_REP:-}" ]]; then
+  { "$PY" scripts/make_tables.py --tier "$TIER" && "$PY" scripts/make_figures.py --tier "$TIER"; } 2>&1 | tee -a "$LOG" \
+    || echo "tables/figures failed (results are intact)"
+fi
 if [[ -n "${RUN_S3_URI}" ]]; then
   aws s3 sync results "$RUN_S3_URI/results/$(hostname)" --only-show-errors
   aws s3 sync ../Result "$RUN_S3_URI/Result/$(hostname)" --only-show-errors

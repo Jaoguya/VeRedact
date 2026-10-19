@@ -4,15 +4,16 @@ Usage: scripts/check_coverage.py --tier smoke"""
 
 import argparse
 import json
+import os
 import sys
 
-from veredact_bench.utils.config import REPO_ROOT, load
+from veredact_bench.utils.config import REPO_ROOT, load, results_tier
 
 R = REPO_ROOT / "results"
 
 
 def pts(exp, key, tier):
-    p = R / exp / key / tier / "metrics.json"
+    p = R / exp / key / results_tier(tier) / "metrics.json"  # VRPQ_REP=r: the repetition's folder
     return json.loads(p.read_text())["points"] if p.exists() else None
 
 
@@ -42,8 +43,13 @@ def main():
     tier = ap.parse_args().tier
     gaps, checked = [], 0
 
+    # VRPQ_SKIP="exp:system,...": pairs another server owns in a repeated run (as run_eval skips them)
+    skip = {tuple(p.split(":", 1)) for p in os.environ.get("VRPQ_SKIP", "").split(",") if ":" in p}
+
     def need(exp, key, want, field, inner=None, label=""):
         nonlocal checked
+        if (exp, key) in skip:
+            return
         checked += 1
         p = pts(exp, key, tier)
         if p is None:
@@ -73,6 +79,18 @@ def main():
         for key in e["systems"]:
             for n in e["n_Q"]:
                 need(exp, key, {"n_Q": n}, field, "median")
+        # one dataset and one history request list for every scheme of the experiment (author rule 2026-10-19)
+        seen = {}
+        for key in e["systems"]:
+            info = R / exp / key / results_tier(tier) / "run_info.json"
+            p = pts(exp, key, tier)
+            if p is None or not info.exists():
+                continue
+            ds = tuple(json.loads(info.read_text()).get("dataset_ids", []))
+            hs = tuple(sorted({v.get("history_id") for v in p.values() if v.get("history_id")}))
+            seen[key] = (ds, hs)
+        if len(set(seen.values())) > 1:
+            gaps.append(f"{exp}: schemes differ in dataset / history: {seen}")
     x = load(tier, "exp05_gas_consumption")
     e = x["experiment"]
     gas_field = "gas_per_redaction" if x["ledger"]["backend"] == "besu" else "redactions"  # in_process: no receipts

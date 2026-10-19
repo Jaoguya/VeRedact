@@ -10,6 +10,9 @@
 
 submit() returns a Future resolving to (ledger_ms, gas_used): executors never block on a block period, so
 Exp. 1 measures finality latency without serialising the pipeline behind it.
+read() is the auditor's view of the chain (2026-10-19: until then no audit read the contracts): eth_call /
+eth_getLogs on Besu, the same state rebuilt from the submitted operations in process. Every submitted operation
+is also kept in `oplog`, so a saved history can be anchored again on a fresh network (history_cache.replay).
 """
 
 import os
@@ -23,14 +26,37 @@ from veredact_bench.utils.log import get_logger
 log = get_logger()
 
 
+def chain_digest(data: bytes) -> bytes:
+    """keccak256, as the contracts store variable-length fields (an auditor compares against it)."""
+    from eth_hash.auto import keccak
+
+    return keccak(data)
+
+
 class _Metered:
     """Every anchor keeps a receipt log [(op, ledger_ms, gas_used)] filled as receipts arrive, so Exp. 5
     reads gas for every system from the same place, whichever code path submitted the transaction."""
 
     def submit(self, op: str, **fields) -> Future:
+        self.oplog.append((op, fields))
+        if op.startswith("baseline_redaction"):
+            self.base_count += 1  # BaselineRedactionLog record id = submission order (one sender, ordered nonces)
         fut = self._submit(op, **fields)
         fut.add_done_callback(lambda f, op=op: f.exception() is None and self.receipts.append((op, *f.result())))
         return fut
+
+    def last_record_id(self) -> int:
+        """Id of the BaselineRedactionLog record of the latest baseline_redaction* submission."""
+        return self.base_count - 1
+
+    def read(self, what: str, **keys):
+        """Auditor-side chain read:
+        rai_checkpoint(epoch) -> bytes32 (CP_e^A);
+        checkpoint_history(batches) -> {(b, v_b): MR_b} of the given batches, from every anchored checkpoint
+            (initial and each finalized transition);
+        commits(ids) -> [bytes32] (BaselineRedactionLog records);
+        latest_acc() -> bytes32 (keccak256 of S1's latest header accumulator)."""
+        return self._read(what, **keys)
 
 
 def gather(futures: list) -> Future:
@@ -63,14 +89,44 @@ class InProcessAnchor(_Metered):
     name = "in_process"
 
     def __init__(self, cfg=None):
-        self.log, self.receipts = [], []
+        self.log, self.receipts, self.oplog, self.base_count = [], [], [], 0
+        self._rai, self._cps, self._commits, self._accs = {}, {}, [], {}
+        self._ver = {}
 
     def _submit(self, op: str, **fields) -> Future:
         t = time.perf_counter()
         self.log.append((op, fields))
-        f = Future()
-        f.set_result(((time.perf_counter() - t) * 1000, None))
-        return f
+        f = fields  # the contracts' state, kept as Besu would (what read() returns)
+        if op == "batch_checkpoint":
+            self._ver[f["b"]] = 0
+            self._cps[(f["b"], 0)] = f["mr"]
+        elif op == "redaction_finalization":
+            for b, mr, vb in zip(f["batches"], f["mrs"], f["vbs"]):
+                if vb != self._ver[b] + 1:
+                    raise RuntimeError(f"stale version: batch {b} v_b {vb} after {self._ver[b]}")
+                self._ver[b] = vb
+                self._cps[(b, vb)] = mr
+        elif op == "rai_checkpoint":
+            self._rai[f["epoch"]] = f["cp"]
+        elif op.startswith("baseline_redaction"):
+            self._commits.append(f["commit"])
+            if "acc" in f:
+                self._accs["latest"] = chain_digest(f["acc"])
+        fut = Future()
+        fut.set_result(((time.perf_counter() - t) * 1000, None))
+        return fut
+
+    def _read(self, what: str, **k):
+        if what == "rai_checkpoint":
+            return self._rai.get(k["epoch"], b"\0" * 32)
+        if what == "checkpoint_history":
+            bs = set(k["batches"])
+            return {key: mr for key, mr in self._cps.items() if key[0] in bs}
+        if what == "commits":
+            return [self._commits[i] for i in k["ids"]]
+        if what == "latest_acc":
+            return self._accs.get("latest", b"\0" * 32)
+        raise ValueError(f"unknown chain read {what}")
 
     def close(self):
         pass
@@ -108,7 +164,8 @@ class BesuAnchor(_Metered):
         self._senders = ThreadPoolExecutor(led["sender_threads"], thread_name_prefix="besu-sender")
         self.reg = self._deploy(art["VeRedactRegistry"])
         self.base = self._deploy(art["BaselineRedactionLog"])
-        self.receipts = []
+        self._from_block = self.w3.eth.block_number  # checkpoint events of THIS deployment start here
+        self.receipts, self.oplog, self.base_count = [], [], 0
         self._ver = {}  # batch -> anchored version (contract enforces v_b' = v_b + 1)
         self._pending: dict[bytes, tuple] = {}  # tx hash -> (Future, submit time)
         self._raw: dict[bytes, bytes] = {}  # tx hash -> signed raw transaction (re-sent if the node lost it)
@@ -286,18 +343,46 @@ class BesuAnchor(_Metered):
         elif op == "abrrr_authorization":
             h = self._send(self.reg.functions.anchorAuthorization(f["bid"], f["digest"]), t0)
         elif op == "redaction_finalization":
-            bs = f["batches"]
-            cps = [cp(b, self._ver[b] + 1) for b in bs]
-            for b in bs:
-                self._ver[b] += 1
+            # each touched batch's NEW checkpoint: its real MR_b' and v_b' (2026-10-19: MR_b' was a random
+            # placeholder of the right size, so an auditor reading the chain could not check a transition)
+            bs, cps = f["batches"], []
+            for b, mr, vb in zip(bs, f["mrs"], f["vbs"]):
+                c = list(cp(b, vb))
+                c[1] = mr
+                cps.append(tuple(c))
+                self._ver[b] = vb
             h = self._send(self.reg.functions.finalizeRedaction(f["bid"], bs, cps, f["sigs"]), t0)
         elif op == "rai_checkpoint":
             h = self._send(self.reg.functions.anchorRai(f["epoch"], f["cp"]), t0)
         elif op == "baseline_redaction":
             h = self._send(self.base.functions.recordRedaction(f["tid"], f["commit"], f["version"], f["evidence"]), t0)
+        elif op == "baseline_redaction_acc":  # S1: the redacted header carries the updated accumulator
+            args = (f["tid"], f["commit"], f["version"], f["evidence"], f["acc"])
+            h = self._send(self.base.functions.recordRedactionWithAcc(*args), t0)
         else:
             raise ValueError(f"unknown anchoring op {op}")
         return h
+
+    def _read(self, what: str, **k):
+        chunk = 2000  # ids per eth_call: bounded response size, the same for every scheme
+        if what == "rai_checkpoint":
+            return bytes(self.reg.functions.raiCheckpoints(k["epoch"]).call())
+        if what == "checkpoint_history":  # CheckpointAnchored(b indexed, vb, mr) of the queried batches only
+            bs, out = sorted(set(k["batches"])), {}
+            for i in range(0, len(bs), 500):
+                logs = self.reg.events.CheckpointAnchored.get_logs(
+                    from_block=self._from_block, argument_filters={"b": bs[i : i + 500]}
+                )
+                out.update({(int(e.args.b), int(e.args.vb)): bytes(e.args.mr) for e in logs})
+            return out
+        if what == "commits":
+            ids, out = list(k["ids"]), []
+            for i in range(0, len(ids), chunk):
+                out += [bytes(x) for x in self.base.functions.getCommits(ids[i : i + chunk]).call()]
+            return out
+        if what == "latest_acc":
+            return bytes(self.base.functions.latestAcc().call())
+        raise ValueError(f"unknown chain read {what}")
 
     def close(self):
         """Wait (up to ledger.receipt_timeout_s) for every submitted transaction, then stop the watcher."""

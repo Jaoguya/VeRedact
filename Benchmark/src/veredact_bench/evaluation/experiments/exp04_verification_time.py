@@ -1,6 +1,7 @@
 """Exp. 4 — verification time, auditor side (manuscript Fig. 6), with fault injection.
 
-History as in Exp. 3 (VeRedact-PQ submitted in batches of veredact.reference_batch). Per n_Q, level and
+History as in Exp. 3 (VeRedact-PQ submitted in batches of veredact.reference_batch); when Exp. 3 ran just
+before in the same process, its histories are reused (exp03_audit_efficiency.SHARED). Per n_Q, level and
 injected fraction f: a seeded f * n_Q of the returned records are tampered (modified content,
 substituted evidence, stale version — cycled), the auditor verifies, and every record's decision is
 written. f = 0 (no injection) is always run: it is the clean verification time.
@@ -11,16 +12,24 @@ that shows up here as false rejections, which is the protocol's real behaviour.
 
 import random
 
-from veredact_bench.evaluation.experiments.exp03_audit_efficiency import histories, query_rows
+from veredact_bench.evaluation.experiments.exp03_audit_efficiency import histories, query_rows, release
 from veredact_bench.methods.scheme import AuditQuery
 
 KINDS = ("modified", "substituted", "stale")
-# Fig. 6(b): response signature + query binding, RAI multiproof, committee approvals, attestations,
+# per-step verification breakdown (rows/metrics only; Fig. 6(b) removed 2026-10-17): response signature +
+# query binding, RAI multiproof, committee approvals, attestations,
 # state-transition and PQCH checks, PQZK (VeRedact-PQ reports these; baselines leave them empty)
 BREAKDOWN = ("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms", "zk_ms")
 
 
 def run(cfg, out):
+    try:
+        _run(cfg, out)
+    finally:
+        release()  # histories kept by Exp. 3 for a method this run did not take
+
+
+def _run(cfg, out):
     x = cfg["experiment"]
     for key, rpb, s, counts, ds in histories(cfg, out, [cfg["veredact"]["reference_batch"]]):
 

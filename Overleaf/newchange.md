@@ -83,7 +83,7 @@ $T_E^{c}$ & RSA-3072 exponentiation~\cite{ref13} & [TBD] \\
 
 ## D. From the evaluation-code restructure (2026-10-03)
 
-### D1. Lines 2867–2868 — one run per configuration point (author decision 2026-10-03), not 30 runs
+### D1. Lines 2867–2868 — one run per configuration point (author decisions 2026-10-03, 2026-10-19), not 30 runs
 Find: `used, and all reported results represent the mean of 30 independent runs` … `with 95\% confidence intervals.`
 ```latex
 used. Each configuration point is executed once; reported values are medians (and 95th percentiles for
@@ -93,7 +93,13 @@ latency) over all requests or samples of that run, with 95\% confidence interval
 ### D2. Line 2928 — Table "Default Experimental Parameters"
 Find: `Repetitions & 30 runs, 95\% confidence interval \\`
 ```latex
-Runs & 1 per point; 30 samples per point (Exp.~2--4) \\
+Runs & 1 per point; 30 samples per point (Exp.~2--4), 5 at $n_Q=10^5$ \\
+```
+
+### D2b. Line 2925 — ledger size 10^6 (author decision 2026-10-18: audit axis up to n_Q = 10^5)
+Find: `Ledger size & [$10^5$] transactions \\`
+```latex
+Ledger size & [$10^6$] transactions \\
 ```
 
 ### D3. Optional — vector figures. The code writes each figure as both `.png` (current names) and `.pdf`
@@ -204,7 +210,7 @@ throughput of finalized redactions falls to near zero. VeRedact-PQ sustains the
 
 | Line(s) | What | Source |
 |:--|:--|:--|
-| 2835-2836 | CPU, cores, clock; RAM | `Benchmark/results/<exp>/<method>/experiment/run_info.json` → environment (c7i.4xlarge: 16 vCPU, 32 GiB) |
+| 2835-2836 | CPU, cores, clock; RAM | `Benchmark/results/<exp>/<method>/experiment/run_info.json` → environment (r7i.4xlarge since 2026-10-18: 16 vCPU Xeon 8488C, 128 GiB) |
 | 2890 | `$T_{ZP}$ / $T_{ZV}$ & PQZK prove / verify & [TBD] / [TBD]` → `$T_{ZP}$ / $T_{ZV}$ & PQZK prove / verify (single core) & … / …` | proofs are generated on one core (STARK built without winterfell's `concurrent` feature), as on a requester's own device; values from `Benchmark/results/exp00_primitives/veredact/experiment/metrics.json` |
 | 2838 | netem delay | `Benchmark/configs/base.yaml` `ledger.netem_delay_ms` (now 10, marked CONFIRM) |
 | 2852 | number of Besu validators | `Benchmark/configs/base.yaml` `ledger.validators` (now 7, marked CONFIRM) |

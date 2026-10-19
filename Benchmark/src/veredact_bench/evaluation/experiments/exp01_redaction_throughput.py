@@ -73,8 +73,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     stamp = {r.seq: {} for r in ds.trace}
     batch_no = [0]  # executor-side batch counter (rows of one batch share batch_id / batch_adaptations)
     stop = threading.Event()
-    t0 = time.perf_counter() + 0.5  # clients start preparing now; arrivals are relative to t0
-    now = lambda: time.perf_counter() - t0
+    now = lambda: time.perf_counter() - t0  # t0: set below, once the requesters' provers are ready
 
     pin = x.get("cpu_pin")  # diagnostics only: {"requesters": [cpus], "system": [cpus]} (Linux)
 
@@ -98,6 +97,10 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         )
     if sys_cpus:
         os.sched_setaffinity(0, sys_cpus)  # this thread; every thread started below inherits it
+    # the point's clock starts only now: the prover handshake (registry rebuild + worker start-up, ~14 s on the
+    # remote hosts) used to run on it, so the first proofs came back at 13-15 s, after the 10 s warm-up
+    # (every Exp. 1 point of the 2026-10-16/17 runs)
+    t0 = time.perf_counter() + 0.5  # clients start preparing now; arrivals are relative to t0
 
     def requester(r):
         """The request as its requester sends it, proved against the state at THIS moment."""
@@ -271,6 +274,8 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         pool.join()
     if remote is not None:
         remote.close()
+        if remote.lost:  # a prover host vanished mid-point (spot reclaim): its requests never got proofs
+            raise RuntimeError(f"{key} rate={rate} s={zipf_s}: prover host(s) {remote.lost} lost during the point")
     if sys_cpus:
         os.sched_setaffinity(0, sum(cpus.physical_cores(), []))  # setup of the next point uses every core
     s.teardown()
@@ -340,7 +345,7 @@ def run(cfg, out):
     _, sys_cpus = (None, None) if prover_addresses(x) else cpus.split(x["requester_cores"])
     if sys_cpus and cfg["ledger"]["backend"] == "besu":
         cpus.pin_besu(sys_cpus)  # the validators belong to the system side (audit A3)
-    for key in system_keys(cfg):  # one run per point (no repetitions): every request of the run is a sample
+    for key in system_keys(cfg):  # one run per point: every request of the run is a sample
         if not out.begin(key):
             continue
         for rate in x["rates"]:  # rate sweep at the default skew: every rate, for every system

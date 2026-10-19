@@ -102,8 +102,19 @@ class ShardedIndex:
         return sum(len(s.entries) for s in self.shards)
 
 
+class _BucketOrder:
+    """SA-RLI ordering key (bid_i = H_2(tau_i) mod B, then tau_i): a picklable callable, so a saved
+    redaction history (evaluation/history_cache.py) can hold the index."""
+
+    def __init__(self, B: int):
+        self.B = B
+
+    def __call__(self, tau):
+        return (to_int(H2(tau)) % self.B, tau)
+
+
 def sa_rli(S: int, B: int) -> ShardedIndex:
-    return ShardedIndex(S, H1, order_key=lambda tau: (to_int(H2(tau)) % B, tau))
+    return ShardedIndex(S, H1, order_key=_BucketOrder(B))
 
 
 def rai(S_A: int) -> ShardedIndex:

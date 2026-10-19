@@ -114,10 +114,35 @@ def _e2e_latency_ms(win, rs) -> tuple[list[float], int]:
     return out, censored
 
 
+def _complete_per_request(r) -> float:
+    """Complete authorization of one request: its per-request step (VeRedact-PQ Phase 3 validation; a baseline's
+    whole authorization) plus its share of the batch step (Phase 4 / m; S99 aggregation + Eq. 13 / m)."""
+    ph4 = _num(r.get("phase4_batch_ms"))
+    return _num(r["phase3_ms"]) + (ph4 / int(r["batch_size"]) if ph4 is not None else 0.0)
+
+
+def _complete_per_batch(rs) -> list[float]:
+    """Complete authorization of each batch of m requests: m per-request steps + the batch step (once)."""
+    by = defaultdict(list)
+    for r in rs:
+        by[r.get("sample")].append(r)
+    out = []
+    for b in by.values():
+        ph4 = _num(b[0].get("phase4_batch_ms"))
+        out.append(sum(_num(r["phase3_ms"]) for r in b) + (ph4 if ph4 is not None else 0.0))
+    return out
+
+
 def _exp02(rows, cfg):
     return {
         k: {
+            # Fig. 4 (2026-10-17): COMPLETE authorization for every scheme. Phase 4 alone left out VeRedact-PQ's
+            # per-request validation (ML-DSA + PQZK verification, ~1.3 ms) while the baselines' whole
+            # authorization was counted
+            "auth_complete_per_request_ms": _stats(_complete_per_request(r) for r in rs),
+            "auth_complete_per_batch_ms": _stats(_complete_per_batch(rs)),
             "auth_per_request_ms": _stats(r["auth_per_request_ms"] for r in rs),
+            "phase3_ms": _stats(r["phase3_ms"] for r in rs),
             "phase4_batch_ms": _stats(r["phase4_batch_ms"] for r in rs),
             "batch_total_ms": _stats(r.get("batch_total_ms") for r in rs),
             "accepted": sum(int(r["auth_ok"]) for r in rs),
@@ -133,6 +158,7 @@ def _exp03(rows, cfg):
         ok = [r for r in rs if r.get("status") == "ok"]
         out[k] = {
             "status": "ok" if ok else rs[0].get("status"),
+            "history_id": rs[0].get("history_id"),  # one history list for every scheme (check_coverage compares)
             "retrieval_ms": _stats(r["retrieval_ms"] for r in ok),
             "evidence_bytes": _stats(r["evidence_bytes"] for r in ok),
         }
@@ -150,6 +176,7 @@ def _exp04(rows, cfg):
         valid = sum(int(r["n_Q"]) - int(r["injected"]) for r in ok)
         out[k] = {
             "status": "ok",
+            "history_id": rs[0].get("history_id"),
             "verify_ms": _stats(r["verify_ms"] for r in ok),
             # None when nothing was injected (f * n_Q rounds to 0, e.g. 1% of 10 records): 0.0 would read as "missed"
             "injected": injected,

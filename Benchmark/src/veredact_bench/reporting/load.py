@@ -2,6 +2,7 @@
 
 import csv
 import json
+import os
 
 from veredact_bench.utils.config import REPO_ROOT
 
@@ -9,9 +10,11 @@ RESULTS = REPO_ROOT / "results"
 
 
 def runs(experiment: str, tier: str) -> dict:
-    """method key -> run folder, for every finished (metrics.json present) method of the experiment."""
+    """method key -> run folder, for every finished (metrics.json present) method of the experiment.
+    VRPQ_RESULTS_TIER=<folder> reads another results folder of the same tier, e.g. experiment-reps (the
+    repetitions aggregated by scripts/aggregate_reps.py); the tier's config is still the tier's."""
     out = {}
-    for d in sorted((RESULTS / experiment).glob(f"*/{tier}")):
+    for d in sorted((RESULTS / experiment).glob(f"*/{os.environ.get('VRPQ_RESULTS_TIER') or tier}")):
         if (d / "metrics.json").exists():
             out[d.parent.name.replace("-", ":", 1)] = d
     return out

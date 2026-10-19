@@ -148,6 +148,7 @@ class VeRedactScheme(Scheme):
     # ------------------------------------------------------------------ Phase 6
     def index_records(self):
         self.p.index_records()
+        self.p.pending_anchor[-1].result()  # CP_e^A mined before any audit reads it from the chain (untimed)
 
     def audit(self, query: AuditQuery) -> AuditResult:
         recs = self.p.records[: query.records]

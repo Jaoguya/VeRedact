@@ -4,9 +4,11 @@ Gates (refuse to run, never warn and continue): an invalid config; the HMAC sign
 ML-DSA backend other than liboqs in the experiment tier.
 """
 
+import resource
 import time
 
 from veredact_bench.evaluation.experiments import RUNNERS
+from veredact_bench.evaluation.experiments import exp03_audit_efficiency as exp03
 from veredact_bench.evaluation.results import RunWriter
 from veredact_bench.methods.veredact.crypto.pqsig import load_pqsig
 from veredact_bench.utils.config import experiments, load
@@ -42,7 +44,10 @@ def check(tier: str) -> None:
 def run(tier: str, names: list[str], force: bool = False) -> None:
     log = get_logger()
     check(tier)
-    for name in experiments() if names == ["all"] else names:
+    names = experiments() if names == ["all"] else names
+    for i, name in enumerate(names):
+        # Exp. 3 keeps its histories for Exp. 4 only when Exp. 4 runs right after it in this process
+        exp03.KEEP = name == "exp03_audit_efficiency" and names[i + 1 : i + 2] == ["exp04_verification_time"]
         cfg = load(tier, name)
         set_seed(cfg["meta"]["seed"])
         out = RunWriter(cfg, force=force)
@@ -53,5 +58,7 @@ def run(tier: str, names: list[str], force: bool = False) -> None:
         except BaseException:
             if out.method:  # unfinished method: no metrics.json, so the next run redoes it
                 log.error(f"{name} {out.method}: aborted; its folder has no metrics.json and will be re-run")
+            exp03.release()
             raise
-        log.info(f"=== {name} done in {time.time() - t:.1f} s")
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20  # Linux: KiB -> GiB
+        log.info(f"=== {name} done in {time.time() - t:.1f} s (peak memory {peak:.1f} GiB)")

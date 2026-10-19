@@ -1,8 +1,8 @@
 """Metrics: pure functions (no I/O, no global state). Tables and figures compute every number through these.
 
-One run per configuration point (configs/base.yaml): a point's statistics come from the samples inside
-that run (every request in Exp. 1, every authorization batch / audit query in Exp. 2-4, every primitive
-call in exp00). Confidence intervals of the mean use Student's t (scipy.stats).
+One run per configuration point (configs/base.yaml): a point's statistics come
+from the samples inside that run (every request in Exp. 1, every authorization batch / audit query in
+Exp. 2-4, every primitive call in exp00). Confidence intervals of the mean use Student's t (scipy.stats).
 """
 
 import math

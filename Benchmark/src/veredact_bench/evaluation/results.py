@@ -21,7 +21,7 @@ import time
 from importlib import metadata
 
 from veredact_bench.evaluation.summaries import summarize
-from veredact_bench.utils.config import REPO_ROOT, dump
+from veredact_bench.utils.config import REPO_ROOT, dump, results_tier
 from veredact_bench.utils.log import add_file, get_logger, remove
 
 LIBS = (
@@ -101,7 +101,7 @@ class RunWriter:
         self.method = None
 
     def path(self, method: str):
-        return REPO_ROOT / self.cfg["output"]["dir"] / self.exp / method_dir(method) / self.tier
+        return REPO_ROOT / self.cfg["output"]["dir"] / self.exp / method_dir(method) / results_tier(self.tier)
 
     def begin(self, method: str) -> bool:
         """Start one method's run. False = already done (metrics.json exists) and not forced: skip it."""

@@ -46,8 +46,8 @@ Benchmark/deploy/aws/teardown_ec2.sh
 
 | Tier | Machine | Ledger | Runtime |
 |:--|:--|:--|:--|
-| smoke | AWS EC2 c7i.4xlarge (the same server) | in-process | ~10 min |
-| pilot | AWS EC2 c7i.4xlarge (16 vCPU, 32 GiB), Ubuntu 24.04, ap-southeast-1 | 7-validator Besu QBFT | ~3–5 h |
+| smoke | AWS EC2 r7i.4xlarge (the same server) | in-process | ~10 min |
+| pilot | AWS EC2 r7i.4xlarge (16 vCPU Xeon 8488C, 128 GiB; c7i.4xlarge / 32 GiB until 2026-10-18), Ubuntu 24.04, ap-southeast-1 | 7-validator Besu QBFT | ~3–5 h |
 | experiment | same instance + 2 × c7i.48xlarge prover hosts (Exp. 1, VeRedact-PQ) | same | ~9 h measured (2026-10-09 run, excluding a 3.5 h hang) |
 
 Per-experiment runtimes of the 2026-10-09 run: `Benchmark/results/<exp>/<method>/experiment/run_info.json`.

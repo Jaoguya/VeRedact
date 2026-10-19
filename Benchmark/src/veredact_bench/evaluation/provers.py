@@ -42,6 +42,8 @@ class RemoteProvers:
         key = os.environ["VRPQ_PROVER_KEY"].encode()
         self._conns, self._load, self._cap, self._lock = [], [], [], threading.Lock()
         self._cb, self._ids, self._pending = {}, itertools.count(), collections.deque()
+        self._closed = False
+        self.lost = []  # hosts whose connection dropped before close() (e.g. a reclaimed spot instance)
         b = bundle(scheme)
         for a in addresses:
             host, port = a.rsplit(":", 1)
@@ -70,6 +72,8 @@ class RemoteProvers:
     def _pump(self) -> None:
         while True:
             with self._lock:
+                if self._closed:  # the point is over: a late proof must not dispatch on a closed connection
+                    return
                 free = [i for i in range(len(self._load)) if self._load[i] < self._cap[i]]
                 if not free or not self._pending:
                     return
@@ -80,8 +84,11 @@ class RemoteProvers:
                 self._cb[jid] = (i, cb)
             job = make_job()  # reads the live state now: the proof starts as soon as it arrives
             c, lk = self._conns[i]
-            with lk:
-                c.send(("job", jid, job))
+            try:
+                with lk:
+                    c.send(("job", jid, job))
+            except OSError:  # close() ran between the check above and the send (rep 1, 2026-10-17: EBADF)
+                return
 
     def _read(self, i):
         c, _ = self._conns[i]
@@ -89,6 +96,9 @@ class RemoteProvers:
             try:
                 msg = c.recv()
             except (EOFError, OSError, TypeError):  # TypeError: the connection was closed under recv
+                with self._lock:
+                    if not self._closed:
+                        self.lost.append(i)
                 return
             if msg[0] != "done":
                 continue
@@ -101,6 +111,7 @@ class RemoteProvers:
 
     def close(self):
         with self._lock:
+            self._closed = True
             self._pending.clear()
         for c, lk in self._conns:
             with lk:

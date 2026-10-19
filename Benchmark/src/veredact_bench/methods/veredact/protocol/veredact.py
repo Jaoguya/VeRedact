@@ -315,6 +315,8 @@ class VeRedactPQ:
             "redaction_finalization",
             bid=auth.BID.ljust(32, b"\0"),
             batches=touched,
+            mrs=[L.checkpoints[b].MR for b in touched],  # MR_b' of each transition, as the auditor reads it
+            vbs=[L.checkpoints[b].v_b for b in touched],
             sigs=[L.checkpoints[b].sigma for b in touched],
         )
         self.pending_anchor.append(self.last_finalization)
@@ -423,8 +425,11 @@ class VeRedactPQ:
         self.last_breakdown = bd
         t0 = time.perf_counter()
         e, R_cp, v_cp, ts_cp, cp = self.rai_checkpoint
+        # Phase 6 Step 4: the selected checkpoint is the one ANCHORED on the PBN: read from the chain (2026-10-19:
+        # it was compared with the service's in-memory copy) and timed with the response checks
         ok_resp = (
             body["Q"] == Q
+            and L.anchor.read("rai_checkpoint", epoch=e) == cp
             and (body["R_RAI"], body["v_A"]) == (R_cp, v_cp)
             and c.H(e, R_cp, v_cp, ts_cp) == cp
             and c.verify(L.audit_svc.pk, c.H(body["Q"], len(body["records"]), body["R_RAI"], body["v_A"]), resp.sigma)
@@ -449,6 +454,11 @@ class VeRedactPQ:
         checked = {}
         transitions = {}  # (b, MR_b', r_b') -> PQCH check result: once per affected-batch transition
         result = {}
+        anchored = {}
+        if state_transition:  # finalized checkpoint references: (b, v_b') -> MR_b' as anchored, one read per response
+            t0 = time.perf_counter()
+            anchored = L.anchor.read("checkpoint_history", batches={rr.pbrp["b"] for rr in resp.records})
+            bd["state_ms"] += (time.perf_counter() - t0) * 1000
         for rr in resp.records:
             t0 = time.perf_counter()
             key = rr.BID
@@ -471,7 +481,7 @@ class VeRedactPQ:
                 tk = (p["b"], p["MR_new"], _raw(p["CH"]), _raw(p["r_new"]))  # exact bytes: no tamper reuses a result
                 if tk not in transitions:
                     transitions[tk] = c.ch_verify(L.pk_ch, p["CH"], p["MR_new"], p["r_new"])  # r_b' as in A_b'
-                ok &= transitions[tk]
+                ok &= transitions[tk] and anchored.get((p["b"], rr.v_b_new)) == p["MR_new"]
             t3 = time.perf_counter()
             if deep:
                 ev = self.evidence[rr.RID]

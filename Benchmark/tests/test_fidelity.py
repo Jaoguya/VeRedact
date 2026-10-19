@@ -154,6 +154,7 @@ def test_s1_history_is_topped_up_to_the_largest_n_q(cfg, ds):
     need = counts["redacted"] + 20
     fill_history(s, ds, cfg, need, 1, counts)
     assert counts["redacted"] >= need and len(s.redacted) >= need
+    assert counts["redacted"] < need + 5  # no overshoot: the history is not inflated beyond the largest n_Q
     s.teardown()
 
 
@@ -270,3 +271,19 @@ def test_s1_authorization_cost_does_not_grow_with_history(cfg, ds):
     ]
     assert later and max(later) < 10 * max(first) + 5.0
     s.teardown()
+
+
+def test_s1_chain_is_built_once_and_each_point_redacts_its_own_copy(cfg, ds):
+    """S1's chain is cached per process (setup at a 10^6 ledger); a redaction in one point must not leak into the
+    next point's chain, and the one-redaction-per-block rule still holds inside a point."""
+    from veredact_bench.methods.baselines.s01_improved_dch import adapter
+
+    a = open_system(cfg, "S1", ds)
+    r = ds.trace[0]
+    assert a.redact([authorize(a, r)]).outcomes[0].ok
+    assert not authorize(a, RedactionRequest(99_999, r.requester, r.tid, b"again", 0.0)).ok  # block taken
+    b = open_system(cfg, "S1", ds)
+    assert len(adapter._SETUP) == 1 and b.blocks[0] is not a.blocks[0]
+    assert authorize(b, r).ok and b.redact([authorize(b, r)]).outcomes[0].ok  # pristine copy
+    assert cfg["baselines"]["S1"]["txs_per_block"] == 1 and len(b.blocks) == len(ds.transactions)
+    a.teardown(), b.teardown()

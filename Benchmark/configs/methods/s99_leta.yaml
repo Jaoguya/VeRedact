@@ -5,7 +5,7 @@ schemes:
   S99:
     key: li2026_leta
     label: Q. Li et al. (LETA)
-    ref: 99                     # [CONFIRM] not cited in the manuscript yet; label until a reference number exists
+    ref: 39                     # [DERIVED] Overleaf/revised/VeRedact-2-blue.tex \bibitem{ref39}
     authors: Q. Li, Y. Xia, X. Liu, X. Chen, Z. Liu, Z. Guo, Z. Liu, L. Fang
     title: "LETA: A Lattice-Based Efficient and Traceable Privacy-Preserving Batch Authentication Scheme for Vehicle Platoon in VANETs"
     venue: IEEE JSAC 44, 2026

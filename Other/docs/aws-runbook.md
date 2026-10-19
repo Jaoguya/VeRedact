@@ -16,7 +16,7 @@ Keys pasted into a chat must be rotated in IAM.
 
 ```bash
 DRY_RUN=1 Benchmark/deploy/aws/provision_ec2.sh    # print the AWS calls only
-Benchmark/deploy/aws/provision_ec2.sh              # key pair, SSH-only SG, c7i.4xlarge Ubuntu 24.04, bootstrap
+Benchmark/deploy/aws/provision_ec2.sh              # key pair, SSH-only SG, r7i.4xlarge Ubuntu 24.04, bootstrap
 ```
 
 Bootstrap (`Benchmark/deploy/server/bootstrap_server.sh`): Docker, Python 3.12, liboqs 0.16.0 + liboqs-python,

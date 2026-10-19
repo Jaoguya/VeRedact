@@ -12,6 +12,7 @@ composes, in order (later wins):
 and returns a plain dict. The resolved dict is what every run saves as config_resolved.yaml.
 """
 
+import os
 from pathlib import Path
 
 from omegaconf import OmegaConf
@@ -22,6 +23,19 @@ RESULT_DIR = PROJECT_ROOT / "Result"  # paper figures: Result/Pdf/<name>.pdf and
 TABLE_DIR = PROJECT_ROOT / "Overleaf" / "tables"  # paper tables: Overleaf/tables/<name>.tex
 CONFIG_DIR = REPO_ROOT / "configs"
 TIERS = ("smoke", "pilot", "scale", "experiment")
+REP_SEED_STRIDE = 1000  # repetition r runs with meta.seed + (r - 1) * 1000: rep 1 = the single-run seed
+
+
+def rep() -> int | None:
+    """Repetition index of this process (VRPQ_REP=1..R, set per server in a repeated run), or None."""
+    r = os.environ.get("VRPQ_REP")
+    return int(r) if r else None
+
+
+def results_tier(tier: str) -> str:
+    """Results folder name of a tier: <tier>-repNN inside a repetition, else the tier itself."""
+    r = rep()
+    return f"{tier}-rep{r:02d}" if r else tier
 
 
 def experiments() -> list[str]:
@@ -57,7 +71,13 @@ def load(tier: str, experiment: str | None = None) -> dict:
         exp = OmegaConf.merge(exp, {"experiment": tier_exps.get(experiment, {})})
         parts.append(exp)
     parts.append(tier_cfg)
-    return OmegaConf.to_container(OmegaConf.merge(*parts), resolve=True, throw_on_missing=True)
+    cfg = OmegaConf.to_container(OmegaConf.merge(*parts), resolve=True, throw_on_missing=True)
+    if (r := rep()) is not None:  # an independent repetition: its own seed (dataset, trace, committee, audits)
+        if r < 1:
+            raise ValueError("VRPQ_REP must be >= 1")
+        cfg["meta"]["rep"] = r
+        cfg["meta"]["seed"] += (r - 1) * REP_SEED_STRIDE
+    return cfg
 
 
 def load_all(tier: str) -> dict:

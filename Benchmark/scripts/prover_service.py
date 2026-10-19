@@ -5,6 +5,7 @@ One worker process per core (single-core STARK proofs, as on a requester device)
 import argparse
 import os
 import threading
+import time
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import AuthenticationError
 from multiprocessing.connection import Listener
@@ -24,6 +25,10 @@ def _work(job):
     prove, signer, h = job
     proof = _STATE["zk"].prove(*prove) if prove else b""
     return proof, _STATE["sig"].sign(_STATE["sks"][signer], h)
+
+
+def _warm(_):
+    time.sleep(0.2)  # holds its worker, so every submit starts (and initializes) a new process
 
 
 def _check(b):
@@ -46,6 +51,9 @@ def serve(conn, workers):
                 conn.send(("error", "rebuilt credential registry root differs from the system's"))
                 continue
             pool = ProcessPoolExecutor(workers, initializer=_init, initargs=(msg[1],))
+            # start and initialize every worker BEFORE answering ready: lazily started workers made the first
+            # proofs of a point arrive 13-15 s after its start (2026-10-18), inside the measurement window
+            list(pool.map(_warm, range(workers)))
             conn.send(("ready", workers))
         elif msg[0] == "job":
             _, jid, job = msg
