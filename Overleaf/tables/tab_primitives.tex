@@ -4,41 +4,41 @@
 Operation & Instantiation & Time (ms) \\
 \midrule
 \multicolumn{3}{l}{\textit{VeRedact-PQ}} \\
-$T_{S}$ & ML-DSA-65 sign & 0.078 $\pm$ 0.010 \\
-$T_{V}$ & ML-DSA-65 verify & 0.031 $\pm$ 0.001 \\
-$T_{ZP}$ & PQZK STARK prove (membership + expiry + attribute) & 20.689 $\pm$ 4.015 \\
-$T_{ZV}$ & PQZK STARK verify & 0.647 $\pm$ 0.030 \\
-$T_{CH}$ & PQCH (SIS) hash & 1.087 $\pm$ 0.055 \\
-$T_{PA}$ & PQCH partial adapt (one member) & 21.992 $\pm$ 0.084 \\
-$T_{CB}$ & PQCH combine: perturbation + G-sampling + 5 shares & 6.247 $\pm$ 0.061 \\
-$T_{H}$ & SHA3-256 (64-byte input) & 0.001 $\pm$ 0.000 \\
+$T_{S}$ & ML-DSA-65 sign & 0.085 $\pm$ 0.011 \\
+$T_{V}$ & ML-DSA-65 verify & 0.032 $\pm$ 0.001 \\
+$T_{ZP}$ & PQZK STARK prove (membership + expiry + attribute) & 22.898 $\pm$ 4.466 \\
+$T_{ZV}$ & PQZK STARK verify & 0.722 $\pm$ 0.006 \\
+$T_{CH}$ & PQCH (SIS) hash & 1.196 $\pm$ 0.044 \\
+$T_{PA}$ & PQCH partial adapt (one member) & 18.835 $\pm$ 0.047 \\
+$T_{CB}$ & PQCH combine: perturbation + G-sampling + 5 shares & 5.820 $\pm$ 0.046 \\
+$T_{H}$ & SHA3-256 (64-byte input) & 0.001 $\pm$ 0.001 \\
 $T_{PRF}$ & HMAC-SHA3-256 & 0.004 $\pm$ 0.001 \\
 \multicolumn{3}{l}{\textit{Scheme [1]}} \\
-$T_{V}^{c}$ & ECDSA secp256k1 verify (transaction signatures) & 0.047 $\pm$ 0.127 \\
-$T_{PA}^{c}$ & Improved DCH partial collision, BLS12-381 [1] & 1.144 $\pm$ 0.012 \\
-$T_{CB}^{c}$ & Improved DCH share combination [1] & 0.007 $\pm$ 0.000 \\
-$T_{CV}^{c}$ & Improved DCH verify (2 pairings) [1] & 2.372 $\pm$ 0.096 \\
-$T_{Acc}$ & RSA-3072 accumulator update acc^x [1] & 0.652 $\pm$ 0.048 \\
+$T_{V}^{c}$ & ECDSA secp256k1 verify (transaction signatures) & 0.028 $\pm$ 0.112 \\
+$T_{PA}^{c}$ & Improved DCH partial collision, BLS12-381 [1] & 0.666 $\pm$ 0.004 \\
+$T_{CB}^{c}$ & Improved DCH share combination [1] & 0.004 $\pm$ 0.000 \\
+$T_{CV}^{c}$ & Improved DCH verify (2 pairings) [1] & 2.838 $\pm$ 0.136 \\
+$T_{Acc}$ & RSA-3072 accumulator update acc^x [1] & 0.760 $\pm$ 0.047 \\
 \multicolumn{3}{l}{\textit{Scheme [13]}} \\
-$T_{AD}^{c}$ & double-trapdoor CH collision incl. MHT, RSA-3072 [13] & 7.520 $\pm$ 0.013 \\
-$T_{CV}^{c}$ & double-trapdoor CH verify, RSA-3072 [13] & 8.059 $\pm$ 0.189 \\
-$T_{Tag}$ & identity-based tag generation, RSA-3072 [13] & 58.816 $\pm$ 0.619 \\
-$T_{Tag}$ & identity-based tag verification, RSA-3072 [13] & 51.813 $\pm$ 0.331 \\
-$T_{E}^{c}$ & modular exponentiation, RSA-3072 full exponent [13] & 7.334 $\pm$ 0.157 \\
+$T_{AD}^{c}$ & double-trapdoor CH collision incl. MHT, RSA-3072 [13] & 7.989 $\pm$ 0.135 \\
+$T_{CV}^{c}$ & double-trapdoor CH verify, RSA-3072 [13] & 8.516 $\pm$ 0.231 \\
+$T_{Tag}$ & identity-based tag generation, RSA-3072 [13] & 62.187 $\pm$ 0.732 \\
+$T_{Tag}$ & identity-based tag verification, RSA-3072 [13] & 54.689 $\pm$ 0.680 \\
+$T_{E}^{c}$ & modular exponentiation, RSA-3072 full exponent [13] & 7.761 $\pm$ 0.038 \\
 \multicolumn{3}{l}{\textit{Scheme [27]}} \\
-$T_{V}^{c}$ & ECDSA secp256k1 verify (transaction signatures) & 0.025 $\pm$ 0.022 \\
-$T_{PA}^{c}$ & ETCH Adapt, one redactor, secp256k1 [27] & 0.036 $\pm$ 0.001 \\
+$T_{V}^{c}$ & ECDSA secp256k1 verify (transaction signatures) & 0.027 $\pm$ 0.017 \\
+$T_{PA}^{c}$ & ETCH Adapt, one redactor, secp256k1 [27] & 0.038 $\pm$ 0.001 \\
 $T_{CB}^{c}$ & ETCH Adapt, commitment aggregator [27] & 0.004 $\pm$ 0.000 \\
-$T_{CV}^{c}$ & ETCH Verify, secp256k1 [27] & 0.053 $\pm$ 0.001 \\
+$T_{CV}^{c}$ & ETCH Verify, secp256k1 [27] & 0.057 $\pm$ 0.001 \\
 \multicolumn{3}{l}{\textit{Scheme [34]}} \\
-$T_{Pol}$ & MA-ABE Info\_Trap decryption, t=5 of l=10, BLS12-381 [34] & 7.269 $\pm$ 0.101 \\
-$T_{AD}^{c}$ & CHET ChCld, RSA-3072 [34] & 53.527 $\pm$ 0.426 \\
-$T_{CV}^{c}$ & CHET ChVer, RSA-3072 [34] & 47.661 $\pm$ 0.367 \\
+$T_{Pol}$ & MA-ABE Info\_Trap decryption, t=5 of l=10, BLS12-381 [34] & 7.716 $\pm$ 0.039 \\
+$T_{AD}^{c}$ & CHET ChCld, RSA-3072 [34] & 56.813 $\pm$ 0.600 \\
+$T_{CV}^{c}$ & CHET ChVer, RSA-3072 [34] & 50.662 $\pm$ 0.348 \\
 \multicolumn{3}{l}{\textit{Scheme [39]}} \\
-$T_{m}^{L}$ & LETA polynomial multiplication in R\_q (NTT), n=256 [S99] & 0.236 $\pm$ 0.001 \\
-$T_{S}^{L}$ & LETA Sign + ZKP Z\_Vi (Eqs. 6-8), rank 5 [S99] & 0.937 $\pm$ 0.007 \\
-$T_{ZV}^{L}$ & LETA ZKP verify (Eqs. 14-15) [S99] & 0.654 $\pm$ 0.003 \\
-$T_{AG}^{L}$ & LETA VPD-Tree + aggregation, 64 signatures (Eqs. 9-12) [S99] & 13.362 $\pm$ 0.082 \\
-$T_{AV}^{L}$ & LETA aggregate verification, 64 signatures (Eq. 13) [S99] & 19.452 $\pm$ 0.088 \\
+$T_{m}^{L}$ & LETA polynomial multiplication in R\_q (NTT), n=256 [S99] & 0.265 $\pm$ 0.002 \\
+$T_{S}^{L}$ & LETA Sign + ZKP Z\_Vi (Eqs. 6-8), rank 5 [S99] & 1.031 $\pm$ 0.016 \\
+$T_{ZV}^{L}$ & LETA ZKP verify (Eqs. 14-15) [S99] & 0.725 $\pm$ 0.011 \\
+$T_{AG}^{L}$ & LETA VPD-Tree + aggregation, 64 signatures (Eqs. 9-12) [S99] & 13.745 $\pm$ 0.142 \\
+$T_{AV}^{L}$ & LETA aggregate verification, 64 signatures (Eq. 13) [S99] & 20.169 $\pm$ 0.123 \\
 \bottomrule
 \end{tabular}
