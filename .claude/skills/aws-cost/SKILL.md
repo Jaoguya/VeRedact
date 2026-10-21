@@ -1,56 +1,50 @@
 ---
 name: aws-cost
-description: Use BEFORE and DURING any AWS action in the VeRedact project — launching, resuming or extending a run, starting/booting veredact-bench, provers or workers, running tests/scripts on the server, fetching results, or answering a cost question. Keeps AWS spend minimal without changing what is measured.
+description: Use BEFORE and DURING any AWS action in the VeRedact project — planning, launching, resuming or extending a run, booting veredact-bench, provers or workers, running anything on the server, fetching results, or answering a cost question. Finds the cheapest honest way to run THIS project's experiments and proposes it as recommendation choices.
 ---
 
-# AWS cost discipline (VeRedact benchmark)
+# AWS cost for the VeRedact experiments
 
-Goal: the cheapest way to get the same measurement. Never trade measurement validity for cost
-(e.g. a bigger or extra host that makes one scheme faster than its baseline is NOT a saving).
+**Goal**: find the cheapest way to run this project's experiments on AWS, and propose it to the author as
+recommendation choices. **Scope**: this project only (veredact-bench `Benchmark/deploy/aws/.instance`, and
+the veredact-prover / worker hosts the experiments create). Never act on, or count, anyone else's resources
+(SSO, test-, Apichon-Ubuntu, siemcrypt-eval, ...): the account bills them too.
 
-## Scope (hard rule)
-- Act only on veredact-bench (`Benchmark/deploy/aws/.instance`) and experiment-created resources
-  (veredact-prover, worker hosts). Never touch SSO, test-, Apichon-Ubuntu, siemcrypt-eval or anyone else's machines.
-- The account bills other people's resources too: report only this project's usage types
-  (r7i/c7i BoxUsage, SpotUsage c7i.48xlarge, our EBS), never the account total as "our cost".
+## Integrity comes first (non-negotiable)
+A saving is only valid if every reported number stays a true measurement of the real system. Never:
+- simulate, extrapolate, cache or reuse a TIMED result (only untimed setup such as saved histories may be
+  reused, behind their safeguards); never shorten a window, drop samples, skip a scheme or an x point to save
+  money (no capped outputs) unless the author approves and the manuscript says so;
+- change hardware so one scheme looks faster than it is (e.g. extra vCPUs for S13's summed single-core
+  witnesses, a bigger host for VeRedact-PQ only), or compare schemes measured on different hosts silently;
+- quote smoke, pilot or probe numbers as results; hide a failed, capped or partial run; under-report cost.
+If the cheapest option touches what is measured, say so in the option, plainly, and let the author choose.
 
-## Before launching anything
-1. **Estimate from measured durations, not guesses**: read the per-experiment / per-scheme times in
-   `Benchmark/results/logs/*.log` (`=== <exp> done in`, `<exp> <scheme>: N rows in`) and `TASK.md`.
-   Past estimates were 2x too low (S13 audit witnesses, VeRedact-PQ Exp. 4). State time AND cost.
-2. **Run only what is missing**: finished (experiment, scheme) points are skipped by the runner; use
-   `deploy/experiments/resume_run.sh` (no provers) instead of `full_run.sh` after a stop.
-   Move a point aside (`results/_superseded_<date>_<reason>/`) only when it must be re-measured.
-3. **Provers only when needed**: only VeRedact-PQ's Exp. 1 needs the c7i.48xlarge prover hosts.
-   Spot first (`PROVER_MARKET`, ~US$3/h vs 9.88 on-demand), terminated right after the step.
-4. **Reuse saved histories** (`results/_histories/`): untimed setup, loaded when the safeguards match.
-   Know that a change in methods/, data/, anchor.py, common.py, history_cache.py or contracts/ changes the
-   code digest and forces a rebuild (~1 h VeRedact-PQ, ~5 h S13): batch such code changes before a rerun.
-5. **Cheapest check first**: memory probe / smoke / loopback check instead of a full-scale pilot;
-   never a pilot with provers unless the prover path itself is under test.
-6. **Right-size from data**: choose the instance from a memory probe (peak + margin), not from fear.
-   Do not add vCPUs to shorten a run if it changes a timed measurement (S13 witnesses are single-core summed).
-7. **Ask the user** before any launch whose estimate exceeds the last approved budget.
+## How to work
+1. **Measure before proposing**: durations from `Benchmark/results/logs/*.log` (`=== <exp> done in`,
+   `<exp> <scheme>: N rows in`) and `TASK.md`; memory from the memory probe / logged peak memory; disk from
+   `df` and `du results/`. My earlier estimates were ~2x too low: never guess.
+2. **Look for savings in every cost line**, smallest that still measures correctly:
+   - *Instance type (model)*: the least vCPU / memory that holds the measured peak with margin and keeps the
+     timed path identical; same CPU family for every scheme.
+   - *Purchase option*: spot for hosts whose loss only fails a point loudly (provers: spot first, on-demand
+     fallback); on-demand where an interruption would silently bias a measurement.
+   - *Hours*: run only missing points (`deploy/experiments/resume_run.sh`), reuse untimed histories, batch code
+     changes that would force a history rebuild, use a probe or smoke check instead of a full pilot, launch
+     provers only for VeRedact-PQ's Exp. 1 and terminate them right after.
+   - *Storage*: the least EBS size and type (gp3) that fits results + saved histories + Docker; list this
+     project's AMIs, snapshots and unattached volumes and propose removing the unused ones; never copy saved
+     histories to the laptop.
+   - *Idle time*: hard cap on every run, idle watchdog, one boot per check (a boot costs >= 30 min).
+3. **Propose, don't impose**: present 2-4 choices, recommended first, each with time, cost, and its effect on
+   measurement ("none" must be true). The author decides; then record the choice in `TASK.md`.
+4. **Ask before**: any launch, any increase over the last approved budget, any deletion (AMI, snapshot,
+   volume, results), any change of instance type or purchase option.
 
-## While running
-- **Always a hard cap**: `sudo shutdown -h +<min>` sized ~1.5x the estimate; the run script powers off
-  2 min after DONE; the idle watchdog powers off 30 min after the last command. If the estimate grows,
-  EXTEND the cap (losing a nearly finished run costs more than an hour of server time).
-- **Don't load the server during timed phases** (tests, figures, probes): it distorts timings and may force
-  a rerun. Use untimed phases (history build) or wait for the end.
-- **Checks are cheap only while it runs**: booting a stopped server just to read a log costs at least the
-  30-min watchdog. Collect everything needed (log tail, metrics, coverage, summaries) in ONE boot.
-- **Background watchers**: poll with ssh every 60 s from the laptop (costs nothing on AWS); refresh the SSH
-  rule (`deploy/aws/refresh_ssh_rule.sh`) when the laptop's IP changes.
-
-## After a run
-- Confirm nothing is left running: veredact-bench `stopped`, no `veredact-prover*` / worker instance
-  `running|pending` (`aws ec2 describe-instances --filters 'Name=tag:Name,Values=veredact-prover*' ...`).
-- **Fetch small, not everything**: rsync `results/` with `--exclude _histories --exclude '_superseded_*'`
-  (histories are tens of GB and stay on the server); never `fetch_results.sh` blindly.
-- Delete superseded server data only when the user asks; disk (EBS) costs little, a lost result costs a rerun.
-
-## Reporting cost
-- Server: hours x rate (r7i.4xlarge ~US$1.28/h); provers: hours x 2 x rate (spot ~US$3, on-demand 9.88).
-- Cost Explorer lags ~1 day; say which part is billed and which is an estimate.
-- Put the estimate and the actual in `TASK.md` with each launch/stop entry.
+## Always, during and after a run
+- A hard cap (`sudo shutdown -h +<min>`, ~1.5x the estimate); extend it rather than lose a nearly done run.
+- No server load (tests, figures, probes) during a timed phase.
+- After: veredact-bench stopped, no `veredact-prover*` / worker instance running or pending, results fetched
+  without `_histories` / `_superseded_*`.
+- Report cost honestly: this project's usage types only; billed (Cost Explorer lags ~1 day) vs estimated;
+  estimate and actual written in `TASK.md`.
