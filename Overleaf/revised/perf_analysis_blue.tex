@@ -92,28 +92,28 @@
     \textbf{Operation} & \textbf{Instantiation} & \textbf{Time (ms)} \\
     \hline
     \multicolumn{3}{l}{\textit{VeRedact-PQ}} \\
-    $T_S$ / $T_V$ & ML-DSA-65 sign / verify & \chg{0.078 / 0.031} \\
-    $T_{ZP}$ / $T_{ZV}$ & PQZK prove / verify & \chg{20.689 / 0.647} \\
-    $T_{CH}$ & PQCH hash & \chg{1.087} \\
-    $T_{PA}$ / $T_{CB}$ & PQCH partial adapt / combine & \chg{21.992 / 6.247} \\
+    $T_S$ / $T_V$ & ML-DSA-65 sign / verify & \chg{0.085 / 0.032} \\
+    $T_{ZP}$ / $T_{ZV}$ & PQZK prove / verify & \chg{22.898 / 0.722} \\
+    $T_{CH}$ & PQCH hash & \chg{1.196} \\
+    $T_{PA}$ / $T_{CB}$ & PQCH partial adapt / combine & \chg{18.835 / 5.820} \\
     $T_H$ & SHA3-256 (64-byte input) & \chg{0.001} \\
     $T_{\mathrm{PRF}}$ & HMAC-SHA3-256 & \chg{0.004} \\
     \hline
     \multicolumn{3}{l}{\textit{Baselines}} \\
-    $T_V^{c}$ & ECDSA secp256k1 verify~\cite{ref1,ref27} & \chg{0.047 / 0.025} \\
-    $T_{PA}^{c}$ / $T_{CV}^{c}$ & Improved DCH, BLS12-381~\cite{ref1} & \chg{1.144 / 2.372} \\
-    $T_{PA}^{c}$ / $T_{CV}^{c}$ & ETCH, secp256k1~\cite{ref27} & \chg{0.036 / 0.053} \\
-    $T_{AD}^{c}$ / $T_{CV}^{c}$ & Double-trapdoor CH, RSA-3072~\cite{ref13} & \chg{7.520 / 8.059} \\
-    $T_{AD}^{c}$ / $T_{CV}^{c}$ & CHET, RSA-3072~\cite{ref34} & \chg{53.527 / 47.661} \\
-    $T_{Acc}$ & RSA-3072 accumulator~\cite{ref1,ref13} & \chg{0.652} \\
-    $T_{Tag}$ & Identity-based RSA-3072 tag~\cite{ref13} & \chg{58.816 / 51.813} \\
-    $T_{Pol}$ & MA-ABE decryption, BLS12-381~\cite{ref34} & \chg{7.269} \\
-    \chg{$T_E^{c}$} & \chg{RSA-3072 exponentiation~\cite{ref13}} & \chg{7.334} \\
+    $T_V^{c}$ & ECDSA secp256k1 verify~\cite{ref1,ref27} & \chg{0.028 / 0.027} \\
+    $T_{PA}^{c}$ / $T_{CV}^{c}$ & Improved DCH, BLS12-381~\cite{ref1} & \chg{0.666 / 2.838} \\
+    $T_{PA}^{c}$ / $T_{CV}^{c}$ & ETCH, secp256k1~\cite{ref27} & \chg{0.038 / 0.057} \\
+    $T_{AD}^{c}$ / $T_{CV}^{c}$ & Double-trapdoor CH, RSA-3072~\cite{ref13} & \chg{7.989 / 8.516} \\
+    $T_{AD}^{c}$ / $T_{CV}^{c}$ & CHET, RSA-3072~\cite{ref34} & \chg{56.813 / 50.662} \\
+    $T_{Acc}$ & RSA-3072 accumulator~\cite{ref1,ref13} & \chg{0.760} \\
+    $T_{Tag}$ & Identity-based RSA-3072 tag~\cite{ref13} & \chg{62.187 / 54.689} \\
+    $T_{Pol}$ & MA-ABE decryption, BLS12-381~\cite{ref34} & \chg{7.716} \\
+    \chg{$T_E^{c}$} & \chg{RSA-3072 exponentiation~\cite{ref13}} & \chg{7.761} \\
     \hline
     \multicolumn{3}{l}{\chg{\textit{Post-quantum baseline}}} \\
-    \chg{$T_m^{L}$} & \chg{Polynomial multiplication in $R_q$~\cite{ref39}} & \chg{0.236} \\
-    \chg{$T_S^{L}$ / $T_{ZV}^{L}$} & \chg{Lattice sign + ZKP / ZKP verify~\cite{ref39}} & \chg{0.937 / 0.654} \\
-    \chg{$T_{AG}^{L}$ / $T_{AV}^{L}$} & \chg{Aggregate / verify, 64 signatures~\cite{ref39}} & \chg{13.362 / 19.452} \\
+    \chg{$T_m^{L}$} & \chg{Polynomial multiplication in $R_q$~\cite{ref39}} & \chg{0.265} \\
+    \chg{$T_S^{L}$ / $T_{ZV}^{L}$} & \chg{Lattice sign + ZKP / ZKP verify~\cite{ref39}} & \chg{1.031 / 0.725} \\
+    \chg{$T_{AG}^{L}$ / $T_{AV}^{L}$} & \chg{Aggregate / verify, 64 signatures~\cite{ref39}} & \chg{13.745 / 20.169} \\
     \hline
     \end{tabular}
     \end{table}
@@ -168,30 +168,29 @@
     \end{figure}
 
     \chg{Fig.~\ref{fig:exp1_redaction}(a) shows that Ref.~\cite{ref27}
-    achieves the highest throughput, about 138--157 redactions/s from
+    achieves the highest throughput, about 128--145 redactions/s from
     250 requests/s onward, consistent with its low-cost classical adaptation
-    ($T_{PA}^{c}=0.036$\,ms per redactor in Table~\ref{tab:primitives}).
-    VeRedact-PQ finalizes 112 and 133 redactions/s at 100 and 250
-    requests/s and 65--96 redactions/s at higher rates, whereas each of its
+    ($T_{PA}^{c}=0.038$\,ms per redactor in Table~\ref{tab:primitives}).
+    VeRedact-PQ finalizes 99 and 138 redactions/s at 100 and 250
+    requests/s and 65--109 redactions/s at higher rates, whereas each of its
     distributed PQCH adaptations requires post-quantum partial adaptations
-    ($T_{PA}=22.0$\,ms per member). Ref.~\cite{ref1} reaches 64--78
+    ($T_{PA}=18.8$\,ms per member). Ref.~\cite{ref1} reaches 65--72
     redactions/s; its chain additionally permits only one redaction per block,
     so requests to an already redacted block are rejected. Refs.~\cite{ref13}
     and~\cite{ref34} saturate at about 5 and 6 redactions/s, consistent with
-    the RSA-3072 tag and CHET operations of about 50\,ms each that every
+    the RSA-3072 tag and CHET operations of about 57--62\,ms each that every
     redaction requires.}
 
     \chg{Fig.~\ref{fig:exp1_redaction}(b) reports the 95th-percentile
     end-to-end latency on a logarithmic scale. At 100 requests/s, every
-    request of VeRedact-PQ, Ref.~\cite{ref1}, and Ref.~\cite{ref27} is
-    finalized, with 10.3, 6.8, and 2.9\,s, respectively, whereas
+    request of VeRedact-PQ and Ref.~\cite{ref27} is finalized, with 3.2
+    and 3.4\,s, respectively, and Ref.~\cite{ref1} requires 31.0\,s, whereas
     Refs.~\cite{ref13} and~\cite{ref34} finalize none of the requests
     arriving in the window before the drain ends, so their latency is at
-    least 87\,s at every rate. At 250 requests/s, VeRedact-PQ and
-    Ref.~\cite{ref27} exceed their throughput and leave 36\% and 27\% of the
-    requests unfinished, giving lower bounds of 74.7 and 43.3\,s, while
-    Ref.~\cite{ref1} still completes every accepted request in 27.7\,s
-    because it rejects requests to blocks that were already redacted. From
+    least 87\,s at every rate. At 250 requests/s, VeRedact-PQ,
+    Ref.~\cite{ref27}, and Ref.~\cite{ref1} exceed their throughput and
+    leave 29\%, 40\%, and 70\% of the requests unfinished, giving lower
+    bounds of 71.3, 51.1, and 68.4\,s, respectively. From
     500 requests/s onward all schemes are saturated and their latency
     approaches the observation limit of about 87\,s. Overall, the
     per-adaptation cost of post-quantum primitives keeps VeRedact-PQ below
@@ -233,33 +232,33 @@
     \end{figure}
 
     \chg{Fig.~\ref{fig:exp2_auth}(a) shows that the per-request
-    authorization latency of VeRedact-PQ decreases from 3.48\,ms at $m=1$
-    to 1.78\,ms at $m=8$ and 1.43\,ms at $m=256$, because the $t$ committee
+    authorization latency of VeRedact-PQ decreases from 3.25\,ms at $m=1$
+    to 1.70\,ms at $m=8$ and 1.41\,ms at $m=256$, because the $t$ committee
     signatures and their verification are shared by all $m$ requests; the
     remaining 1.3\,ms is the Phase~3 validation of each request, which
     verifies its ML-DSA-65 signature and PQZK proof and signs its validation
     attestation. Schemes~\cite{ref1} and~\cite{ref34} have no batch
-    protocol, so their latency stays at 0.48 and 7.3\,ms for every $m$.
+    protocol, so their latency stays at 0.47 and 7.2\,ms for every $m$.
     Scheme~\cite{ref1} is faster because its $t$ approving nodes only check
     the accumulator and verify the classical ECDSA signatures of the
     transaction, without a policy or requester proof, whereas
     Scheme~\cite{ref34} is 5.1 times slower than VeRedact-PQ at $m=256$
     because every request requires an attribute-based decryption. The
-    post-quantum Scheme~\cite{ref39} decreases from 1.52 to about 0.57\,ms;
+    post-quantum Scheme~\cite{ref39} decreases from 1.55 to about 0.57\,ms;
     it verifies the requesters' lattice signatures in aggregate but performs
     no policy-compliance or state-freshness check, which accounts for its
     lower latency.}
 
     \chg{Fig.~\ref{fig:exp2_auth}(b) shows the latency of one batch of
     $m=64$ requests. It increases with committee size for the
-    committee-based schemes, from 94 to 107\,ms for VeRedact-PQ, from 26 to
-    94\,ms for Scheme~\cite{ref1}, and from 319 to 1{,}762\,ms for
+    committee-based schemes, from 91 to 102\,ms for VeRedact-PQ, from 26 to
+    91\,ms for Scheme~\cite{ref1}, and from 310 to 1{,}726\,ms for
     Scheme~\cite{ref34} as $n$ grows from 4 to 32, while
     Scheme~\cite{ref39}, which has a single verifier and no committee, stays
     at about 36\,ms. For VeRedact-PQ, the committee term is incurred once
     per ABRRR batch and therefore affects each request only through the
-    amortized term $t(T_S+T_V)/m$; its latency grows by 13\% from $n=4$ to
-    $n=32$, compared with 3.6 and 5.5 times for Schemes~\cite{ref1}
+    amortized term $t(T_S+T_V)/m$; its latency grows by 11\% from $n=4$ to
+    $n=32$, compared with 3.5 and 5.6 times for Schemes~\cite{ref1}
     and~\cite{ref34}. Consequently, larger committees, which strengthen
     distributed control, remain practical under high redaction volumes.}
 
@@ -285,21 +284,22 @@
     \end{figure}
 
     \chg{Fig.~\ref{fig:exp3_audit}(a) shows that VeRedact-PQ generates audit
-    responses fastest, from 0.24\,ms at $n_Q=10$ to 36\,ms at $n_Q=10^4$,
+    responses fastest, from 0.38\,ms at $n_Q=10$ to 57\,ms at $n_Q=10^4$
+    and 443\,ms at $n_Q=10^5$,
     because records are resolved through the sharded RAI and the
     query-scoped multiproof $MP_{Q_j}^A$ shares internal Merkle nodes.
-    Ref.~\cite{ref1} requires 2.0\,ms to 2.4\,s, and Ref.~\cite{ref13}
-    requires 58\,s to 38\,min, since it builds one RSA-accumulator
+    Ref.~\cite{ref1} requires 3.3\,ms to 27.7\,s, and Ref.~\cite{ref13}
+    requires 11\,min to 73\,h, since it builds one RSA-accumulator
     non-membership witness per returned record.}
 
     \chg{Fig.~\ref{fig:exp3_audit}(b) shows the opposite ordering for
-    response size. VeRedact-PQ returns the largest responses, from 60\,KB to
-    39.6\,MB, about 4\,KB per record, dominated by the 3{,}309-byte ML-DSA-65
+    response size. VeRedact-PQ returns the largest responses, from 61\,KB to
+    395\,MB, about 4\,KB per record, dominated by the 3{,}309-byte ML-DSA-65
     validation attestation $\alpha_i$ carried by each record, whereas the
     shared authorization evidence $(R_e^{VR},C_e^B,Auth_e^B)$ is included
     only once per distinct authorization batch. Ref.~\cite{ref1} returns
-    5.0\,KB to 5.0\,MB, and Ref.~\cite{ref13}, which aggregates its proof,
-    returns 3.5 to 21\,KB. Overall, the results show that sharded RAI
+    5.0\,KB to 49.6\,MB, and Ref.~\cite{ref13}, which aggregates its proof,
+    returns 3.5 to 183\,KB. Overall, the results show that sharded RAI
     resolution and query-scoped evidence keep audit-service computation
     low, while post-quantum signatures dominate the communication cost of
     record-level evidence.}
@@ -376,14 +376,16 @@
     \end{figure}
 
     \chg{Fig.~\ref{fig:exp5_gas}(a) shows that the baselines consume
-    119{,}124 to 131{,}144 gas per redaction, since each redaction updates
-    its own on-chain state in one transaction. Without batching, VeRedact-PQ
-    consumes 160{,}091 gas per redaction, more than every baseline, because
+    119{,}261 to 153{,}825 gas per redaction, since each redaction updates
+    its own on-chain state in one transaction; Scheme~\cite{ref1} is the
+    most expensive because each redacted block header also records its
+    updated accumulator, which its auditor reads. Without batching, VeRedact-PQ
+    consumes 160{,}127 gas per redaction, more than every baseline, because
     each request additionally anchors its authorization $H(Auth_e^B)$. At
-    the default batch size of 64, it consumes 67{,}747 gas, 43\% less than
+    the default batch size of 64, it consumes 81{,}039 gas, 32\% less than
     the cheapest baseline, Scheme~\cite{ref27}. Fig.~\ref{fig:exp5_gas}(b)
     shows that VeRedact-PQ becomes cheaper than Scheme~\cite{ref27} from
-    $m=8$ (92{,}929 gas) and reaches 46{,}983 gas at $m=256$, because one
+    $m=8$ (96{,}294 gas) and reaches 70{,}727 gas at $m=256$, because one
     authorization anchor serves all $m$ requests and redaction finalization
     commits one updated checkpoint per affected transaction batch
     $|\Omega_e|$ rather than per request, while individual redaction records
@@ -409,8 +411,8 @@
     Committee registration & Per epoch & [TBD] \\
     Batch checkpoint $A_b$ & Per transaction batch & [TBD] \\
     Authorization anchor $H(Auth_e^B)$ & Per ABRRR batch & \chg{44{,}460} \\
-    Redaction finalization $\{A_b'\}$ & Per ABRRR batch & \chg{115{,}585 ($|\Omega_e|=1$)} \\
-    RAI checkpoint $CP_e^A$ & Per audit epoch & \chg{45{,}817} \\
+    Redaction finalization $\{A_b'\}$ & Per ABRRR batch & \chg{115{,}645 ($|\Omega_e|=1$)} \\
+    RAI checkpoint $CP_e^A$ & Per audit epoch & \chg{45{,}811} \\
     \hline
     \end{tabular}
     \end{table}
