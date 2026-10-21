@@ -1,8 +1,9 @@
 """Saved redaction histories (evaluation/history_cache.py), the shared history list (data/history.py) and the
-auditor's chain reads (anchor.read), on the smoke configuration with the in-process ledger."""
+auditor's chain reads (anchor.read), on the smoke configuration (in-process ledger; one test needs Besu)."""
 
 import copy
 import json
+import os
 
 import pytest
 
@@ -112,4 +113,21 @@ def test_s1_auditor_reads_the_anchored_accumulator_and_records(cfg, ds):
     assert all(_audit(s).values())
     s.anchor._accs["latest"] = b"\3" * 32  # the chain's latest header carries another acc
     assert not any(_audit(s).values())
+    s.teardown()
+
+
+@pytest.mark.skipif(not os.environ.get("VRPQ_BESU_KEY"), reason="needs a running Besu network")
+def test_besu_checkpoint_read_from_anchoring_blocks_equals_full_scan(cfg):
+    """On Besu: the anchoring-block read returns what a scan since deployment returns; audits still decide."""
+    c = copy.deepcopy(cfg) | {"ledger": cfg["ledger"] | {"backend": "besu"}}
+    d = build_dataset(c, n_requests=30)
+    s, _, _ = _history(c, d, "veredact")
+    s.index_records()
+    a, keys = s.anchor, set(s.anchor.cp_block)
+    full = {}
+    for lo in range(a._from_block, a.w3.eth.block_number + 1, 5000):
+        for e in a.reg.events.CheckpointAnchored.get_logs(from_block=lo, to_block=lo + 4999):
+            full[(int(e.args.b), int(e.args.vb))] = bytes(e.args.mr)
+    assert any(v for _, v in keys) and a.read("checkpoint_history", keys=keys) == {k: full[k] for k in keys}
+    assert all(_audit(s).values()) and not all(_audit(s, tamper={0: "modified"}).values())
     s.teardown()

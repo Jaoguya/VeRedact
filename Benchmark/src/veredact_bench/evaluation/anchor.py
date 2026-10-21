@@ -52,8 +52,7 @@ class _Metered:
     def read(self, what: str, **keys):
         """Auditor-side chain read:
         rai_checkpoint(epoch) -> bytes32 (CP_e^A);
-        checkpoint_history(keys) -> {(b, v_b): MR_b} of the given (b, v_b) checkpoints (initial or finalized
-            transition), read from the blocks that anchored them (2026-10-21; see BesuAnchor._read);
+        checkpoint_history(keys) -> {(b, v_b): MR_b} of the given checkpoints, from their anchoring blocks;
         commits(ids) -> [bytes32] (BaselineRedactionLog records);
         latest_acc() -> bytes32 (keccak256 of S1's latest header accumulator)."""
         return self._read(what, **keys)
@@ -171,11 +170,8 @@ class BesuAnchor(_Metered):
         self.recheck_s = 30.0  # [METHOD] a transaction pending this long is looked up directly (see _recheck)
         self.recovered = {"late_receipt": 0, "resent": 0, "timed_out": 0}
         self._mined: dict[bytes, tuple] = {}  # tx hash -> (seen, ok, gas, block) for late registration
-        # (b, v_b) -> block that anchored that checkpoint, from the anchoring receipts: the audit service's
-        # locator, so an auditor reads the CheckpointAnchored logs of those blocks only. A wrong block finds no
-        # matching event and the record is rejected; it can never make a transition verify.
         self._cp_keys: dict[bytes, list] = {}  # tx hash -> the (b, v_b) checkpoints it anchors
-        self.cp_block: dict[tuple, int] = {}
+        self.cp_block: dict[tuple, int] = {}  # (b, v_b) -> anchoring block (a wrong block can only reject)
         self._plock = threading.Lock()
         self._stop = threading.Event()
         self._last_block = self.w3.eth.block_number
@@ -382,12 +378,8 @@ class BesuAnchor(_Metered):
         chunk = 2000  # ids per eth_call: bounded response size, the same for every scheme
         if what == "rai_checkpoint":
             return bytes(self.reg.functions.raiCheckpoints(k["epoch"]).call())
-        if what == "checkpoint_history":  # CheckpointAnchored(b indexed, vb, mr) of the queried checkpoints
-            # read from the blocks that anchored them (cp_block), never scanned from the deployment block: the
-            # 2026-10-19 full run scanned every 5,000-block window since deployment (~20 h of 2-s blocks) in
-            # 100-batch topic groups, so a 10-record verification took 0.7 s and grew with the chain's age.
-            # Windows of at most 5,000 blocks (Besu --rpc-max-logs-range) start at an anchoring block; a window
-            # asks for its batches by topic (<= 100) or for every CheckpointAnchored log of the contract
+        if what == "checkpoint_history":  # CheckpointAnchored logs of the queried (b, v_b), from their anchoring
+            # blocks only (a scan since deployment grew with the chain's age); windows <= 5,000 blocks (Besu limit)
             keys = set(k["keys"])
             blocks = sorted({self.cp_block[key] for key in keys if key in self.cp_block})
             wins, out = [], {}

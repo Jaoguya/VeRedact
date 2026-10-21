@@ -144,20 +144,6 @@ def test_registry_knows_every_configured_system(cfg):
             make(cfg, key)
 
 
-def test_s1_history_is_topped_up_to_the_largest_n_q(cfg, ds):
-    """No n_Q point may be unreachable: S1 (one redaction per block) gets untimed uniform requests until its
-    history holds `need` redactions."""
-    from veredact_bench.evaluation.common import fill_history
-
-    s = open_system(cfg, "S1", ds)
-    counts = build_history(s, ds.trace, 1)
-    need = counts["redacted"] + 20
-    fill_history(s, ds, cfg, need, 1, counts)
-    assert counts["redacted"] >= need and len(s.redacted) >= need
-    assert counts["redacted"] < need + 5  # no overshoot: the history is not inflated beyond the largest n_Q
-    s.teardown()
-
-
 def test_s34_reused_setup_is_never_modified_by_a_redaction(cfg, ds):
     """Exp. 1 points share S34's keys and hashes; a redaction in one point must not change another's table."""
     a = open_system(cfg, "S34", ds)

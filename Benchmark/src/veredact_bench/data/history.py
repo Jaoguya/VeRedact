@@ -4,8 +4,7 @@ The history is the shared request trace followed by a seeded top-up of requests 
 targeted before, until the list targets `need` (= the largest n_Q) distinct transactions plus a small margin.
 Every scheme applies the same list in the same order, so S1 (one redaction per block, one transaction per
 block) and the schemes that also accept a second redaction of a transaction redact the same records; S1 only
-rejects the trace's repeated targets. Before this, common.fill_history drew a scheme-dependent number of extra
-uniform requests (each scheme's own rejections decided how many).
+rejects the trace's repeated targets.
 
 Deterministic: the same dataset and `need` give the byte-identical list, whose digest is `history_id`
 (written into every Exp. 3/4 row and checked by the history cache and the coverage check).

@@ -93,7 +93,7 @@ def query_rows(cfg, out, key, rpb, s, counts, ds, n_q_axis, extra=lambda s, n: [
             # S13 only: serial / parallel per-witness time (its witnesses are timed in a process pool)
             **({"witness_calibration": s.witness_calibration} if hasattr(s, "witness_calibration") else {}),
         )
-        if n > have:  # fill_history guarantees max n_Q: a shortfall is a bug, never a silently missing point
+        if n > have:  # the history list reaches max n_Q: a shortfall is a bug, never a missing point
             raise RuntimeError(f"{key}: n_Q={n} but the history holds only {have} redactions")
         k = cfg["experiment"]["samples_per_point"]
         k = cfg["experiment"].get("samples_override", {}).get(key, {}).get(str(n), k)  # S13 at 10^4 (Exp. 3)

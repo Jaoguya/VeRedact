@@ -50,6 +50,7 @@ needs is in `Overleaf/newchange.md` with line numbers. Line numbers below refer 
 | SA-RLI / RAI | Cuckoo filters CF_s per shard | **implemented 2026-10-03** (`ds/cuckoo.py`): 16-bit fingerprints, synchronized with the finalized snapshot; positives and unsynchronized negatives take the authenticated lookup |
 | PQZK | PrivatePolicy predicates | **implemented 2026-10-03**: attribute ≥ policy threshold and expiry > ts_r proven as 32-bit range proofs in the AIR, besides membership + requester + statement binding |
 | Phases 3–6 | admission receipt rc_i, C_VR reconstruction, Auth_e^B check before execution, BIMC multiproof check, auditor-signed queries | **implemented 2026-10-03**; the extra rc_i signature and Auth check are not in Table IV — `newchange.md` A1–A3 |
+| Phase 6 Step 4 | auditor verifies against the blockchain-anchored CP_e^A and A_b' | **implemented 2026-10-19**: `verify_audit` reads CP_e^A and (b, v_b') -> MR_b' from the chain (their anchoring blocks); finalization anchors the real MR_b', v_b' |
 | Exp. 1 | rates up to 5,000 req/s | VeRedact-PQ's requesters prove on two remote c7i.48xlarge hosts (not on the system's server); every scheme runs every rate, no early stop (Other/docs/experiments.md §3) |
 
 ## 4. Open manuscript issues (carried over)

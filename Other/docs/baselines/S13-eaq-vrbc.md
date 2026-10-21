@@ -21,15 +21,16 @@ The manuscript calls it "VRBC [13]".
   double-trapdoor CH collision, the Auditee verifies the CH equation, a new identity-based tag is issued and
   checked, the old tag is revoked in the RSA accumulator; one ledger write.
 - `audit`: challenge over the distinct blocks of the queried records; proof generation (service) and
-  AuditVerify (auditor) timed separately. Tampering corrupts each affected block's tag once.
+  AuditVerify (auditor) timed separately; the auditor takes the accumulator from the trusted node, as in the
+  paper (not from the chain). Tampering corrupts each affected block's tag once.
 
 ## Instantiation and deviations
 
 | Item | Paper | Here | Bias |
 |:--|:--|:--|:--|
 | RSA modulus | 2048 (112-bit) | 3072 (`rsa_bits`, 128-bit) in the comparison; 2048 in `reproduce.py` | against S13 (slower), required for equal security |
-| audit witness timing | Alg. 1 per challenged block, every audit | every block's Alg. 1 witness built ONCE after the untimed history (one worker per physical core, each timed on one core; serial re-time if parallel timing is > 10 % inflated); an audit uses those exact witnesses: generation time = summed witness times + measured aggregation; bytes and verification measured directly (identical response: `test_fidelity.py`) | neutral (same work, single-core basis); per-sample spread narrower than a direct measurement |
-| audit cost growth | Table III counts fixed-size Exp | Alg. 1's exponent b ≈ θ′ grows with the revocation history (≈ 6.9 s per witness at 10^4 redactions); the Auditee holds no φ(N) to reduce it | real property of Alg. 1 as written |
+| audit witness timing | Alg. 1 per challenged block, every audit | every block's Alg. 1 witness built ONCE after the untimed history (one worker per physical core, each timed on one core; serial re-time if parallel timing is > 10 % inflated); an audit uses those exact witnesses: generation time = summed witness times + measured aggregation; bytes and verification measured directly (identical response: `test_fidelity.py`) | against S13 by the accepted parallel inflation (≤ 10 %; 3–7 % in the 2026-10-19 run); per-sample spread narrower than a direct measurement |
+| audit cost growth | Table III counts fixed-size Exp | Alg. 1's exponent b ≈ θ′ grows with the revocation history (median 67 s per witness at 10^5 redactions); the Auditee holds no φ(N) to reduce it | real property of Alg. 1 as written |
 | primes | safe primes | standard RSA primes (equations unchanged) | for S13 (faster keygen, untimed) |
 | H1 | odd l-bit values | same; non-coprime factors peeled (Alg. 1) | neutral |
 | aggregation | recursive pairwise | balanced tree (same result, O(c log c) instead of O(c²)) | for S13 |

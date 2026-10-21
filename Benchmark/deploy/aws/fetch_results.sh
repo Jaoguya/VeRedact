@@ -6,7 +6,7 @@ cd "$(dirname "$0")/../.."
 eval "$(.venv/bin/python deploy/aws/aws_config.py)"
 IP=$(cut -d' ' -f2 deploy/aws/.instance)
 KEY="$HOME/.ssh/$AWS_KEY_NAME.pem"
-rsync -avz -e "ssh -i $KEY" "$AWS_SSH_USER@$IP:$REPO_REMOTE_DIR/Benchmark/results/" "results/"
+rsync -avz --exclude _histories -e "ssh -i $KEY" "$AWS_SSH_USER@$IP:$REPO_REMOTE_DIR/Benchmark/results/" "results/"  # histories: tens of GB, server only
 for d in Result Overleaf/tables; do
   mkdir -p "../$d"
   rsync -avz -e "ssh -i $KEY" "$AWS_SSH_USER@$IP:$REPO_REMOTE_DIR/$d/" "../$d/"

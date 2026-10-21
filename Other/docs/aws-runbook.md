@@ -31,6 +31,9 @@ Benchmark/deploy/aws/launch_run.sh experiment      # paper numbers (refuses unle
 Benchmark/deploy/aws/launch_run.sh experiment exp02_authorization_latency exp05_gas_consumption   # a subset
 ```
 
+The paper's full run is `Benchmark/deploy/experiments/full_run.sh` on the server (provers for VeRedact-PQ's
+Exp. 1, then everything else, coverage, tables, figures); `RESUME=1` skips the prover step to finish a stopped run.
+
 `launch_run.sh` points the SSH rule at this machine's current IP (`refresh_ssh_rule.sh`; a changed home
 IP otherwise times out), syncs this working tree, bootstraps a fresh instance or rebuilds the package and
 the STARK module on a bootstrapped one, installs the idle watchdog (power-off after
@@ -47,6 +50,6 @@ ledger, or with baselines below 128-bit security.
 ## 3. Fetch and stop paying
 
 ```bash
-Benchmark/deploy/aws/fetch_results.sh              # rsync Benchmark/results/ and Result/ back
+Benchmark/deploy/aws/fetch_results.sh              # rsync Benchmark/results/ (without saved histories) and Result/ back
 Benchmark/deploy/aws/teardown_ec2.sh               # stop (disk kept)  |  teardown_ec2.sh terminate
 ```

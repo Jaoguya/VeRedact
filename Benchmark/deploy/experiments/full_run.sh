@@ -6,6 +6,7 @@
 #   3. scripts/check_coverage.py --tier experiment (no capped line), tables + figures
 #   4. power off (the idle watchdog is the fallback)
 # Usage (server): deploy/experiments/full_run.sh   (or give VRPQ_PROVERS/VRPQ_PROVER_KEY of running provers)
+#   RESUME=1: skip step 1 (no provers), e.g. to finish a run stopped by its hard cap
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 echo "full run start $(date -u +%FT%TZ)"
@@ -13,7 +14,9 @@ echo "full run start $(date -u +%FT%TZ)"
 # instance's IAM role and terminated right after; if they cannot be launched, the step is SKIPPED (no silent
 # fallback to the load-generator-bound local mode) and the coverage check below reports the missing points.
 LAUNCHED=0
-if [[ -z "${VRPQ_PROVERS:-}" ]]; then
+if [[ "${RESUME:-0}" == 1 ]]; then
+  echo "STEP1: skipped (RESUME=1)"
+elif [[ -z "${VRPQ_PROVERS:-}" ]]; then
   if deploy/server/provision_provers_local.sh "${PROVER_COUNT:-2}" "${PROVER_TYPE:-c7i.48xlarge}"; then
     export VRPQ_PROVER_KEY=$(sed -n 1p deploy/aws/.provers) VRPQ_PROVERS=$(sed -n 2p deploy/aws/.provers)
     LAUNCHED=1
@@ -22,7 +25,7 @@ if [[ -z "${VRPQ_PROVERS:-}" ]]; then
     deploy/server/teardown_provers_local.sh
   fi
 fi
-if [[ -n "${VRPQ_PROVERS:-}" ]]; then
+if [[ "${RESUME:-0}" != 1 && -n "${VRPQ_PROVERS:-}" ]]; then
   SYSTEMS=veredact deploy/experiments/run_experiments.sh experiment exp01_redaction_throughput
   echo "STEP1_EXIT=$?"
 fi
