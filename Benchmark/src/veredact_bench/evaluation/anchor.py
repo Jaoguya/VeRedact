@@ -52,8 +52,8 @@ class _Metered:
     def read(self, what: str, **keys):
         """Auditor-side chain read:
         rai_checkpoint(epoch) -> bytes32 (CP_e^A);
-        checkpoint_history(batches) -> {(b, v_b): MR_b} of the given batches, from every anchored checkpoint
-            (initial and each finalized transition);
+        checkpoint_history(keys) -> {(b, v_b): MR_b} of the given (b, v_b) checkpoints (initial or finalized
+            transition), read from the blocks that anchored them (2026-10-21; see BesuAnchor._read);
         commits(ids) -> [bytes32] (BaselineRedactionLog records);
         latest_acc() -> bytes32 (keccak256 of S1's latest header accumulator)."""
         return self._read(what, **keys)
@@ -120,8 +120,7 @@ class InProcessAnchor(_Metered):
         if what == "rai_checkpoint":
             return self._rai.get(k["epoch"], b"\0" * 32)
         if what == "checkpoint_history":
-            bs = set(k["batches"])
-            return {key: mr for key, mr in self._cps.items() if key[0] in bs}
+            return {key: self._cps[key] for key in k["keys"] if key in self._cps}
         if what == "commits":
             return [self._commits[i] for i in k["ids"]]
         if what == "latest_acc":
@@ -171,7 +170,12 @@ class BesuAnchor(_Metered):
         self._raw: dict[bytes, bytes] = {}  # tx hash -> signed raw transaction (re-sent if the node lost it)
         self.recheck_s = 30.0  # [METHOD] a transaction pending this long is looked up directly (see _recheck)
         self.recovered = {"late_receipt": 0, "resent": 0, "timed_out": 0}
-        self._mined: dict[bytes, float] = {}  # tx hash -> time its block was observed (for late registration)
+        self._mined: dict[bytes, tuple] = {}  # tx hash -> (seen, ok, gas, block) for late registration
+        # (b, v_b) -> block that anchored that checkpoint, from the anchoring receipts: the audit service's
+        # locator, so an auditor reads the CheckpointAnchored logs of those blocks only. A wrong block finds no
+        # matching event and the record is rejected; it can never make a transition verify.
+        self._cp_keys: dict[bytes, list] = {}  # tx hash -> the (b, v_b) checkpoints it anchors
+        self.cp_block: dict[tuple, int] = {}
         self._plock = threading.Lock()
         self._stop = threading.Event()
         self._last_block = self.w3.eth.block_number
@@ -204,13 +208,15 @@ class BesuAnchor(_Metered):
             self._nonce += 1
             return self.acct.sign_transaction(tx)
 
-    def _send(self, fn, t0: float) -> Future:
+    def _send(self, fn, t0: float, cp_keys=()) -> Future:
         """Sign in order, register, then send concurrently: the ~12 ms RPC runs on a sender thread, so the
         caller never waits for it and nonces may reach the node out of order (Besu's pool holds the gap
         until it is filled). Registered before sending, so a failed send always resolves its Future."""
         stx = self._sign(fn)
         h = bytes(stx.hash)
         self._raw[h] = bytes(stx.raw_transaction)
+        if cp_keys:
+            self._cp_keys[h] = list(cp_keys)
         fut = self._register(h, t0)
         self._senders.submit(self.w3.eth.send_raw_transaction, stx.raw_transaction).add_done_callback(
             lambda f: f.exception() is not None and self._fail(h, f.exception())
@@ -252,9 +258,9 @@ class BesuAnchor(_Metered):
                     with self._plock:
                         item = self._pending.pop(h, None)
                         if item is None:  # submitted but not yet registered: resolved on registration
-                            self._mined[h] = (seen, ok, gas)
+                            self._mined[h] = (seen, ok, gas, bn)
                             continue
-                    self._resolve_and_forget(h, *item, seen, ok, gas)
+                    self._resolve_and_forget(h, *item, seen, ok, gas, bn)
             self._last_block = head
             with self._plock:  # forget unclaimed hashes after a while (deploys, other senders)
                 for h in [h for h, m in self._mined.items() if seen - m[0] > self.timeout_s]:
@@ -280,7 +286,9 @@ class BesuAnchor(_Metered):
                         continue
                 self.recovered["late_receipt"] += 1
                 log.warning(f"anchor: receipt found by hash for {h.hex()[:16]} (missed by the block watcher)")
-                self._resolve_and_forget(h, fut, t0, time.perf_counter(), r["status"] == 1, r["gasUsed"])
+                self._resolve_and_forget(
+                    h, fut, t0, time.perf_counter(), r["status"] == 1, r["gasUsed"], r["blockNumber"]
+                )
             elif now - t0 > self.timeout_s:
                 self.recovered["timed_out"] += 1
                 self._fail(h, RuntimeError(f"anchoring transaction {h.hex()} not mined within {self.timeout_s} s"))
@@ -298,8 +306,11 @@ class BesuAnchor(_Metered):
                     except Exception as e:  # e.g. nonce too low: it was mined after all; the receipt resolves it
                         log.warning(f"anchor: re-send of {h.hex()[:16]} failed: {e}")
 
-    def _resolve_and_forget(self, h, fut, t0, seen, ok, gas):
+    def _resolve_and_forget(self, h, fut, t0, seen, ok, gas, bn):
         self._raw.pop(h, None)
+        for key in self._cp_keys.pop(h, ()):
+            if ok:
+                self.cp_block[key] = bn
         self._resolve(h, fut, t0, seen, ok, gas)
 
     @staticmethod
@@ -339,7 +350,7 @@ class BesuAnchor(_Metered):
             h = self._send(self.reg.functions.registerCommittee(f["epoch"], f["members"], f["n"], f["t"], f["sig"]), t0)
         elif op == "batch_checkpoint":
             self._ver[f["b"]] = 0
-            h = self._send(self.reg.functions.anchorCheckpoint(f["b"], cp(f["b"], 0), f["sig"]), t0)
+            h = self._send(self.reg.functions.anchorCheckpoint(f["b"], cp(f["b"], 0), f["sig"]), t0, [(f["b"], 0)])
         elif op == "abrrr_authorization":
             h = self._send(self.reg.functions.anchorAuthorization(f["bid"], f["digest"]), t0)
         elif op == "redaction_finalization":
@@ -351,7 +362,11 @@ class BesuAnchor(_Metered):
                 c[1] = mr
                 cps.append(tuple(c))
                 self._ver[b] = vb
-            h = self._send(self.reg.functions.finalizeRedaction(f["bid"], bs, cps, f["sigs"]), t0)
+            h = self._send(
+                self.reg.functions.finalizeRedaction(f["bid"], bs, cps, f["sigs"]),
+                t0,
+                list(zip(bs, f["vbs"])),
+            )
         elif op == "rai_checkpoint":
             h = self._send(self.reg.functions.anchorRai(f["epoch"], f["cp"]), t0)
         elif op == "baseline_redaction":
@@ -367,17 +382,33 @@ class BesuAnchor(_Metered):
         chunk = 2000  # ids per eth_call: bounded response size, the same for every scheme
         if what == "rai_checkpoint":
             return bytes(self.reg.functions.raiCheckpoints(k["epoch"]).call())
-        if what == "checkpoint_history":  # CheckpointAnchored(b indexed, vb, mr) of the queried batches only
-            # Besu answers eth_getLogs over at most --rpc-max-logs-range blocks (default 5,000 = 2.8 h of 2-s
-            # blocks; a 10^5 history spans more): query in block ranges, and at most 100 batch topics per call
-            bs, out, head = sorted(set(k["batches"])), {}, self.w3.eth.block_number
-            for lo in range(self._from_block, head + 1, 5000):
-                hi = min(lo + 4999, head)
-                for i in range(0, len(bs), 100):
-                    logs = self.reg.events.CheckpointAnchored.get_logs(
-                        from_block=lo, to_block=hi, argument_filters={"b": bs[i : i + 100]}
-                    )
-                    out.update({(int(e.args.b), int(e.args.vb)): bytes(e.args.mr) for e in logs})
+        if what == "checkpoint_history":  # CheckpointAnchored(b indexed, vb, mr) of the queried checkpoints
+            # read from the blocks that anchored them (cp_block), never scanned from the deployment block: the
+            # 2026-10-19 full run scanned every 5,000-block window since deployment (~20 h of 2-s blocks) in
+            # 100-batch topic groups, so a 10-record verification took 0.7 s and grew with the chain's age.
+            # Windows of at most 5,000 blocks (Besu --rpc-max-logs-range) start at an anchoring block; a window
+            # asks for its batches by topic (<= 100) or for every CheckpointAnchored log of the contract
+            keys = set(k["keys"])
+            blocks = sorted({self.cp_block[key] for key in keys if key in self.cp_block})
+            wins, out = [], {}
+            for bn in blocks:
+                if wins and bn - wins[-1][0] < 5000:
+                    wins[-1][1] = bn
+                else:
+                    wins.append([bn, bn])
+            topic0 = "0x" + self.w3.keccak(text="CheckpointAnchored(uint256,uint64,bytes32)").hex().removeprefix("0x")
+            for lo, hi in wins:
+                bs = sorted({b for b, v in keys if lo <= self.cp_block.get((b, v), -1) <= hi})
+                topics = [topic0, ["0x" + b.to_bytes(32, "big").hex() for b in bs]] if len(bs) <= 100 else [topic0]
+                logs = self.w3.provider.make_request(
+                    "eth_getLogs",
+                    [{"address": self.reg.address, "fromBlock": hex(lo), "toBlock": hex(hi), "topics": topics}],
+                )["result"]
+                for e in logs:
+                    d = bytes.fromhex(e["data"][2:])
+                    key = (int(e["topics"][1], 16), int.from_bytes(d[:32], "big"))
+                    if key in keys:
+                        out[key] = d[32:64]
             return out
         if what == "commits":
             ids, out = list(k["ids"]), []

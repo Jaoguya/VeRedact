@@ -165,6 +165,7 @@ def test_besu_block_watcher_resolves_pipelined_transactions():
     a.poll_s, a.timeout_s, a.receipts = 0.005, 5, []
     a._pending, a._mined, a._plock, a._stop, a._last_block = {}, {}, threading.Lock(), threading.Event(), 0
     a._raw, a.recheck_s, a.recovered = {}, 30.0, {"late_receipt": 0, "resent": 0, "timed_out": 0}
+    a._cp_keys, a.cp_block = {}, {}
     a._senders = ThreadPoolExecutor(2)
     a._watcher = threading.Thread(target=a._watch, daemon=True)
     a._watcher.start()

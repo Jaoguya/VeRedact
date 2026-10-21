@@ -267,7 +267,7 @@ def test_anchor_never_waits_forever_for_a_mined_transaction():
 
         def get_transaction_receipt(self, h):
             if h == b"mined":
-                return {"status": 1, "gasUsed": 21000}
+                return {"status": 1, "gasUsed": 21000, "blockNumber": 7}
             raise ValueError("not found")
 
         def get_transaction(self, h):
@@ -280,6 +280,7 @@ def test_anchor_never_waits_forever_for_a_mined_transaction():
     a.w3 = type("W3", (), {"eth": Eth()})()
     a._plock, a.recheck_s, a.timeout_s = threading.Lock(), 30.0, 600.0
     a.recovered = {"late_receipt": 0, "resent": 0, "timed_out": 0}
+    a._cp_keys, a.cp_block = {}, {}
     now = time.perf_counter()
     futs = {h: Future() for h in (b"mined", b"lost", b"expired", b"fresh")}
     t0 = {b"mined": now - 60, b"lost": now - 60, b"expired": now - 700, b"fresh": now}

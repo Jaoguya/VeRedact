@@ -457,7 +457,7 @@ class VeRedactPQ:
         anchored = {}
         if state_transition:  # finalized checkpoint references: (b, v_b') -> MR_b' as anchored, one read per response
             t0 = time.perf_counter()
-            anchored = L.anchor.read("checkpoint_history", batches={rr.pbrp["b"] for rr in resp.records})
+            anchored = L.anchor.read("checkpoint_history", keys={(rr.pbrp["b"], rr.v_b_new) for rr in resp.records})
             bd["state_ms"] += (time.perf_counter() - t0) * 1000
         for rr in resp.records:
             t0 = time.perf_counter()
