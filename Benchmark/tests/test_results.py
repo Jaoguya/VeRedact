@@ -268,15 +268,6 @@ def test_exp1_clients_share_one_deadline():
     assert time.perf_counter() - t < 1.5  # per-thread timeouts would wait 4 x 0.5 = 2 s
 
 
-def test_exp1_rates_add_low_rates_per_system():
-    from veredact_bench.utils.config import exp1_rates
-
-    x = {"rates": [100, 250], "low_rates": {"S13": [1, 2, 4]}}
-    assert exp1_rates(x, "S13") == [1, 2, 4, 100, 250]
-    assert exp1_rates(x, "veredact") == [100, 250]
-    assert exp1_rates({"rates": [100]}, "S13") == [100]
-
-
 def test_anchor_never_waits_forever_for_a_mined_transaction():
     """Full run 2026-10-09: a mined transaction's Future was never resolved (3.5 h hang). _recheck resolves it
     from its receipt, re-sends a transaction the node does not know, and fails one past the timeout."""

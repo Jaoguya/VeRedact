@@ -17,8 +17,8 @@ a request still unfinished at the point's cutoff (cutoff_s, when the drain ends)
 bound cutoff - arrival, so overload can never make latency look shorter (2026-10-16: counting only
 requests finished inside the window, from their submission after proving, dropped VeRedact-PQ's p95 from
 41.5 s at 2,000 req/s to 12.8 s at 5,000 req/s). Crypto and ledger time stay separate columns.
-Every system runs EVERY shared rate (author rule 2026-10-05: no figure line may end early), plus its own
-low_rates below its capacity (2026-10-23), where its latency is a full measurement. A point is noted as
+Every system runs EVERY rate (author rule 2026-10-05: no figure line may end early; 2026-10-23: the rates
+start below every scheme's capacity, so each has a full latency measurement). A point is noted as
 saturated when decided/offered (window arrivals, valid requests; decided = any final outcome, so a
 protocol-level rejection such as S1's one-redaction-per-block is not mistaken for overload) or the on-time
 submission fraction drops below 1 - saturation_tolerance; the note never skips a rate.
@@ -45,7 +45,6 @@ from veredact_bench.evaluation.provers import RemoteProvers
 from veredact_bench.methods.registry import system_keys
 from veredact_bench.methods.scheme import RedactionOutcome
 from veredact_bench.utils import cpus
-from veredact_bench.utils.config import exp1_rates
 
 _REQ = None  # the VeRedact-PQ system a forked requester process proves for (static credentials and keys)
 
@@ -356,7 +355,7 @@ def run(cfg, out):
     for key in system_keys(cfg):  # one run per point: every request of the run is a sample
         if not out.begin(key):
             continue
-        for rate in exp1_rates(x, key):  # rate sweep at the default skew: shared rates + this system's low_rates
+        for rate in x["rates"]:  # rate sweep at the default skew: every rate, for every system
             ratio, client = run_point(cfg, key, rate, cfg["workload"]["zipf_s"], out, "rate")
             # noted, never skipped: requesters also re-prove every stale request (Phases 4/5), so under a
             # revalidation storm the on-time fraction falls together with decided/offered

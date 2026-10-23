@@ -7,7 +7,7 @@ Branch `s99-leta-exp1-latency`, state of 23 October 2026.
 
 **In short:** every experiment has run once at the final scale. VeRedact-PQ's Experiment 4 was rerun after a bug
 fix and its result has not been read yet. Experiment 1 was re-planned on 23 Oct (new rates, latency drawn only
-where fully measured, see §4.2); the code is ready, the rerun of S1, S13 and S34 is not done yet. Everything else
+where fully measured, see §4.2); the code is ready, the rerun of all five schemes is not done yet. Everything else
 is done, and most of the paper's results section is already updated.
 
 ## 1. What the project is
@@ -45,7 +45,7 @@ the prover/worker machines the experiments create.
 | Exp. | Question | x-axis | Schemes |
 |---|---|---|---|
 | 0 | How long does each cryptographic building block take? | — (table) | all six |
-| 1 | Redactions finished per second, and end-to-end time of one | request rate 100–1,000/s (+ low rates for S1, S13, S34); data skew | veredact, S1, S13, S27, S34 |
+| 1 | Redactions finished per second, and end-to-end time of one | request rate 1–1,000/s, same for every scheme; data skew | veredact, S1, S13, S27, S34 |
 | 2 | How long does authorizing a request take? | committee 4–32; batch 1–256 | veredact, S1, S34, S99 |
 | 3 | How fast is an audit answered, how big is the answer? | records audited n_Q 10–10^5 | veredact, S1, S13 |
 | 4 | How long does the auditor verify it; are tampered records caught? | n_Q 10–10^5 | veredact, S1, S13 |
@@ -85,15 +85,17 @@ full = fully measured, partial = some values are lower bounds, pending = result 
    rerun pending.** Requests arrive for 60 s, then the run waits 30 s; a request unfinished at the stop only gives
    a lower bound (~87 s for every overloaded scheme). Capacity (10^6 run, from the blue text; confirm from
    `metrics.json`): S27 ~130–145/s, VeRedact-PQ ~100–140/s, S1 ~65–72/s, S34 ~6/s, S13 ~5/s.
-   What changed (`configs/experiments/exp01_redaction_throughput.yaml`, `utils/config.py: exp1_rates`):
-   - shared rates now 100, 250, 500, 1,000 req/s; 2,000 and 5,000 dropped (every scheme saturates by 500; above
-     1,000 the provers could not deliver the load to VeRedact-PQ). Manuscript range changed to match.
-   - `low_rates` at ~20–80 % of capacity: S1 25, 50; S13 and S34 1, 2, 4 req/s.
+   What changed (`configs/experiments/exp01_redaction_throughput.yaml`):
+   - rates now 1, 2, 4, 10, 25, 50, 100, 250, 500, 1,000 req/s, the SAME for every scheme (author: every scheme
+     gets the same test); the low end is below every scheme's capacity; 2,000 and 5,000 dropped (every scheme
+     saturates by 500; above 1,000 the provers could not deliver the load to VeRedact-PQ). Manuscript changed.
    - Fig. 3(b) draws a latency point only if >= 95 % of its requests finished (no hollow lower-bound markers);
-     both panels show only configured rates, so veredact and S27 need no rerun.
+     both panels show only configured rates.
+   - Note: at 1 req/s the 60-s window holds ~60 requests, so the low-rate p95 has a wide confidence interval.
    - Blue manuscript: Exp. 1 setup sentence and caption updated; the two results paragraphs are still the old
      100–5,000 text (`% TODO` above them) — rewrite after the rerun.
-   To do: rerun Exp. 1 for S1, S13, S34 only (`--systems S1,S13,S34 --force`, ~3–4 h, ~US$5–6).
+   To do: rerun Exp. 1 for all five schemes (`--force`). Author chose option 1 (23 Oct): all 70 points in one run,
+   provers on spot only during VeRedact-PQ's part, hard cap ~1.5x the estimate from the logs.
 3. **S13 at 5,000 req/s stopped late** (386 s instead of ~100 s): client threads were joined one after another,
    each with its own 30 s timeout. **Fixed 23 Oct**: `join_by` gives them one shared deadline; test
    `test_exp1_clients_share_one_deadline`. Throughput was never affected (it counts only the window).
@@ -111,7 +113,7 @@ full = fully measured, partial = some values are lower bounds, pending = result 
 
 ## 5. Decisions needed from the author
 
-- **A. Experiment 1 latency — decided 23 Oct**: latency only where fully measured, low rates added (§4.2).
+- **A. Experiment 1 latency — decided 23 Oct**: latency only where fully measured; rates 1–1,000 req/s, the same for every scheme (§4.2).
 - **B. S13 witnesses.** Re-time one at a time (removes the bias, ~8x longer for that step), or keep and state
   the bias in one sentence.
 - **C. VeRedact-PQ provers at high rates — resolved 23 Oct** by dropping 2,000 and 5,000 req/s.
@@ -127,9 +129,9 @@ full = fully measured, partial = some values are lower bounds, pending = result 
 2. If the rerun did not finish: propose rerunning VeRedact-PQ's Experiment 4 (~2–3 h incl. history rebuild).
 3. Write Experiment 4 into the blue manuscript, copy its figure next to the tex, re-extract
    `perf_analysis_blue.tex`, compile on the server.
-4. Experiment 1 (code done 23 Oct): in the same boot confirm S1/S13/S34 capacities from `metrics.json` (adjust
-   `low_rates` if one is lower), then with a yes rerun `--systems S1,S13,S34 --force`; regenerate Fig. 3 and
-   rewrite the two Exp. 1 results paragraphs in the blue manuscript (+ `perf_analysis_blue.tex`).
+4. Experiment 1 (code done 23 Oct): in the same boot confirm capacities from `metrics.json` (the lowest must stay
+   above 4 req/s), then with a yes rerun Exp. 1 for all five schemes (provers for VeRedact-PQ); regenerate Fig. 3
+   and rewrite the two Exp. 1 results paragraphs in the blue manuscript (+ `perf_analysis_blue.tex`).
 5. After B: rerun only the affected part, or add the one-sentence disclosure.
 6. Finally: `scripts/check_coverage.py --tier experiment`, tables and figures, one line in `TASK.md`, commit,
    push.

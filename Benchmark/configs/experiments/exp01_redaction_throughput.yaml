@@ -3,14 +3,11 @@ experiment:
   id: exp01_redaction_throughput
   paper: [fig:exp1_redaction]
   systems: [veredact, S1, S13, S27, S34]
-  rates: [100, 250, 500, 1000]  # [DERIVED] every system. 2026-10-23 (author): 2,000 and 5,000 dropped (manuscript
-                                #   range changed): every scheme saturates by 500, and above 1,000 the remote
-                                #   provers could not deliver the stated load to VeRedact-PQ
-  low_rates:                    # [DERIVED] 2026-10-23: extra rates at ~20-80 % of a scheme's measured capacity
-                                #   (10^6 run), so its p95 latency is a full measurement, not a lower bound
-    S1: [25, 50]                #   capacity ~65-72 redactions/s
-    S13: [1, 2, 4]              #   capacity ~5 redactions/s
-    S34: [1, 2, 4]              #   capacity ~6 redactions/s
+  rates: [1, 2, 4, 10, 25, 50, 100, 250, 500, 1000]  # [DERIVED] 2026-10-23 (author): the same rates for every
+                                #   system, ~2x apart. Low end below every scheme's capacity (10^6 run: S13 ~5/s,
+                                #   S34 ~6/s, S1 ~65-72/s, VeRedact-PQ ~100-140/s, S27 ~130-145/s), so each has a
+                                #   full latency measurement; 2,000 and 5,000 dropped (every scheme saturates by
+                                #   500, and above 1,000 the provers could not deliver the load to VeRedact-PQ)
   zipf_sweep: [0.0, 0.4, 0.8, 1.2]           # [DERIVED] manuscript Exp. 1
   zipf_rate: 100                # [DERIVED] manuscript: skew sweep "at a fixed arrival rate" = its lowest rate [100]
                                 #   (author decision 2026-10-04; S13/S34 saturate there, Fig. 3(c) counts every

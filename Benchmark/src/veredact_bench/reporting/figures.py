@@ -27,7 +27,7 @@ from veredact_bench import metrics as M
 from veredact_bench.reporting import style
 from veredact_bench.reporting.load import metrics as _all_metrics
 from veredact_bench.reporting.load import num
-from veredact_bench.utils.config import RESULT_DIR, exp1_rates, load
+from veredact_bench.utils.config import RESULT_DIR, load
 from veredact_bench.utils.log import get_logger
 
 OUT = RESULT_DIR
@@ -151,10 +151,9 @@ def fig_exp1(tier, written):
     ms = metrics("exp01_redaction_throughput", tier)
     if not ms:
         return
-    ex = load(tier, "exp01_redaction_throughput")["experiment"]
+    want = set(load(tier, "exp01_redaction_throughput")["experiment"]["rates"])  # rows of dropped rates: not drawn
     fig, (a, b) = _panels(2, height_in=2.3)
     for key, m in ms.items():
-        want = set(exp1_rates(ex, key))  # configured rates only: older rows of dropped rates are not drawn
         rate = sorted((k[1], v) for k, v in _points(m).items() if k[0] == "rate" and k[1] in want)
         ok = [(x, v) for x, v in rate if v["completed_in_window"]]
         if ok:
@@ -168,7 +167,7 @@ def fig_exp1(tier, written):
         if lat:
             xs, ys = [r for r, _ in lat], [v["latency_ms"]["p95"] / 1000 for _, v in lat]
             style.line(b, key, xs, ys, yerr=_ci(m, [v for _, v in lat], "latency_ms", "p95_ci95", scale=1e-3))
-    rates = sorted({r for key in ms for r in exp1_rates(ex, key)})
+    rates = sorted(want)
     a.set(xscale="log", yscale="log", xlabel="Arrival rate (req/s)", ylabel="Throughput (redactions/s)")
     b.set(xscale="log", yscale="log", xlabel="Arrival rate (req/s)", ylabel="p95 end-to-end latency (s)")
     for ax in (a, b):  # ticks at the configured rates

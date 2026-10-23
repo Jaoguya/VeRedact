@@ -107,11 +107,6 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
     x = {k[:5].replace("exp0", "exp"): v for k, v in c["experiments"].items()}  # exp01_... -> exp1
     if sorted(x["exp1"]["rates"]) != x["exp1"]["rates"]:
         E("exp1.rates must be ascending")
-    for k, lo in (x["exp1"].get("low_rates") or {}).items():
-        if k not in x["exp1"]["systems"]:
-            E(f"exp1.low_rates.{k}: not a system of Exp. 1")
-        elif list(lo) != sorted(lo) or (lo and max(lo) >= min(x["exp1"]["rates"])):
-            E(f"exp1.low_rates.{k} must be ascending and below the lowest shared rate")
     if 0.0 not in x["exp1"]["zipf_sweep"]:
         E("exp1.zipf_sweep must include 0 (uniform targets: the regime where coalescing does not help)")
     if 1 not in x["exp2"]["batch_sizes"]:
