@@ -2969,14 +2969,19 @@
     \subsubsection*{\textbf{Experiment 1: Redaction Latency and Throughput}}
 
     This experiment evaluates end-to-end redaction performance \chg{as the
-    request arrival rate increases from 100 to 5{,}000 requests/s} over the
+    request arrival rate increases from 100 to 1{,}000 requests/s, with
+    additional rates below the capacity of the schemes that saturate under
+    100 requests/s (25 and 50 requests/s for Ref.~\cite{ref1}; 1, 2, and
+    4 requests/s for Refs.~\cite{ref13} and~\cite{ref34})} over the
     default ledger, \chg{comparing VeRedact-PQ with Refs.~\cite{ref1},
     \cite{ref13}, \cite{ref27}, and~\cite{ref34}}. End-to-end latency is
     measured from request \chg{arrival} to blockchain finalization of the
     updated checkpoint, covering Phases~3 to~5\chg{, over every request that
     arrives in the measurement window; a request not finalized by the end of
-    a 30-s drain period is counted with its elapsed time at that moment, so a
-    point with such requests is a lower bound}, and throughput is measured as
+    a 30-s drain period is counted with its elapsed time at that moment, and
+    latency is reported only at rates where at least 95\% of these requests
+    are finalized, so that every reported value is a complete measurement},
+    and throughput is measured as
     \chg{the number of redactions finalized per second within a 60-s window
     that follows a 10-s warm-up}. The results are shown in
     Fig.~\ref{fig:exp1_redaction}.
@@ -2985,11 +2990,12 @@
     \centering
     \includegraphics[width=0.8\linewidth]{exp1_redaction_throughput.png}
     \caption{Redaction performance: (a) throughput and
-    (b) 95th-percentile end-to-end latency versus request arrival rate
-    \chg{(hollow markers: lower bounds)}.}
+    (b) 95th-percentile end-to-end latency versus request arrival rate.}
     \label{fig:exp1_redaction}
     \end{figure}
 
+    % TODO 2026-10-23: the two results paragraphs below are from the 10^6 run at 100-5,000 req/s;
+    % rewrite them after the Exp. 1 rerun of S1, S13, S34 with the new rates.
     \chg{Fig.~\ref{fig:exp1_redaction}(a) shows that Ref.~\cite{ref27}
     achieves the highest throughput, about 128--145 redactions/s from
     250 requests/s onward, consistent with its low-cost classical adaptation

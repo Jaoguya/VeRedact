@@ -27,7 +27,7 @@ from veredact_bench import metrics as M
 from veredact_bench.reporting import style
 from veredact_bench.reporting.load import metrics as _all_metrics
 from veredact_bench.reporting.load import num
-from veredact_bench.utils.config import RESULT_DIR, load
+from veredact_bench.utils.config import RESULT_DIR, exp1_rates, load
 from veredact_bench.utils.log import get_logger
 
 OUT = RESULT_DIR
@@ -151,31 +151,27 @@ def fig_exp1(tier, written):
     ms = metrics("exp01_redaction_throughput", tier)
     if not ms:
         return
+    ex = load(tier, "exp01_redaction_throughput")["experiment"]
     fig, (a, b) = _panels(2, height_in=2.3)
-    keys = list(ms)
     for key, m in ms.items():
-        rate = sorted((k[1], v) for k, v in _points(m).items() if k[0] == "rate")
+        want = set(exp1_rates(ex, key))  # configured rates only: older rows of dropped rates are not drawn
+        rate = sorted((k[1], v) for k, v in _points(m).items() if k[0] == "rate" and k[1] in want)
         ok = [(x, v) for x, v in rate if v["completed_in_window"]]
         if ok:
             vs = [v for _, v in ok]
             ys = [v["throughput_per_s"] for v in vs]
             style.line(a, key, [x for x, _ in ok], ys, yerr=_ci(m, vs, "throughput_per_s_ci95"))
         _saturated(a, key, [x for x, v in rate if not v["completed_in_window"]])
-        # end-to-end p95 in seconds at every rate (unfinished requests censored); hollow marker = lower bound.
-        # Saturated schemes share the observation limit: a small log-x offset per scheme keeps them apart
-        lat = [(x, v) for x, v in rate if v["latency_ms"].get("n")]
+        # end-to-end p95 in seconds, only where it is a full measurement: a point with more than 5 % of its
+        # requests unfinished at the cutoff is a lower bound and is not drawn (author rule: no capped values)
+        lat = [(r, v) for r, v in rate if v["latency_ms"].get("n") and not v.get("latency_p95_lower_bound")]
         if lat:
-            f = 1 + 0.035 * (keys.index(key) - (len(keys) - 1) / 2)
-            xs, ys = [x * f for x, _ in lat], [v["latency_ms"]["p95"] / 1000 for _, v in lat]
+            xs, ys = [r for r, _ in lat], [v["latency_ms"]["p95"] / 1000 for _, v in lat]
             style.line(b, key, xs, ys, yerr=_ci(m, [v for _, v in lat], "latency_ms", "p95_ci95", scale=1e-3))
-            lb = [(x, y) for x, y, (_, v) in zip(xs, ys, lat) if v.get("latency_p95_lower_bound")]
-            if lb:
-                _, col, _, mk = style.METHODS[key]
-                b.plot(*zip(*lb), linestyle="none", marker=mk, color=col, markerfacecolor="white", zorder=4)
-    rates = sorted({k[1] for m in ms.values() for k in _points(m) if k[0] == "rate"})
+    rates = sorted({r for key in ms for r in exp1_rates(ex, key)})
     a.set(xscale="log", yscale="log", xlabel="Arrival rate (req/s)", ylabel="Throughput (redactions/s)")
     b.set(xscale="log", yscale="log", xlabel="Arrival rate (req/s)", ylabel="p95 end-to-end latency (s)")
-    for ax in (a, b):  # ticks at the measured rates, not at the offset markers
+    for ax in (a, b):  # ticks at the configured rates
         ax.set_xticks(rates)
         ax.xaxis.set_minor_locator(ticker.NullLocator())
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
@@ -185,8 +181,6 @@ def fig_exp1(tier, written):
     _tag(b, "b")
     if any(ln.get_marker() == "x" for ln in a.lines):  # explain the x only when one is drawn
         a.set_title(r"$\times$ = nothing finalized during the window", loc="right", fontsize=style.FONT_PT - 1)
-    if any(ln.get_markerfacecolor() == "white" for ln in b.lines):
-        b.set_title("hollow = lower bound", loc="right", fontsize=style.FONT_PT - 1)
     _legend(a, keys=ms)
     _save(fig, "exp1_redaction_throughput", written)
 

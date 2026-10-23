@@ -1,14 +1,14 @@
 # Handoff — VeRedact-PQ benchmark
 
-Branch `s99-leta-exp1-latency`, state of 22 October 2026.
+Branch `s99-leta-exp1-latency`, state of 23 October 2026.
 
 > **Do not run anything on AWS without the author's explicit yes for that specific action** (booting the
 > server, tests there, reruns, prover machines, moving or deleting results). One yes covers one action.
 
 **In short:** every experiment has run once at the final scale. VeRedact-PQ's Experiment 4 was rerun after a bug
-fix and its result has not been read yet. Experiment 1 reports some latency values that are only lower bounds,
-and the author must decide how to report them. Everything else is done, and most of the paper's results
-section is already updated.
+fix and its result has not been read yet. Experiment 1 was re-planned on 23 Oct (new rates, latency drawn only
+where fully measured, see §4.2); the code is ready, the rerun of S1, S13 and S34 is not done yet. Everything else
+is done, and most of the paper's results section is already updated.
 
 ## 1. What the project is
 
@@ -45,7 +45,7 @@ the prover/worker machines the experiments create.
 | Exp. | Question | x-axis | Schemes |
 |---|---|---|---|
 | 0 | How long does each cryptographic building block take? | — (table) | all six |
-| 1 | Redactions finished per second, and end-to-end time of one | request rate 100–5,000/s; data skew | veredact, S1, S13, S27, S34 |
+| 1 | Redactions finished per second, and end-to-end time of one | request rate 100–1,000/s (+ low rates for S1, S13, S34); data skew | veredact, S1, S13, S27, S34 |
 | 2 | How long does authorizing a request take? | committee 4–32; batch 1–256 | veredact, S1, S34, S99 |
 | 3 | How fast is an audit answered, how big is the answer? | records audited n_Q 10–10^5 | veredact, S1, S13 |
 | 4 | How long does the auditor verify it; are tampered records caught? | n_Q 10–10^5 | veredact, S1, S13 |
@@ -72,7 +72,8 @@ full = fully measured, partial = some values are lower bounds, pending = result 
   paragraph and figure are still from an older run.
 - Experiment 1 throughput is full everywhere; only its latency is partial.
 - Server stopped, nothing running. Cost of the final run series ~US$67; October ~US$225.
-- Latest cleanup commit `1645d0c` is pushed; its tests have not been run yet.
+- Commits `1645d0c` (cleanup) and the 23 Oct Exp. 1 change are pushed; their tests have not been run yet (they run on
+  the server).
 
 ## 4. Open problems
 
@@ -80,22 +81,23 @@ full = fully measured, partial = some values are lower bounds, pending = result 
    grew with the chain's age. It now reads only the blocks where its records were written (tested on real
    Besu), and its Experiment 4 was rerun. The server then powered off; whether the rerun finished is unknown.
    Log on the server: `Benchmark/results/logs/exp4_rerun_20261021.out`.
-2. **Experiment 1 latency is a lower bound above capacity.** Requests arrive for 60 s, then the run waits 30 s.
-   If a scheme cannot keep up, unfinished requests are counted only up to the stop, so the value is a lower
-   bound that depends on the window, not on the scheme; above capacity all schemes converge near the same
-   ~87 s limit. The author wants no capped value in the paper.
-
-   | Scheme | Fully measured latency | Lower bound only |
-   |---|---|---|
-   | veredact, S27 | 100 req/s; all skew settings | 250 req/s and above |
-   | S1 | all skew settings | every rate, incl. 100 req/s |
-   | S13, S34 | none | everything (overloaded even at 100 req/s) |
-
-3. **S13 at 5,000 req/s stopped late** (386 s instead of ~100 s): the harness joined its 16 client threads one
-   after another, each with its own 30 s timeout. A fix that cut latency at a fixed time was withdrawn (it was a
-   cap). Fixing the join matters only if Experiment 1 is rerun.
-4. **VeRedact-PQ's provers lag at 2,000 and 5,000 req/s**: part of its requests were not submitted on time, so it
-   received less load than stated.
+2. **Experiment 1 latency was a lower bound above capacity — fix decided 23 Oct (author: option A), code done,
+   rerun pending.** Requests arrive for 60 s, then the run waits 30 s; a request unfinished at the stop only gives
+   a lower bound (~87 s for every overloaded scheme). Capacity (10^6 run, from the blue text; confirm from
+   `metrics.json`): S27 ~130–145/s, VeRedact-PQ ~100–140/s, S1 ~65–72/s, S34 ~6/s, S13 ~5/s.
+   What changed (`configs/experiments/exp01_redaction_throughput.yaml`, `utils/config.py: exp1_rates`):
+   - shared rates now 100, 250, 500, 1,000 req/s; 2,000 and 5,000 dropped (every scheme saturates by 500; above
+     1,000 the provers could not deliver the load to VeRedact-PQ). Manuscript range changed to match.
+   - `low_rates` at ~20–80 % of capacity: S1 25, 50; S13 and S34 1, 2, 4 req/s.
+   - Fig. 3(b) draws a latency point only if >= 95 % of its requests finished (no hollow lower-bound markers);
+     both panels show only configured rates, so veredact and S27 need no rerun.
+   - Blue manuscript: Exp. 1 setup sentence and caption updated; the two results paragraphs are still the old
+     100–5,000 text (`% TODO` above them) — rewrite after the rerun.
+   To do: rerun Exp. 1 for S1, S13, S34 only (`--systems S1,S13,S34 --force`, ~3–4 h, ~US$5–6).
+3. **S13 at 5,000 req/s stopped late** (386 s instead of ~100 s): client threads were joined one after another,
+   each with its own 30 s timeout. **Fixed 23 Oct**: `join_by` gives them one shared deadline; test
+   `test_exp1_clients_share_one_deadline`. Throughput was never affected (it counts only the window).
+4. **VeRedact-PQ's provers lagged at 2,000 and 5,000 req/s** — no longer in the paper: those rates were dropped.
 5. **S13's audit times are 3–7% high**: its witnesses are timed 8 at a time on separate cores; the bias is
    against S13.
 6. **VeRedact-PQ's gas rose, cause unverified**: likely more distinct transaction batches touched per round
@@ -103,22 +105,19 @@ full = fully measured, partial = some values are lower bounds, pending = result 
 7. **Saved histories will be rebuilt**: they are reused only if the code that builds them is byte-identical;
    the cleanup edited comments there, so the next run rebuilds VeRedact-PQ's (~1 h). S1's and S13's were already
    outdated by the Experiment 4 fix.
-8. **Housekeeping**: 14 old files from 29 Sep in the root of `Benchmark/results/` (laptop and server) and the
-   old Experiment 4 rows on the laptop should move to a `_superseded` folder (not deleted); a withdrawn change
-   sits in the git stash.
+8. **Housekeeping**: 14 old files from 29 Sep in the root of `Benchmark/results/` on the server should move to a
+   `_superseded` folder (not deleted). Checked 23 Oct: the laptop's `Benchmark/results/` is empty and the laptop's
+   git stash is empty, so nothing is left to do locally.
 
 ## 5. Decisions needed from the author
 
-- **A. Experiment 1 latency.** Recommended: show latency only where fully measured and add low rates for S13 and
-  S34 so they get real values (~3 h, ~US$5). Or: only where measured, no new rates (~US$1; S13/S34 get no
-  latency point). Or: rerun and wait for every request (~40 h on three machines, ~US$115).
+- **A. Experiment 1 latency — decided 23 Oct**: latency only where fully measured, low rates added (§4.2).
 - **B. S13 witnesses.** Re-time one at a time (removes the bias, ~8x longer for that step), or keep and state
   the bias in one sentence.
-- **C. VeRedact-PQ provers at high rates.** Treat the shortfall as the requester's real cost (say so in the
-  text), or add prover capacity and rerun its Experiment 1.
+- **C. VeRedact-PQ provers at high rates — resolved 23 Oct** by dropping 2,000 and 5,000 req/s.
 - **D. S13.** Recommended: keep it (dropping it leaves the other problems and weakens Experiments 3–4).
-- **E. Housekeeping.** Move old result files aside (one server boot); drop or keep the stash; make the
-  saved-history check ignore comments (triggers one rebuild now).
+- **E. Housekeeping.** Move old result files aside on the server (one server boot); make the saved-history check
+  ignore comments (triggers one rebuild now).
 
 ## 6. What to do next (each AWS step needs a yes first)
 
@@ -128,9 +127,10 @@ full = fully measured, partial = some values are lower bounds, pending = result 
 2. If the rerun did not finish: propose rerunning VeRedact-PQ's Experiment 4 (~2–3 h incl. history rebuild).
 3. Write Experiment 4 into the blue manuscript, copy its figure next to the tex, re-extract
    `perf_analysis_blue.tex`, compile on the server.
-4. After decision A: change the Experiment 1 summary/figure for overloaded points, add rates if chosen, fix the
-   client join, rerun only what is needed, update Experiment 1's paragraph.
-5. After B and C: rerun only the affected parts, or add the one-sentence disclosures.
+4. Experiment 1 (code done 23 Oct): in the same boot confirm S1/S13/S34 capacities from `metrics.json` (adjust
+   `low_rates` if one is lower), then with a yes rerun `--systems S1,S13,S34 --force`; regenerate Fig. 3 and
+   rewrite the two Exp. 1 results paragraphs in the blue manuscript (+ `perf_analysis_blue.tex`).
+5. After B: rerun only the affected part, or add the one-sentence disclosure.
 6. Finally: `scripts/check_coverage.py --tier experiment`, tables and figures, one line in `TASK.md`, commit,
    push.
 

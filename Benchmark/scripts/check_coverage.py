@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from veredact_bench.utils.config import REPO_ROOT, load, results_tier
+from veredact_bench.utils.config import REPO_ROOT, exp1_rates, load, results_tier
 
 R = REPO_ROOT / "results"
 
@@ -60,7 +60,7 @@ def main():
     x = load(tier, "exp01_redaction_throughput")
     e = x["experiment"]
     for key in e["systems"]:
-        for rate in e["rates"]:
+        for rate in exp1_rates(e, key):
             need("exp01_redaction_throughput", key, {"sweep": "rate", "rate_rps": rate}, "throughput_per_s")
             need("exp01_redaction_throughput", key, {"sweep": "rate", "rate_rps": rate}, "latency_ms", "p95")
         for s in e["zipf_sweep"]:

@@ -252,6 +252,31 @@ def test_exp1_point_leaves_no_thread_behind(tmp_path):
     assert not left, left
 
 
+def test_exp1_clients_share_one_deadline():
+    """S13 at 5,000 req/s (2026-10-21) stopped after 386 s: each client thread was joined with its own drain-long
+    timeout. join_by gives all of them ONE deadline, however many are still busy."""
+    import threading
+    import time
+
+    from veredact_bench.evaluation.experiments.exp01_redaction_throughput import join_by
+
+    busy = [threading.Thread(target=time.sleep, args=(3.0,), daemon=True) for _ in range(4)]
+    for th in busy:
+        th.start()
+    t = time.perf_counter()
+    join_by(busy, t + 0.5)
+    assert time.perf_counter() - t < 1.5  # per-thread timeouts would wait 4 x 0.5 = 2 s
+
+
+def test_exp1_rates_add_low_rates_per_system():
+    from veredact_bench.utils.config import exp1_rates
+
+    x = {"rates": [100, 250], "low_rates": {"S13": [1, 2, 4]}}
+    assert exp1_rates(x, "S13") == [1, 2, 4, 100, 250]
+    assert exp1_rates(x, "veredact") == [100, 250]
+    assert exp1_rates({"rates": [100]}, "S13") == [100]
+
+
 def test_anchor_never_waits_forever_for_a_mined_transaction():
     """Full run 2026-10-09: a mined transaction's Future was never resolved (3.5 h hang). _recheck resolves it
     from its receipt, re-sends a transaction the node does not know, and fails one past the timeout."""

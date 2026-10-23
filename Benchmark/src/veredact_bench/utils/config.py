@@ -99,3 +99,8 @@ def dump(cfg: dict, path: Path) -> None:
 def threshold(n: int) -> int:
     """t = floor(2n/3) + 1 (manuscript Exp. 2)."""
     return (2 * n) // 3 + 1
+
+
+def exp1_rates(x: dict, key: str) -> list:
+    """Exp. 1 arrival rates of one system: its low_rates (below its capacity) followed by the shared rates."""
+    return sorted([*(x.get("low_rates") or {}).get(key, []), *x["rates"]])
