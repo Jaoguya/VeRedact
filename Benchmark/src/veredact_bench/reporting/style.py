@@ -13,12 +13,28 @@ FONT_PT = 8
 # Okabe & Ito (2008) palette
 _BLUE, _ORANGE, _GREEN, _VERMILION, _PURPLE = "#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7"
 _SKY = "#56B4E9"
-# The schemes compared in the paper's figures and tables: VeRedact-PQ, Schemes [1], [13], [27], [34] and the
-# post-quantum authentication scheme LETA (S99, Exp. 0 and Exp. 2 only). Nothing else is drawn or ranked.
-PAPER_METHODS = ("veredact", "S1", "S13", "S27", "S34", "S99")
+# The schemes compared in the paper's figures and tables: VeRedact-PQ, its internal ablation variants
+# (VeRedact-optimize.tex Exp. 1-3), Schemes [1], [13], [27], [34] and the post-quantum authentication scheme
+# LETA (S99, Exp. 0 and Exp. 2 only). Nothing else is drawn or ranked.
+VARIANTS = (
+    "veredact-per-request",
+    "veredact-fixed-batch",
+    "veredact-cora-no-sfmr",
+    "veredact-re-zk",
+    "veredact-shared-evidence",
+    "veredact-per-record",
+)
+PAPER_METHODS = ("veredact", *VARIANTS, "S1", "S13", "S27", "S34", "S99")
 
 METHODS = {  # key -> (label, colour, line style, marker)
     "veredact": ("VeRedact-PQ", _BLUE, "-", "o"),
+    # variants: VeRedact-PQ's colour, own line style and marker (never 'x': it marks saturation in Fig. 3)
+    "veredact-per-request": ("Per-Request", _BLUE, ":", "v"),
+    "veredact-fixed-batch": ("Fixed-Batch", _BLUE, "-.", "P"),
+    "veredact-cora-no-sfmr": ("CORA-No-SFMR", _BLUE, "--", "<"),
+    "veredact-re-zk": ("Re-ZK", _BLUE, "--", ">"),
+    "veredact-shared-evidence": ("Shared-Evidence", _BLUE, "--", "h"),
+    "veredact-per-record": ("Per-Record", _BLUE, ":", "*"),
     "S1": ("Scheme [1]", _ORANGE, "-", "o"),
     "S13": ("Scheme [13]", _GREEN, "-", "s"),
     "S27": ("Scheme [27]", _VERMILION, "-", "^"),

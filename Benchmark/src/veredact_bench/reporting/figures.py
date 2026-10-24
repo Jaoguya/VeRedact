@@ -5,7 +5,8 @@ Names match the manuscript's \\includegraphics (exp1_redaction_throughput, ...).
 per scheme (VeRedact-PQ, Schemes [1], [13], [27], [34], LETA where it runs), never a second setting of a scheme —
 Fig. 5 at VeRedact-PQ's default batch (veredact.reference_batch), Fig. 6 normal audit, Fig. 7 the default skew
 (workload.zipf_s). Panels follow the captions:
-  Fig. 3  (a) throughput, (b) p95 end-to-end latency (s) vs arrival rate
+  Fig. 3  (a) throughput, (b) p95 end-to-end latency (s) vs arrival rate, (c) PQCH adaptations (solid) and
+          SFMR frontier nodes (dashed, VeRedact-PQ systems) per 1,000 redactions vs Zipf skew
   Fig. 4  COMPLETE authorization (per-request step + share of the batch step): (a) per request vs batch size,
           (b) one batch of m0 vs committee size; schemes without a batch protocol drawn dashed
   Fig. 5  (a) response-generation time, (b) response size vs returned records
@@ -152,9 +153,17 @@ def fig_exp1(tier, written):
     if not ms:
         return
     want = set(load(tier, "exp01_redaction_throughput")["experiment"]["rates"])  # rows of dropped rates: not drawn
-    fig, (a, b) = _panels(2, height_in=2.3)
+    fig, (a, b, cpanel) = _panels(3, height_in=2.3)
+    cf = cpanel.twinx()  # frontier nodes per 1,000 (VeRedact-PQ systems only)
     for key, m in ms.items():
         rate = sorted((k[1], v) for k, v in _points(m).items() if k[0] == "rate" and k[1] in want)
+        skew = sorted((k[2], v) for k, v in _points(m).items() if k[0] == "skew")
+        ad = [(s, v["pqch_adaptations_per_1000"]) for s, v in skew if v.get("pqch_adaptations_per_1000")]
+        if ad:
+            style.line(cpanel, key, [s for s, _ in ad], [y for _, y in ad])
+        fr = [(s, v.get("frontier_nodes_per_1000")) for s, v in skew if v.get("frontier_nodes_per_1000")]
+        if fr and key.startswith("veredact"):
+            style.line(cf, key, [s for s, _ in fr], [y for _, y in fr], suffix=" (frontier)", linestyle="--")
         ok = [(x, v) for x, v in rate if v["completed_in_window"]]
         if ok:
             vs = [v for _, v in ok]
@@ -176,8 +185,12 @@ def fig_exp1(tier, written):
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
         ax.fixed_xticks = True
         ax.sci_y = True  # 10^x labels: one decade per tick, schemes stay apart
+    cpanel.set(xlabel="Zipf skew $s$", ylabel="PQCH adaptations / 1,000")
+    cf.set_ylabel("Frontier nodes / 1,000")
+    cf.grid(False)
     _tag(a, "a")
     _tag(b, "b")
+    _tag(cpanel, "c")
     if any(ln.get_marker() == "x" for ln in a.lines):  # explain the x only when one is drawn
         a.set_title(r"$\times$ = nothing finalized during the window", loc="right", fontsize=style.FONT_PT - 1)
     _legend(a, keys=ms)

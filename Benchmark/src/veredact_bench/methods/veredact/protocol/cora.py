@@ -44,14 +44,19 @@ def cora_select(queue, now: float, target: int, b_max: int, depth: int, t_max: f
         P = positions[c.b]
         return w_f * (frontier_size(P | {c.pos}, depth) - frontier_size(P, depth))
 
-    rest = [c for c in order if c.rid not in picked]
-    cost = {c.rid: marginal(c) for c in rest}
+    # every candidate in an untouched batch costs the same (w_CH + w_F * depth), so the best of them is the
+    # earliest admitted; only candidates in already selected batches need their marginal frontier cost
+    rest = [c for c in order if c.rid not in picked]  # admission order
+    inside = {c.rid: marginal(c) for c in rest if c.b in positions}
     while len(chosen) < limit and rest:
-        best = min(rest, key=lambda c: (cost[c.rid], c.admitted, c.rid))
+        new = next((c for c in rest if c.b not in positions), None)
+        options = [c for c in rest if c.rid in inside] + ([new] if new else [])
+        best = min(options, key=lambda c: (inside.get(c.rid, marginal(c)), c.admitted, c.rid))
         rest.remove(best)
+        inside.pop(best.rid, None)
         chosen.append(best)
         positions.setdefault(best.b, set()).add(best.pos)
-        for c in rest:  # only candidates in the batch that just changed have a new marginal cost
+        for c in rest:  # candidates of the batch that just changed get a new marginal cost
             if c.b == best.b:
-                cost[c.rid] = marginal(c)
+                inside[c.rid] = marginal(c)
     return chosen

@@ -4,7 +4,10 @@ Gates (refuse to run, never warn and continue): an invalid config; the HMAC sign
 ML-DSA backend other than liboqs in the experiment tier.
 """
 
-import resource
+try:
+    import resource  # Unix only: peak memory in the run log
+except ImportError:  # Windows (local tests only; the paper's runs are on Linux)
+    resource = None
 import time
 
 from veredact_bench.evaluation.experiments import RUNNERS
@@ -60,5 +63,5 @@ def run(tier: str, names: list[str], force: bool = False) -> None:
                 log.error(f"{name} {out.method}: aborted; its folder has no metrics.json and will be re-run")
             exp03.release()
             raise
-        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20  # Linux: KiB -> GiB
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20 if resource else 0.0  # Linux: KiB -> GiB
         log.info(f"=== {name} done in {time.time() - t:.1f} s (peak memory {peak:.1f} GiB)")

@@ -177,7 +177,15 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
 
     def send_back(r):
         st = stamp[r.seq]
-        for k in ("exec_start", "exec_done", "batch_size", "batch_id", "batch_adaptations"):
+        for k in (
+            "exec_start",
+            "exec_done",
+            "batch_size",
+            "batch_id",
+            "batch_adaptations",
+            "batch_batches",
+            "batch_frontier",
+        ):
             st.pop(k, None)  # timings describe the request's last attempt (else queue_ms < 0 after a resubmission)
         st.update(status="revalidating", revalidations=st.get("revalidations", 0) + 1)
         revalq.put(r)
@@ -200,7 +208,6 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
 
     def executor():
         veredact = is_veredact(s)
-        t_max = cfg["veredact"]["T_max_ms"] / 1000 if veredact else 0.0
         buf, enq, arrivals = [], [], []  # enq[i] = when buf[i] entered the pending queue Q_e
         # stop = drain window over: requests still queued stay 'unfinished' (a saturated point), and the
         # executor exits so no transaction of this point reaches the ledger after the next point starts
@@ -215,10 +222,17 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             if not buf:
                 continue
             arrivals[:] = [t for t in arrivals if t > now() - 1.0]  # lambda_hat over the last second
-            B = s.p.target_batch_size(len(arrivals)) if veredact else 1
-            if len(buf) < B and now() - enq[0] < t_max and not stop.is_set():
-                continue  # ABRRR: close at B_e* requests or when the oldest has waited T_max
-            batch, buf, enq = buf[:B], buf[B:], enq[B:]
+            if veredact:  # Phase 4 Step 1: round trigger, then CORA (or the variant's) selection from Q_e
+                if not s.p.round_ready(len(buf), now() - enq[0], len(arrivals)) and not stop.is_set():
+                    continue
+                chosen = {
+                    id(vr) for vr in s.p.select_round(list(zip((a.handle for a in buf), enq)), now(), len(arrivals))
+                }
+                take = [id(a.handle) in chosen for a in buf]
+                batch = [a for a, k in zip(buf, take) if k]
+                buf, enq = [a for a, k in zip(buf, take) if not k], [t for t, k in zip(enq, take) if not k]
+            else:  # the baselines redact per request (their papers define no batch protocol)
+                batch, buf, enq = buf[:1], buf[1:], enq[1:]
             t_exec = now()
             with lock.write():
                 res = s.redact(batch)
@@ -232,6 +246,8 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
                     batch_size=len(batch),
                     batch_id=batch_no[0],
                     batch_adaptations=res.ch_adaptations,
+                    batch_batches=s.p.last_exec["batches"] if veredact else res.ch_adaptations,  # |Omega_e|
+                    batch_frontier=s.p.last_exec["frontier"] if veredact else "",  # F_e (SFMR frontier)
                     redact_crypto_ms=res.crypto_ms,
                     redact_ledger_ms=res.ledger_ms,
                     status="pending" if o.ok else "failed",
@@ -328,6 +344,8 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             batch_size=st.get("batch_size", ""),
             batch_id=st.get("batch_id", ""),
             batch_adaptations=st.get("batch_adaptations", ""),
+            batch_batches=st.get("batch_batches", ""),
+            batch_frontier=st.get("batch_frontier", ""),
             queue_ms=(st["exec_start"] - st["auth_done"]) * 1000 if "exec_start" in st else "",
             redact_crypto_ms=st.get("redact_crypto_ms", ""),
             redact_ledger_ms=st.get("redact_ledger_ms", ""),

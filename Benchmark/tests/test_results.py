@@ -45,10 +45,14 @@ def test_tiny_end_to_end_run(tmp_path):
 def test_paper_artifacts_show_only_the_paper_schemes(monkeypatch):
     from veredact_bench.reporting import figures, style, tables
 
-    keys = ["veredact", "S98", "S1", "S13", "S27", "S34", "S99"]  # S98: a method the paper does not compare
+    # S98: a method the paper does not compare; the VeRedact-PQ ablation variants are paper systems
+    # (VeRedact-optimize.tex Exp. 1-3, 2026-10-24) and are drawn in the paper's order
+    keys = ["S98", "veredact-cora-no-sfmr", "veredact", "S1", "S13", "S27", "S34", "S99"]
     monkeypatch.setattr(figures, "_all_metrics", lambda exp, tier: {k: {"points": {}} for k in keys})
-    assert list(figures.metrics("exp01_redaction_throughput", "smoke")) == list(style.PAPER_METHODS)
-    assert tables.ORDER == ["veredact", "S1", "S13", "S27", "S34", "S99"]
+    drawn = list(figures.metrics("exp01_redaction_throughput", "smoke"))
+    assert drawn == ["veredact", "veredact-cora-no-sfmr", "S1", "S13", "S27", "S34", "S99"]
+    assert set(style.VARIANTS) <= set(style.PAPER_METHODS)
+    assert tables.ORDER == list(style.PAPER_METHODS)  # a table lists only the systems its experiment ran
 
 
 def test_gas_figure_never_draws_a_baseline_against_the_batch_axis(monkeypatch, tmp_path):

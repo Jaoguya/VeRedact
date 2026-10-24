@@ -61,7 +61,7 @@ def _exp01(rows, cfg):
         # actually completed) and shows 0 for a saturated scheme that keeps finalizing (S13: 5.3/s) — 2026-10-05.
         fin_t = lambda r: _num(r["submit_s"]) + _num(r["latency_ms"]) / 1000
         completed = [r for r in done if _num(r.get("latency_ms")) is not None and start <= fin_t(r) < end]
-        adapt = {r["batch_id"]: _num(r["batch_adaptations"]) for r in done if r.get("batch_id") not in ("", None)}
+        rounds = {r["batch_id"]: r for r in done if r.get("batch_id") not in ("", None)}  # one row per round
         e2e, censored = _e2e_latency_ms(win, rs)
         out[k] = {
             "offered": len(win),
@@ -82,9 +82,16 @@ def _exp01(rows, cfg):
             # the earlier definition (submission -> finalized, only requests finished inside the window), kept for
             # traceability: it hides client-side waiting and drops the slowest requests under overload
             "latency_completed_from_submit_ms": _stats(r["latency_ms"] for r in completed),
-            "pqch_adaptations_per_1000": M.per_thousand(sum(adapt.values()), len(done)) if done else None,
+            "pqch_adaptations_per_1000": _per_round_k(rounds, "batch_adaptations", len(done)),
+            "affected_batches_per_1000": _per_round_k(rounds, "batch_batches", len(done)),  # |Omega_e|
+            "frontier_nodes_per_1000": _per_round_k(rounds, "batch_frontier", len(done)),  # F_e
         }
     return out
+
+
+def _per_round_k(rounds: dict, col: str, n_done: int):
+    """Per 1,000 finalized redactions of a quantity recorded once per round (adaptations, |Omega_e|, F_e)."""
+    return M.per_thousand(sum(_num(r.get(col)) or 0 for r in rounds.values()), n_done) if n_done else None
 
 
 def _e2e_latency_ms(win, rs) -> tuple[list[float], int]:

@@ -61,11 +61,12 @@ def environment() -> dict:
                 fp["cpu"] = line.split(":", 1)[1].strip()
                 break
         fp["mem_gb"] = round(int(open("/proc/meminfo").readline().split()[1]) / 1048576, 1)
-    except OSError:
-        fp["cpu"] = (
-            subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True).stdout.strip()
-            or platform.processor()
-        )
+    except OSError:  # not Linux: macOS sysctl, else (Windows) the platform string
+        try:
+            brand = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True)
+            fp["cpu"] = brand.stdout.strip() or platform.processor()
+        except OSError:
+            fp["cpu"] = platform.processor()
     versions = {}
     for lib in LIBS:
         try:

@@ -2,13 +2,11 @@
 experiment:
   id: exp01_redaction_throughput
   paper: [fig:exp1_redaction]
-  systems: [veredact, S1, S13, S27, S34]
-  rates: [1, 2, 4, 10, 25, 50, 100, 250, 500, 1000]  # [DERIVED] 2026-10-23 (author): the same rates for every
-                                #   system, ~2x apart. Low end below every scheme's capacity (10^6 run: S13 ~5/s,
-                                #   S34 ~6/s, S1 ~65-72/s, VeRedact-PQ ~100-140/s, S27 ~130-145/s), so each has a
-                                #   full latency measurement; 2,000 and 5,000 dropped (every scheme saturates by
-                                #   500, and above 1,000 the provers could not deliver the load to VeRedact-PQ)
-  zipf_sweep: [0.0, 0.4, 0.8, 1.2]           # [DERIVED] manuscript Exp. 1
+  # VeRedact-optimize.tex Exp. 1: VeRedact-PQ (CORA + SFMR), its internal variants, and Refs. [1], [13], [27], [34]
+  systems: [veredact, veredact-per-request, veredact-fixed-batch, veredact-cora-no-sfmr, S1, S13, S27, S34]
+  rates: [100, 250, 500, 1000, 2000, 5000]  # [DERIVED] manuscript [100]..[5,000] req/s (author 2026-10-24:
+                                #   follow VeRedact-optimize.tex; supersedes the 23-Oct 1-1,000 plan)
+  zipf_sweep: [0.0, 0.4, 0.8, 1.2]           # [DERIVED] manuscript Exp. 1: |Omega_e|, PQCH adaptations, F_e per 1,000
   zipf_rate: 100                # [DERIVED] manuscript: skew sweep "at a fixed arrival rate" = its lowest rate [100]
                                 #   (author decision 2026-10-04; S13/S34 saturate there, Fig. 3(c) counts every
                                 #   finalized redaction of the point)
