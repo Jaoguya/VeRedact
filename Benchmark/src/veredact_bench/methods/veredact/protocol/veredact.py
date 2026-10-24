@@ -42,6 +42,7 @@ class VeRedactPQ:
         self.records: list[RedactionRecord] = []
         self._rid = 0
         self._admit = threading.Lock()
+        self.vcs: set = set()  # auditor's Verified-Context Store: chi(v) of successfully verified shared nodes
 
     # ============================================================ requester side
     def make_request(self, requester: int, tid: bytes, m_new: bytes, op="modify", tamper="") -> Request:
@@ -148,8 +149,21 @@ class VeRedactPQ:
         C_VR = c.H(RID, self._hR(R), h_st, pol.C_P, h_proof, L.e)
         alpha = c.sign(L.vps.sk, c.H(RID, C_VR, L.e))
         vr = ValidatedRequest(
-            RID, C_VR, tx.b, tx.pos, tx.PID, bt.v, tx.e_i, L.e, R.sigma_R, h_proof, alpha, R, t_submit,
-            h_st=h_st, v_RLI=L.checkpoints[tx.b].v_RLI,
+            RID,
+            C_VR,
+            tx.b,
+            tx.pos,
+            tx.PID,
+            bt.v,
+            tx.e_i,
+            L.e,
+            R.sigma_R,
+            h_proof,
+            alpha,
+            R,
+            t_submit,
+            h_st=h_st,
+            v_RLI=L.checkpoints[tx.b].v_RLI,
         )
         self.evidence[RID] = {"R": R, "x": R.x, "proof": R.proof}
         # admission to Q_e: signed receipt rc_i = Sign(sk_V, H(RID || H(R_i) || ts_rc)) returned to the requester
@@ -177,7 +191,7 @@ class VeRedactPQ:
             t0 = time.perf_counter()
             ok = c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)
             if ok:  # the supporting evidence must reconstruct C_VR (requester, policy, PQZK-proof hash)
-                ev, tx = self.evidence[vr.RID], L.txs[vr.req.TID]
+                ev = self.evidence[vr.RID]
                 h_proof = c.H(ev["proof"])
                 ok = h_proof == vr.h_proof and vr.C_VR == c.H(
                     vr.RID, self._hR(vr.req), vr.h_st, L.policies[vr.PID].C_P, h_proof, vr.e
@@ -354,6 +368,7 @@ class VeRedactPQ:
                 "theta": theta,
                 "xi": xis[b],
                 "positions": tuple(sorted(L.txs[v.req.TID].pos for v in groups[b])),  # P_b^exec
+                "cp": L.checkpoints[b],  # the finalized A_b' of this transition
             }
             h_pbrp = self.pbrp_digest(vr.RID, auth.BID, tx.I, D_old, tx.D, b, tx.pos, v_old, v_new, theta, xis[b])
             rr = RedactionRecord(
@@ -386,7 +401,7 @@ class VeRedactPQ:
         R = L.rai.finalize()
         c.counts["T_H"] += L.rai.last_hash_ops
         ts = int(time.time())
-        cp = c.H(L.e, R, L.rai.snapshot, ts)  # CP_e^A
+        cp = c.HV("RAI-CP", L.e, R, L.rai.snapshot, ts)  # CP_{e_A}^A
         self.rai_checkpoint = (L.e, R, L.rai.snapshot, ts, cp)  # as anchored on the PBN
         self.pending_anchor.append(L.anchor.submit("rai_checkpoint", epoch=L.e, cp=cp))
         return cp
@@ -430,30 +445,35 @@ class VeRedactPQ:
         tau = rr.pbrp["tau_A"]
         return self.c.H(tau, rr.RID, rr.BID, rr.PID, rr.e, rr.v_b, rr.v_b_new, rr.h_pbrp, rr.ts_red)
 
-    def verify_audit(self, resp: AuditResponse, Q: bytes, deep=False, state_transition=True):
-        """AuditVerify: returns {RID: accepted}; each record is accepted or rejected individually.
-        self.last_breakdown (ms): response signature + query binding + RAI checkpoint, RAI multiproof,
-        committee approvals, request membership + attestations, state transition (incl. PQCH), PQZK."""
+    def verify_audit(self, resp: AuditResponse, Q: bytes, deep=frozenset(), mode="saver"):
+        """SAVER AuditVerify (Phase 6 Steps 4-6): returns {RID: accepted}, each record decided individually.
+
+        Evidence nodes: request (per record), authorization (per BID), transition (per batch transition), checkpoint
+        (per finalized A_b'). mode "saver" verifies each shared node once per state context chi(v) and records it in
+        the verified-context store self.vcs, reused across audits; "shared" (Shared-Evidence variant) and
+        "per_record" (Per-Record variant) re-verify the shared nodes for every dependent record. deep: True (every
+        record), falsy (routine) or a set of RIDs escalated to independent PQZK verification.
+        self.last_breakdown (ms) and self.last_nodes (cryptographically verified nodes per type) describe the call."""
         L, c = self.L, self.c
         body = resp.body
-        bd = dict.fromkeys(("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms", "zk_ms"), 0.0)
-        self.last_breakdown = bd
+        deep = {rr.RID for rr in resp.records} if deep is True else set(deep or ())
+        bd = dict.fromkeys(("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms", "cp_ms", "zk_ms"), 0.0)
+        nodes = dict.fromkeys(("req", "auth", "trans", "cp", "zk"), 0)
+        self.last_breakdown, self.last_nodes = bd, nodes
         t0 = time.perf_counter()
-        e, R_cp, v_cp, ts_cp, cp = self.rai_checkpoint
-        # Phase 6 Step 4: the selected checkpoint is the one ANCHORED on the PBN: read from the chain (2026-10-19:
-        # it was compared with the service's in-memory copy) and timed with the response checks
+        e, R_cp, v_cp, ts_cp, cp_A = self.rai_checkpoint
+        # the selected RAI checkpoint is the one ANCHORED on the PBN, read from the chain
         ok_resp = (
             body["Q"] == Q
-            and L.anchor.read("rai_checkpoint", epoch=e) == cp
+            and L.anchor.read("rai_checkpoint", epoch=e) == cp_A
             and (body["R_RAI"], body["v_A"]) == (R_cp, v_cp)
-            and c.H(e, R_cp, v_cp, ts_cp) == cp
+            and c.HV("RAI-CP", e, R_cp, v_cp, ts_cp) == cp_A
             and c.verify(L.audit_svc.pk, c.H(body["Q"], len(body["records"]), body["R_RAI"], body["v_A"]), resp.sigma)
         )
         bd["response_ms"] = (time.perf_counter() - t0) * 1000
         if not ok_resp:
             return {rr.RID: False for rr in resp.records}
-        # RAI multiproof (hash-based)
-        t0 = time.perf_counter()
+        t0 = time.perf_counter()  # RAI multiproof (hash-based)
         by_shard = {}
         for rr in resp.records:
             s = L.rai.sid(rr.pbrp["tau_A"])
@@ -465,50 +485,68 @@ class VeRedactPQ:
             _, ops = verify_multiproof(tree.root, leaves, tree.multiproof(list(leaves)), len(tree.levels) - 1)
             c.counts["T_H"] += ops
         bd["rai_mp_ms"] = (time.perf_counter() - t0) * 1000
-        # shared batch evidence: committee approvals verified once per BID
-        checked = {}
-        transitions = {}  # (b, MR_b', r_b') -> PQCH check result: once per affected-batch transition
+        t0 = time.perf_counter()  # finalized checkpoint references (b, v_b') -> MR_b' as anchored: one read
+        anchored = L.anchor.read("checkpoint_history", keys={(rr.pbrp["b"], rr.v_b_new) for rr in resp.records})
+        bd["state_ms"] += (time.perf_counter() - t0) * 1000
+
+        def node(kind, chi, verify):
+            if mode == "saver" and chi in self.vcs:  # Reuse(v, chi) = 1 iff chi = chi(v) and VCS[chi(v)] = valid
+                return True
+            nodes[kind] += 1
+            ok = verify()
+            if ok and mode == "saver":
+                self.vcs.add(chi)
+            return ok
+
         result = {}
-        anchored = {}
-        if state_transition:  # finalized checkpoint references: (b, v_b') -> MR_b' as anchored, one read per response
-            t0 = time.perf_counter()
-            anchored = L.anchor.read("checkpoint_history", keys={(rr.pbrp["b"], rr.v_b_new) for rr in resp.records})
-            bd["state_ms"] += (time.perf_counter() - t0) * 1000
         for rr in resp.records:
+            p, vr = rr.pbrp, rr.pbrp["vr"]
+            auth, cp = self.auths[rr.BID], rr.pbrp["cp"]
             t0 = time.perf_counter()
-            key = rr.BID
-            if key not in checked:
-                auth = self.auths[rr.BID]
-                checked[key] = all(c.verify(L.committee[k].pk, auth.C_B, s) for k, s in auth.approvals)
-            ok = checked[key]
+            chi_auth = c.HV(
+                "VERIFY-CTX", "auth", auth.C_B, auth.R_VR, *[s for _, s in auth.approvals], rr.BID, auth.gamma, auth.e
+            )
+            ok = node("auth", chi_auth, lambda auth=auth: self._verify_auth_node(auth))
             t1 = time.perf_counter()
-            p = rr.pbrp
-            ok &= verify_proof(self.auths[rr.BID].R_VR, p["eta"], self.auths[rr.BID].members.index(p["vr"]), p["MP_B"])
+            nodes["req"] += 1  # request node: q * C_req, always verified
+            ok &= c.HV("AUTH-LEAF", vr.RID, vr.C_VR, vr.alpha) == p["eta"]
+            ok &= verify_proof(auth.R_VR, p["eta"], auth.members.index(vr), p["MP_B"])
             c.counts["T_H"] += len(p["MP_B"]) + 1
-            vr = p["vr"]
-            ok &= c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)  # normal audit: alpha_i
+            ok &= c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)  # routine: the VPS decision alpha_i
             t2 = time.perf_counter()
-            if state_transition:
-                c.counts["T_H"] += 2  # L_i, L_i' recomputation (per record)
-                # PQCH check of the batch transition A_b -> A_b': shared by every record of that transition, so
-                # verified once per response (Table IV: state-transition audits add O(|Omega_e|) T_CH, not n_Q)
-                tk = (p["b"], p["MR_new"], _raw(p["CH"]), _raw(p["r_new"]))  # exact bytes: no tamper reuses a result
-                if tk not in transitions:
-                    transitions[tk] = c.ch_verify(L.pk_ch, p["CH"], p["MR_new"], p["r_new"])  # r_b' as in A_b'
-                ok &= transitions[tk] and anchored.get((p["b"], rr.v_b_new)) == p["MR_new"]
+            c.counts["T_H"] += 2  # L_i, L_i' recomputation (request-specific)
+            # chi(v) hashes the node's complete evidence and its state context: any change verifies afresh
+            chi_tr = c.HV(
+                "VERIFY-CTX",
+                "trans",
+                p["theta"],
+                p["xi"],
+                p["b"],
+                rr.v_b,
+                rr.v_b_new,
+                p["MR"],
+                p["MR_new"],
+                _raw(p["CH"]),
+                _raw(p["r_new"]),
+                *p["positions"],
+                auth.gamma,
+            )
+            ok &= node("trans", chi_tr, lambda rr=rr, auth=auth: self._verify_transition_node(rr, auth))
             t3 = time.perf_counter()
-            if deep:
+            mr_chain = anchored.get((p["b"], rr.v_b_new))  # MR_b' as anchored on the PBN, read in THIS audit
+            chi_cp = c.HV("VERIFY-CTX", "cp", cp.b, cp.MR, cp.v_b, cp.sigma, cp.v_RLI, mr_chain, v_cp, cp_A)
+            ok &= node("cp", chi_cp, lambda rr=rr, mr_chain=mr_chain: self._verify_checkpoint_node(rr, mr_chain))
+            t4 = time.perf_counter()
+            if rr.RID in deep:  # dependency-selective escalation: x_i, pi_i^PQ for this request only
+                nodes["zk"] += 1
                 ev = self.evidence[rr.RID]
                 ok &= (
                     c.zk_verify(vr.req.ID_r, ev["x"], ev["proof"], L.policies[vr.PID].threshold, vr.req.ts_r // 1000)
                     and c.H(ev["proof"]) == vr.h_proof
                 )
-            t4 = time.perf_counter()
-            bd["committee_ms"] += (t1 - t0) * 1000
-            bd["attest_ms"] += (t2 - t1) * 1000
-            bd["state_ms"] += (t3 - t2) * 1000
-            bd["zk_ms"] += (t4 - t3) * 1000
-            # H(PBRP_i) must bind the returned transition (catches modified D_i' / substituted evidence)
+            t5 = time.perf_counter()
+            # h_PBRP binds the returned transition (catches modified D_i' / substituted evidence) and the record
+            # must reproduce its authenticated RAI entry (catches modified / stale fields)
             ok &= (
                 self.pbrp_digest(
                     rr.RID,
@@ -525,11 +563,47 @@ class VeRedactPQ:
                 )
                 == rr.h_pbrp
             )
-            # the returned record must reproduce its authenticated RAI entry (catches modified/stale fields)
             tau = p["tau_A"]
             ok &= self.rai_entry(rr) == L.rai.shards[L.rai.sid(tau)].entries[tau]
+            bd["committee_ms"] += (t1 - t0) * 1000
+            bd["attest_ms"] += (t2 - t1) * 1000
+            bd["state_ms"] += (t3 - t2) * 1000
+            bd["cp_ms"] += (t4 - t3) * 1000
+            bd["zk_ms"] += (t5 - t4) * 1000
             result[rr.RID] = bool(ok)
         return result
+
+    def _verify_auth_node(self, auth) -> bool:
+        """C_e^B reconstructed from (BID, e, m, R_VR, Gamma_e, ts) and >= t distinct committee approvals on it."""
+        L, c = self.L, self.c
+        C_B = c.HV("AUTH-BATCH", auth.BID, auth.e, len(auth.members), auth.R_VR, auth.gamma, auth.ts)
+        return (
+            C_B == auth.C_B
+            and len({k for k, _ in auth.approvals}) >= L.t
+            and all(c.verify(L.committee[k].pk, auth.C_B, s) for k, s in auth.approvals)
+        )
+
+    def _verify_transition_node(self, rr, auth) -> bool:
+        """P_b^exec in P_b^auth, Theta_b and Xi_b bindings, PQCH preservation."""
+        L, c = self.L, self.c
+        p = rr.pbrp
+        cp = p["cp"]
+        authorized = {v.pos for v in auth.members if v.b == p["b"]}
+        theta = c.HV("SFMR-TRANS", rr.BID, p["b"], rr.v_b, p["MR"], p["MR_new"], *p["positions"], auth.gamma)
+        xi = c.HV("EXEC-EVIDENCE", theta, cp.CH, cp.v_b, cp.R_RLI, cp.v_RLI)
+        return (
+            set(p["positions"]) <= authorized
+            and theta == p["theta"]
+            and xi == p["xi"]
+            and c.ch_verify(L.pk_ch, p["CH"], p["MR_new"], p["r_new"])  # r_b' as recorded in A_b'
+        )
+
+    def _verify_checkpoint_node(self, rr, mr_chain) -> bool:
+        """The checkpoint authority's PQ signature on the finalized A_b' and its MR_b' as anchored on the PBN."""
+        L, c = self.L, self.c
+        cp, p = rr.pbrp["cp"], rr.pbrp
+        msg = c.H(cp.b, cp.CH, cp.MR, cp.r.tobytes(), cp.R_RLI, cp.v_RLI, cp.e, cp.v_b, cp.ts)
+        return cp.MR == p["MR_new"] == mr_chain and cp.v_b == rr.v_b_new and c.verify(L.cp.pk, msg, cp.sigma)
 
 
 def _raw(x) -> bytes:

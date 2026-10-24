@@ -87,7 +87,14 @@ def pick(queue, target, now=0.1, t_max=0.5):
 
 
 def test_cora_prefers_requests_in_a_shared_batch():
-    queue = [cand(b"B", 1, 0), cand(b"A0", 0, 0), cand(b"C", 2, 0), cand(b"A1", 0, 1), cand(b"D", 3, 0), cand(b"A2", 0, 2)]
+    queue = [
+        cand(b"B", 1, 0),
+        cand(b"A0", 0, 0),
+        cand(b"C", 2, 0),
+        cand(b"A1", 0, 1),
+        cand(b"D", 3, 0),
+        cand(b"A2", 0, 2),
+    ]
     assert sorted(pick(queue, target=3)) == [b"A0", b"A1", b"A2"]
 
 
@@ -135,3 +142,55 @@ def test_execution_outside_the_authorized_plan_is_withheld(cfg, ds):
     res = s.redact(auths, batch_auth)
     assert not any(o.ok for o in res.outcomes)
     assert s.ledger.batches[0].v == v_before
+
+
+# ---------------------------------------------------------------- SAVER audit (Phase 6)
+@pytest.fixture(scope="module")
+def audited(cfg, ds):
+    """A VeRedact-PQ instance with a small redaction history (rounds of 8) indexed in RAI."""
+    from veredact_bench.evaluation.common import build_history
+
+    s = open_system(cfg, "veredact", ds)
+    build_history(s, ds.trace[:40], 8)
+    s.index_records()
+    return s
+
+
+def audit(s, records, deep=frozenset()):
+    Q, sigma = s.p.make_query("authorization+state", len(records))
+    resp = s.p.audit(records, Q, sigma)
+    return s.p.verify_audit(resp, Q, deep=deep), dict(s.p.last_nodes)
+
+
+def test_saver_verifies_each_shared_dependency_once(audited):
+    s = audited
+    s.p.vcs.clear()
+    recs = s.p.records[:24]
+    accepted, nodes = audit(s, recs)
+    assert all(accepted.values())
+    assert nodes["auth"] == len({r.BID for r in recs}) < len(recs)
+    assert nodes["trans"] == len({(r.b, r.v_b_new) for r in recs}) < len(recs)
+    assert nodes["req"] == len(recs)
+
+
+def test_saver_reuses_only_identical_contexts(audited):
+    s = audited
+    s.p.vcs.clear()
+    recs = s.p.records[:16]
+    audit(s, recs)
+    accepted, nodes = audit(s, recs)  # same evidence, same contexts: shared nodes are reused
+    assert all(accepted.values()) and nodes["auth"] == 0 and nodes["trans"] == 0
+    bad = copy.copy(recs[3])
+    bad.pbrp = dict(bad.pbrp, theta=b"\x00" * 32)  # transition evidence from another context
+    accepted, nodes = audit(s, recs[:3] + [bad] + recs[4:])
+    assert not accepted[bad.RID]
+    assert all(ok for rid, ok in accepted.items() if rid != bad.RID)
+    assert nodes["trans"] == 1  # only the changed context is verified afresh
+
+
+def test_deep_escalation_only_for_chosen_requests(audited):
+    s = audited
+    recs = s.p.records[:10]
+    chosen = frozenset(r.RID for r in recs[:2])
+    accepted, nodes = audit(s, recs, deep=chosen)
+    assert all(accepted.values()) and nodes["zk"] == 2
