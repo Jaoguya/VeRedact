@@ -1,139 +1,107 @@
 # Handoff — VeRedact-PQ benchmark
 
-Branch `s99-leta-exp1-latency`, state of 23 October 2026.
+Branch `s99-leta-exp1-latency`, state of 24 October 2026.
 
 > **Do not run anything on AWS without the author's explicit yes for that specific action** (booting the
 > server, tests there, reruns, prover machines, moving or deleting results). One yes covers one action.
 
-**In short:** every experiment has run once at the final scale, including VeRedact-PQ's Experiment 4 rerun after a
-bug fix (fetched and written into the paper on 24 Oct). Experiment 1 was re-planned on 23 Oct (new rates, latency drawn only
-where fully measured, see §4.1); the code is ready, the rerun of all five schemes is not done yet. Everything else
-is done, and most of the paper's results section is already updated.
+**In short:** on 24 Oct the author replaced the manuscript with `Overleaf/VeRedact-optimize.tex`, which redesigns
+Phases 4–6 (CORA, SFMR, SAVER) and the five experiments (ablation variants back, Exp. 5 without gas). The code now
+follows it: protocol, variants, the five experiment runners, summaries and figures, all checked test-first and with
+local smoke runs. **No experiment has been run with the new code**; every previous result is superseded. Next is a
+server check boot, then the full run (section 6).
 
 ## 1. What the project is
 
 VeRedact-PQ is a scheme for a **redactable blockchain** (a recorded transaction can later be edited or erased,
 e.g. to remove personal data, under strict auditable rules), built on **post-quantum** cryptography. The paper
-compares it with earlier schemes (**baselines**); this repository measures all of them on the same machine and
-data.
+compares it with earlier schemes (**baselines**) and with its own **ablation variants** (one mechanism switched
+off); this repository measures all of them on the same machine and data.
 
 | Name in code | Paper ref. | What it is |
 |---|---|---|
-| `veredact` | this paper | post-quantum, committee-authorized, batched redaction with auditable records |
+| `veredact` | this paper | CORA selection + SFMR execution + SAVER audit, post-quantum throughout |
+| `veredact-per-request` / `-fixed-batch` / `-cora-no-sfmr` | Exp. 1 variants | no batching / arrival order, size 64 / CORA but one adaptation per request |
+| `veredact-re-zk` | Exp. 2 variant | every committee member re-verifies each PQZK proof |
+| `veredact-shared-evidence` / `-per-record` | Exp. 3 variants | shared evidence re-verified per record / complete evidence per record |
 | `S1` | [1] | Improved decentralized chameleon hash on Jia's chain (classical) |
 | `S13` | [13] | EAQ-VRBC: identity tags + RSA accumulator; compact audit proofs |
-| `S27` | [27] | ETCH: lightweight threshold chameleon hash (fastest redaction) |
-| `S34` | [34] | CHET with attribute-based policies (slow per redaction) |
-| `S99` | [39] | LETA: post-quantum batch authentication, authorization comparison only |
+| `S27` | [27] | ETCH: lightweight threshold chameleon hash |
+| `S34` | [34] | CHET with attribute-based policies |
+| `S99` | — | LETA: post-quantum batch authentication; kept in Exp. 0 and 2 by the author although the manuscript dropped it |
 
 Where things live:
 - `Benchmark/` — code, configs, deploy scripts, tests; raw results in `Benchmark/results/` (not in git).
-- `Result/Pdf`, `Result/Picture` — generated figures.
-- `Overleaf/` — manuscript. `VeRedact-2.tex` is final and never edited; changes go into
-  `Overleaf/revised/VeRedact-2-blue.tex` inside `\chg{…}` (printed blue).
-- `Other/docs/` — `experiments.md` and one note per baseline in `baselines/`.
-- `TASK.md` — log of every task and where its result is; the last lines list what is open.
+- `Result/Pdf`, `Result/Picture` — generated figures (still from the old runs until the new run).
+- `Overleaf/VeRedact-optimize.tex` — the final manuscript, never edited here.
+- `Other/docs/` — `experiments.md`, `paper-conformance.md` (code vs manuscript), one note per baseline.
+- `TASK.md` — log of every task; the last lines list what is open.
 
-Where it runs: one AWS server **veredact-bench** (r7i.4xlarge, 16 vCPU, 128 GB, ~US$1.28/h) with a private
-7-node Hyperledger Besu blockchain on it. Only VeRedact-PQ's Experiment 1 also uses two large spot **prover**
-machines (they generate the requesters' zero-knowledge proofs). Commands go through
-`Benchmark/deploy/aws/remote.sh`. The AWS account holds other people's machines: touch only veredact-bench and
-the prover/worker machines the experiments create.
+Where it runs: one AWS server **veredact-bench** (r7i.4xlarge, 16 vCPU, 128 GB, ~US$1.28/h) with a private Besu
+QBFT blockchain on it. Only VeRedact-PQ's Experiment 1 systems use two large spot **prover** machines. Commands go
+through `Benchmark/deploy/aws/remote.sh`. The AWS account holds other people's machines: touch only veredact-bench
+and the prover/worker machines the experiments create.
+Local tests: the laptop has `Benchmark/.venv` (Python 3.12 + Rust STARK module). 7 tests fail there only because
+Windows lacks `fork`/`forkserver` (S13, S34, one Exp. 1 test); they run on the server.
 
-## 2. The six experiments
+## 2. The experiments (VeRedact-optimize.tex)
 
-| Exp. | Question | x-axis | Schemes |
+| Exp. | Question | x-axis | Systems |
 |---|---|---|---|
-| 0 | How long does each cryptographic building block take? | — (table) | all six |
-| 1 | Redactions finished per second, and end-to-end time of one | request rate 1–1,000/s, same for every scheme; data skew | veredact, S1, S13, S27, S34 |
-| 2 | How long does authorizing a request take? | committee 4–32; batch 1–256 | veredact, S1, S34, S99 |
-| 3 | How fast is an audit answered, how big is the answer? | records audited n_Q 10–10^5 | veredact, S1, S13 |
-| 4 | How long does the auditor verify it; are tampered records caught? | n_Q 10–10^5 | veredact, S1, S13 |
-| 5 | Blockchain gas per redaction | batch 1–256 | veredact, S1, S13, S27, S34 |
+| 0 | Cost of each cryptographic building block | — (table) | all, incl. S99 |
+| 1 | Throughput, p95 latency, and execution sharing | rate 100–5,000 req/s; Zipf skew | veredact + 3 variants, S1, S13, S27, S34 |
+| 2 | Phase 4 authorization per request and per set | committee 4–32; set size 1–256 | veredact, re-zk, S1, S34, S99 |
+| 3 | Audit generation, size, verification, verified nodes | n_Q 10–10^4; records per batch 1, 8, 64 | veredact, shared-evidence, per-record, S1, S13 |
+| 4 | Selective PQZK escalation; fault detection | escalation 0–100 %; faults 1–10 % | veredact, S1, S13 |
+| 5 | Checkpoint transaction size and finalization latency | affected batches 1–32; validators 4, 7, 10 | veredact |
 
-A scheme is missing from an experiment only when its paper defines no such step. Scale: 10^6-transaction
-synthetic ledger, one run, 30 samples per point (5 at the most expensive). Experiments 3–4 audit the same
-pre-built history (~100,000 redactions) for every scheme; it is saved on the server (`results/_histories/`).
+Scale (author: follow the manuscript): 10^5-transaction ledger, n_Q up to 10^4, 30 repetitions (repetition
+tooling `VRPQ_REP` + `scripts/aggregate_reps.py`); Exp. 2–4 also take 30 samples inside each run.
 
 ## 3. Status
 
-full = fully measured, partial = some values are lower bounds, — = not in it.
-
-| Scheme | Exp. 0 | Exp. 1 | Exp. 2 | Exp. 3 | Exp. 4 | Exp. 5 |
-|---|---|---|---|---|---|---|
-| veredact | full | partial | full | full | full | full |
-| S1 | full | partial | full | full | full | full |
-| S13 | full | partial | — | full | full | full |
-| S27 | full | partial | — | — | — | full |
-| S34 | full | partial | full | — | — | full |
-| S99 | full | — | full | — | — | — |
-
-- Manuscript: blue copy has the new numbers for Experiments 0, 2, 3, 4, 5 and both tables (Exp. 1 see §4.1); its
-  PDF was last compiled before the Experiment 4 update.
-- Experiment 1 throughput is full everywhere; only its latency is partial.
-- Server stopped, nothing running. Cost of the final run series ~US$67; October ~US$225.
-- Commits `1645d0c` (cleanup) and the 23 Oct Exp. 1 change are pushed; their tests have not been run yet (they run on
-  the server).
+- Code: done and pushed up to the figures (`git log`); docs updated. Smoke checks on the laptop only.
+- Results: none with the new code. Old results (10^6 ledger, previous protocol) are superseded.
+- Server stopped, nothing running. October cost so far ~US$225.
 
 ## 4. Open problems
 
-1. **Experiment 1 latency was a lower bound above capacity — fix decided 23 Oct (author: option A), code done,
-   rerun pending.** Requests arrive for 60 s, then the run waits 30 s; a request unfinished at the stop only gives
-   a lower bound (~87 s for every overloaded scheme). Capacity (10^6 run, from the blue text; confirm from
-   `metrics.json`): S27 ~130–145/s, VeRedact-PQ ~100–140/s, S1 ~65–72/s, S34 ~6/s, S13 ~5/s.
-   What changed (`configs/experiments/exp01_redaction_throughput.yaml`):
-   - rates now 1, 2, 4, 10, 25, 50, 100, 250, 500, 1,000 req/s, the SAME for every scheme (author: every scheme
-     gets the same test); the low end is below every scheme's capacity; 2,000 and 5,000 dropped (every scheme
-     saturates by 500; above 1,000 the provers could not deliver the load to VeRedact-PQ). Manuscript changed.
-   - Fig. 3(b) draws a latency point only if >= 95 % of its requests finished (no hollow lower-bound markers);
-     both panels show only configured rates.
-   - Note: at 1 req/s the 60-s window holds ~60 requests, so the low-rate p95 has a wide confidence interval.
-   - Blue manuscript: Exp. 1 setup sentence and caption updated; the two results paragraphs are still the old
-     100–5,000 text (`% TODO` above them) — rewrite after the rerun.
-   To do: rerun Exp. 1 for all five schemes (`--force`). Author chose option 1 (23 Oct): all 70 points in one run,
-   provers on spot only during VeRedact-PQ's part, hard cap ~1.5x the estimate from the logs.
-2. **S13 at 5,000 req/s stopped late** (386 s instead of ~100 s): client threads were joined one after another,
-   each with its own 30 s timeout. **Fixed 23 Oct**: `join_by` gives them one shared deadline; test
-   `test_exp1_clients_share_one_deadline`. Throughput was never affected (it counts only the window).
-3. **VeRedact-PQ's provers lagged at 2,000 and 5,000 req/s** — no longer in the paper: those rates were dropped.
-4. **S13's audit times are 3–7% high**: its witnesses are timed 8 at a time on separate cores; the bias is
-   against S13.
-5. **VeRedact-PQ's gas rose, cause unverified**: likely more distinct transaction batches touched per round
-   with the larger ledger; not counted yet.
-6. **Saved histories will be rebuilt**: they are reused only if the code that builds them is byte-identical;
-   the cleanup edited comments there, so the next run rebuilds VeRedact-PQ's (~1 h). S1's and S13's were already
-   outdated by the Experiment 4 fix.
-7. **Housekeeping**: 14 old files from 29 Sep in the root of `Benchmark/results/` on the server should move to a
-   `_superseded` folder (not deleted). Checked 23 Oct: the laptop's `Benchmark/results/` is empty and the laptop's
-   git stash is empty, so nothing is left to do locally.
+1. **Run cost of 30 repetitions.** Exp. 1 alone has 8 systems × (6 rates + 4 skews) points of ~100 s each plus
+   setup; 30 repetitions of everything is very expensive. Estimate from logs in the check boot and propose options
+   (aws-cost skill) before any run.
+2. **Fixed-Batch may out-throughput VeRedact-PQ** at moderate rates (laptop smoke, never a result): CORA's round
+   target is λ·T_max, smaller than the fixed 64. If the real run confirms it, the text must explain the
+   latency/throughput trade-off (manuscript Exp. 1 discussion already frames it that way).
+3. **Manuscript/code gaps** (Other/docs/paper-conformance.md): validation signs twice (rc_i) while the cost table
+   says T_S; CORA's f and weights unspecified (code: λ·T_max; w from Exp. 0 costs); Exp. 5 validators [TBD] = 4, 7, 10.
+4. **S13's audit times are 3–7 % high** (witnesses timed 8 at a time); bias against S13. Decide re-time or disclose.
+5. **Saved histories will be rebuilt** (10^5 ledger and new protocol code): untimed, but costs time on the server.
+6. **Housekeeping**: 14 old files from 29 Sep in the server's `Benchmark/results/` root and all old results should
+   move to a `_superseded` folder (not deleted) before the new run.
 
 ## 5. Decisions needed from the author
 
-- **A. Experiment 1 latency — decided 23 Oct**: latency only where fully measured; rates 1–1,000 req/s, the same for every scheme (§4.1).
-- **B. S13 witnesses.** Re-time one at a time (removes the bias, ~8x longer for that step), or keep and state
-  the bias in one sentence.
-- **C. VeRedact-PQ provers at high rates — resolved 23 Oct** by dropping 2,000 and 5,000 req/s.
-- **D. S13.** Recommended: keep it (dropping it leaves the other problems and weakens Experiments 3–4).
-- **E. Housekeeping.** Move old result files aside on the server (one server boot); make the saved-history check
-  ignore comments (triggers one rebuild now).
+- **A. Repetitions.** 30 per point as the manuscript says, or fewer (e.g. 1 run with 30 samples inside, as before)
+  — decide after seeing the cost estimate.
+- **B. S13 witnesses.** Re-time one at a time (removes the bias, ~8x longer for that step), or state the bias.
+- **C. Housekeeping.** Move old results aside on the server (one boot).
 
 ## 6. What to do next (each AWS step needs a yes first)
 
-1. One server boot (~30–45 min, ~US$1): read the Experiment 4 rerun log; fetch its results if finished; run
-   `remote.sh '.venv/bin/ruff check src scripts tests && .venv/bin/python -m pytest -q'`; count batches per round
-   for the gas question; compile the blue PDF.
-2. Experiment 1 (code done 23 Oct): in the same boot confirm capacities from `metrics.json` (the lowest must stay
-   above 4 req/s), then with a yes rerun Exp. 1 for all five schemes (provers for VeRedact-PQ); regenerate Fig. 3
-   and rewrite the two Exp. 1 results paragraphs in the blue manuscript (+ `perf_analysis_blue.tex`).
-3. After B: rerun only the affected part, or add the one-sentence disclosure.
-4. Finally: `scripts/check_coverage.py --tier experiment`, tables and figures, one line in `TASK.md`, commit,
-   push.
+1. Check boot (~30–45 min, ~US$1): pull the branch on the server; `remote.sh '.venv/bin/ruff check src scripts tests
+   && .venv/bin/python -m pytest -q'` (all tests incl. S13/S34 and Besu); `make smoke`; move old results aside
+   (decision C); estimate run time per experiment from the smoke and old logs.
+2. Propose the full-run plan with costs (aws-cost skill), incl. decision A.
+3. With a yes: the full run (provers only for VeRedact-PQ's Exp. 1 systems); `scripts/check_coverage.py --tier
+   experiment`; `make tables figures`; fetch; one line in `TASK.md`; commit; push.
+4. Then the results paragraphs: the author writes the manuscript; text proposals go to a new changes file, the
+   .tex is never edited here.
 
 ## 7. What to read, in order
 
 1. `TASK.md`, last 20 lines.
 2. `Other/docs/experiments.md`.
-3. `Overleaf/revised/perf_analysis_blue.tex` (the results section as the paper says it now).
+3. `Overleaf/VeRedact-optimize.tex`, Section Evaluation (what the experiments must show).
 4. `Other/docs/aws-runbook.md`.
 5. `Other/docs/baselines/*.md`.
 6. `Benchmark/deploy/experiments/full_run.sh` (`RESUME=1` finishes a stopped run without provers).
@@ -146,7 +114,7 @@ full = fully measured, partial = some values are lower bounds, — = not in it.
 - No capped results: report a value only if it is a full measurement.
 - Never cheat to save cost: no simulated, extrapolated or reused timings; same hardware for every scheme.
 - Only this project's AWS resources.
-- Never edit `Overleaf/VeRedact-2.tex`; changes go into the blue copy inside `\chg{…}`.
+- Never edit `Overleaf/VeRedact-optimize.tex`; mismatches go to `Other/docs/paper-conformance.md`.
 - Smoke and pilot numbers are never results.
 - Verify a cause before claiming it.
 - Lean workspace: extend existing scripts and docs, short comments, one line per task in `TASK.md`.

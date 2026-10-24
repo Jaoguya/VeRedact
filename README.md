@@ -27,7 +27,7 @@ One command per paper artifact (`TIER=experiment` for the paper's numbers):
 | Fig. 4 authorization latency | `make eval EXP=exp02_authorization_latency` then `make figures` | `Result/Pdf/exp2_authorization_latency.pdf` |
 | Fig. 5 audit efficiency | `make eval EXP=exp03_audit_efficiency` then `make figures` | `Result/Pdf/exp3_audit_efficiency.pdf` |
 | Fig. 6 verification time | `make eval EXP=exp04_verification_time` then `make figures` | `Result/Pdf/exp4_verification_time.pdf` |
-| Fig. 7 gas, table: gas per operation | `make eval EXP=exp05_gas_consumption` then `make tables figures` | `Result/Pdf/exp5_gas_consumption.pdf`, `Overleaf/tables/tab_gas.tex` |
+| Fig. 7 blockchain finalization overhead | `make eval EXP=exp05_blockchain_overhead` then `make figures` | `Result/Pdf/exp5_blockchain_overhead.pdf` |
 | Each baseline's own published figures | `make paper-runs` | `Benchmark/results/reproduction/<S id>/*.csv` |
 
 A finished (experiment, method, tier) is skipped on re-run; `make eval ... FORCE=--force` re-runs it.
@@ -58,10 +58,10 @@ Per-experiment runtimes of the 2026-10-09 run: `Benchmark/results/<exp>/<method>
 VeRedact/
 ├── README.md  TASK.md  AUDIT_LOG.md      overview, status and open decisions, audit findings
 ├── Overleaf/                             the manuscript
-│   ├── VeRedact-2.tex                    final manuscript (never edited here); VeRedact.md generated from it
+│   ├── VeRedact-optimize.tex             final manuscript (never edited here)
 │   ├── newchange.md                      text changes still to paste
 │   ├── revised/                          marked-up copies (red / blue) + their PDFs
-│   └── tables/                           generated tables: tab_primitives.tex, tab_gas.tex
+│   └── tables/                           generated table: tab_primitives.tex
 ├── Result/                               generated figures only
 │   ├── Pdf/                              exp1..exp5_*.pdf (vector, for the paper)
 │   └── Picture/                          exp1..exp5_*.png

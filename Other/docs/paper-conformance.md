@@ -1,6 +1,6 @@
 # Paper conformance — manuscript vs. implementation
 
-Where the manuscript (`Overleaf/VeRedact-2.tex`, mirrored in `VeRedact.md`) and the code disagree. The
+Where the manuscript (`Overleaf/VeRedact-optimize.tex`) and the code disagree. The
 manuscript is final (2026-10-03): the code follows it wherever it is right, and every text change it still
 needs is in `Overleaf/newchange.md` with line numbers. Line numbers below refer to the older `VeRedact.md`.
 
@@ -51,7 +51,11 @@ needs is in `Overleaf/newchange.md` with line numbers. Line numbers below refer 
 | PQZK | PrivatePolicy predicates | **implemented 2026-10-03**: attribute ≥ policy threshold and expiry > ts_r proven as 32-bit range proofs in the AIR, besides membership + requester + statement binding |
 | Phases 3–6 | admission receipt rc_i, C_VR reconstruction, Auth_e^B check before execution, BIMC multiproof check, auditor-signed queries | **implemented 2026-10-03**; the extra rc_i signature and Auth check are not in Table IV — `newchange.md` A1–A3 |
 | Phase 6 Step 4 | auditor verifies against the blockchain-anchored CP_e^A and A_b' | **implemented 2026-10-19**: `verify_audit` reads CP_e^A and (b, v_b') -> MR_b' from the chain (their anchoring blocks); finalization anchors the real MR_b', v_b' |
-| Exp. 1 | rates 1–1,000 req/s, the same for every scheme (2026-10-23, manuscript changed; 2,000 and 5,000 dropped) | VeRedact-PQ's requesters prove on two remote c7i.48xlarge hosts (not on the system's server); every scheme runs every rate, no early stop (Other/docs/experiments.md §3) |
+| Exp. 1 | rates [100]–[5,000] req/s, variants Per-Request, Fixed-Batch [64], CORA-No-SFMR | as written (author 2026-10-24); VeRedact-PQ's requesters prove on remote prover hosts; every scheme runs every rate, no early stop |
+| Phase 4 Step 1 (CORA) | B̂_e = f(λ_e, \|Q_e\|), weights w_CH, w_F unspecified | f = λ_e·T_max (round starts at B̂_e queued or the oldest at T_max); w_CH = t·T_PA + T_CB + 2·T_CH = 102.4 ms, w_F = T_H = 0.001 ms from the Exp. 0 primitive costs (`configs/methods/veredact.yaml`); greedy realization as written |
+| Table comp-cost, request validation | T_V + T_ZV + T_S | the code also signs the admission receipt rc_i (Phase 3 Step 5), so validation is T_V + T_ZV + 2·T_S |
+| Phase 6 (SAVER) | checkpoint node verified once per context | implemented: the checkpoint authority's signature on A_b' and the MR_b' read from the chain are part of the checkpoint node and its context chi(v); one fresh auditor (empty verified-context store) per measured query |
+| Exp. 5 | validator count [TBD] | 4, 7, 10 (author 2026-10-24); the Exp. 5 runner restarts Besu per count |
 
 ## 4. Open manuscript issues (carried over)
 
