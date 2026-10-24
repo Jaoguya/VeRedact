@@ -1,5 +1,14 @@
-"""VeRedact-PQ: Phases 3-6 on top of the shared ledger (Phases 1-2). One configuration: ABRRR batching,
-BIMC coalescing, attestation-based Phase 4, query-scoped audit evidence (no internal variants)."""
+"""VeRedact-PQ: Phases 3-6 on top of the shared ledger (Phases 1-2), as in Overleaf/VeRedact-optimize.tex.
+
+Variants (manuscript ablations; the default "full" is VeRedact-PQ itself):
+  full             CORA selection + SFMR execution + attestation-based Phase 4 + SAVER audit
+  per-request      each validated request authorized and executed alone (Exp. 1)
+  fixed-batch      arrival order, fixed round size veredact.fixed_batch, no CORA (Exp. 1)
+  cora-no-sfmr     CORA selection, but an independent Merkle update + PQCH adaptation per request (Exp. 1)
+  re-zk            each of the t committee members re-verifies every PQZK proof (Exp. 2)
+  shared-evidence  shared audit evidence sent once but re-verified for every dependent record (Exp. 3)
+  per-record       complete evidence sent and verified per record (Exp. 3)
+"""
 
 import math
 import os
@@ -10,6 +19,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..ds.merkle import MerkleTree, verify_multiproof, verify_proof
+from .cora import Candidate, cora_select
 from .ledger import Ledger
 from .types import BatchAuth, RedactionRecord, Request, ValidatedRequest
 
@@ -31,8 +41,16 @@ class AuditResponse:
 class VeRedactPQ:
     name = "VeRedact-PQ"
 
-    def __init__(self, ledger: Ledger, cfg: dict):
+    VARIANTS = ("full", "per-request", "fixed-batch", "cora-no-sfmr", "re-zk", "shared-evidence", "per-record")
+
+    def __init__(self, ledger: Ledger, cfg: dict, variant: str = "full"):
+        if variant not in self.VARIANTS:
+            raise ValueError(f"unknown VeRedact-PQ variant {variant!r}")
         v = cfg["veredact"]
+        self.variant = variant
+        self.fixed_B, self.w_ch, self.w_f = v["fixed_batch"], v["cora_w_ch_ms"], v["cora_w_f_ms"]
+        self.audit_mode = {"shared-evidence": "shared", "per-record": "per_record"}.get(variant, "saver")
+        self.last_exec = {"batches": 0, "frontier": 0}  # |Omega_e| and F_e of the last execute()
         self.L, self.c = ledger, ledger.c
         self.pending_anchor = []  # futures of ledger operations (ledger_ms is measured from these)
         self.last_finalization = None
@@ -180,6 +198,35 @@ class VeRedactPQ:
         b_hat = arrival_rate * self.T_max_ms / 1000.0
         return min(self.B_max, max(self.B_min, math.ceil(b_hat)))
 
+    def round_ready(self, queued: int, oldest_wait: float, arrival_rate: float) -> bool:
+        """Whether an authorization round starts now (queued validated requests, oldest wait in s)."""
+        if self.variant == "per-request":
+            return queued >= 1
+        if self.variant == "fixed-batch":  # waits for its static size (no waiting bound)
+            return queued >= self.fixed_B
+        return queued >= self.target_batch_size(arrival_rate) or oldest_wait >= self.T_max_ms / 1000
+
+    def select_round(self, queue, now: float, arrival_rate: float) -> list:
+        """Phase 4 Step 1: the requests of the next round from queue = [(VR_i, ts_i^adm)] in admission order.
+        CORA (full, cora-no-sfmr, re-zk, audit variants) or the arrival-order variants."""
+        if self.variant == "per-request":
+            return [queue[0][0]]
+        if self.variant == "fixed-batch":
+            return [vr for vr, _ in queue[: self.fixed_B]]
+        cands = {vr.RID: (Candidate(vr.RID, vr.b, vr.pos, t), vr) for vr, t in queue}
+        depth = len(self.L.batches[0].tree.levels) - 1
+        chosen = cora_select(
+            [c for c, _ in cands.values()],
+            now=now,
+            target=self.target_batch_size(arrival_rate),
+            b_max=self.B_max,
+            depth=depth,
+            t_max=self.T_max_ms / 1000,
+            w_ch=self.w_ch,
+            w_f=self.w_f,
+        )
+        return [cands[c.rid][1] for c in chosen]
+
     def authorize(self, batch: list[ValidatedRequest]):
         """Phase 4. self.last_breakdown (ms): attestation verification (+ C_VR reconstruction), state freshness,
         batch commitment, committee signing + verification."""
@@ -196,6 +243,10 @@ class VeRedactPQ:
                 ok = h_proof == vr.h_proof and vr.C_VR == c.H(
                     vr.RID, self._hR(vr.req), vr.h_st, L.policies[vr.PID].C_P, h_proof, vr.e
                 )
+            if ok and self.variant == "re-zk":  # every participating member re-verifies the PQZK proof
+                pol = L.policies[vr.PID]
+                for _ in range(L.t):
+                    ok = ok and c.zk_verify(vr.req.ID_r, ev["x"], ev["proof"], pol.threshold, vr.req.ts_r // 1000)
             t1 = time.perf_counter()
             bd["attest_ms"] += (t1 - t0) * 1000
             if not ok:
@@ -269,7 +320,7 @@ class VeRedactPQ:
             if not verify_proof(auth.R_VR, auth.leaves[i], i, auth.proofs[vr.RID]):
                 continue
             by_batch.setdefault(vr.b, []).append(vr)
-        prepared, finalized, groups = [], [], {}
+        groups = {}
         for b, reqs in by_batch.items():
             bt = L.batches[b]
             seen, exe = set(), []
@@ -283,9 +334,21 @@ class VeRedactPQ:
                 exe.append(vr)
             if not exe:
                 continue
-            groups[b] = exe  # BIMC: every modification of batch b shares one root transition
-        # distributed SIS adaptation for the whole ABRRR round: the combiner prepares (p_j, z_j) for every
-        # touched batch j, each of the t members returns S_k Z for the round, the combiner combines.
+            groups[b] = exe  # SFMR: every modification of batch b shares one root transition
+        self.last_exec = {"batches": len(groups), "frontier": 0}
+        if self.variant != "cora-no-sfmr":
+            return self._apply(auth, groups)
+        out = []  # No-SFMR: one independent Merkle update + PQCH adaptation per request, level by level
+        for level in range(max((len(g) for g in groups.values()), default=0)):
+            out += self._apply(auth, {b: [g[level]] for b, g in groups.items() if level < len(g)})
+        return out
+
+    def _apply(self, auth: BatchAuth, groups: dict):
+        """SFMR + distributed PQCH adaptation + atomic finalization for {b: executable requests of batch b}:
+        one root transition and one adaptation per batch; the combiner prepares (p_j, z_j) for every touched
+        batch j, each of the t members returns S_k Z for the round, the combiner combines."""
+        L, c = self.L, self.c
+        prepared, finalized = [], []
         if groups:
             jobs = []
             for b, grp in groups.items():
@@ -296,8 +359,10 @@ class VeRedactPQ:
                     tx = L.txs[vr.req.TID]
                     old[tx.pos] = c.H(tx.I, tx.D)  # L_i = H(I_i || D_i)
                     changes[tx.pos] = c.H(tx.I, vr.req.D_new)  # L_i' = H(I_i || D_i')
-                # BIMC: verify the old leaves' compact multiproof MP_b^multi against MR_b, then update
-                ok, ops = verify_multiproof(old_root, old, bt.tree.multiproof(sorted(old)), len(bt.tree.levels) - 1)
+                # SFMR: verify the old leaves against MR_b through the external frontier F_b, then update
+                frontier = bt.tree.multiproof(sorted(old))
+                self.last_exec["frontier"] += len(frontier)
+                ok, ops = verify_multiproof(old_root, old, frontier, len(bt.tree.levels) - 1)
                 c.counts["T_H"] += ops
                 if not ok:
                     raise RuntimeError(f"BIMC multiproof failed for batch {b}")
@@ -423,12 +488,25 @@ class VeRedactPQ:
             tau = rr.pbrp["tau_A"]
             by_shard.setdefault(L.rai.sid(tau), []).append(L.rai.shards[L.rai.sid(tau)].pos[tau])
         entries_bytes = 128 * len(records)
-        # query-scoped multiproof + shared batch evidence once per BID
-        mp = {s: L.rai.shards[s].tree.multiproof(ps) for s, ps in by_shard.items()}
-        gmp = L.rai.global_tree.multiproof(list(by_shard))
-        proof_bytes = 32 * (sum(len(v) for v in mp.values()) + len(gmp))
-        auth_bytes = len({rr.BID for rr in records}) * self._auth_bytes()
         rec_bytes = len(records) * (32 * 8 + L.c.sig.sig_size)  # per-record: eta, MP_B, C_VR, alpha, ...
+        trans_bytes = 32 * 2 + 32 * 4  # Theta_b, Xi_b, (MR_b, MR_b', CH_b, r_b' digest)
+        cp_bytes = 8 * 4 + 32 * 3 + L.c.sig.sig_size  # A_b' fields + sigma_b'
+        if self.audit_mode == "per_record":  # Per-Record: individual paths + complete evidence for every record
+            paths = sum(
+                len(L.rai.shards[s].tree.proof(p)) + len(L.rai.global_tree.proof(s))
+                for s, ps in by_shard.items()
+                for p in ps
+            )
+            proof_bytes = 32 * paths
+            auth_bytes = len(records) * (self._auth_bytes() + trans_bytes + cp_bytes)
+        else:  # query-scoped multiproof + the SAVER DAG: each shared node once
+            mp = {s: L.rai.shards[s].tree.multiproof(ps) for s, ps in by_shard.items()}
+            gmp = L.rai.global_tree.multiproof(list(by_shard))
+            proof_bytes = 32 * (sum(len(v) for v in mp.values()) + len(gmp))
+            transitions = {(rr.b, rr.v_b_new) for rr in records}
+            auth_bytes = len({rr.BID for rr in records}) * self._auth_bytes() + len(transitions) * (
+                trans_bytes + cp_bytes
+            )
         body = {"Q": Q, "records": records, "R_RAI": L.rai.root, "v_A": L.rai.snapshot}
         sigma = c.sign(L.audit_svc.sk, c.H(Q, len(records), L.rai.root, L.rai.snapshot))
         nbytes = entries_bytes + proof_bytes + auth_bytes + rec_bytes + L.c.sig.sig_size
@@ -445,7 +523,7 @@ class VeRedactPQ:
         tau = rr.pbrp["tau_A"]
         return self.c.H(tau, rr.RID, rr.BID, rr.PID, rr.e, rr.v_b, rr.v_b_new, rr.h_pbrp, rr.ts_red)
 
-    def verify_audit(self, resp: AuditResponse, Q: bytes, deep=frozenset(), mode="saver"):
+    def verify_audit(self, resp: AuditResponse, Q: bytes, deep=frozenset(), mode=None):
         """SAVER AuditVerify (Phase 6 Steps 4-6): returns {RID: accepted}, each record decided individually.
 
         Evidence nodes: request (per record), authorization (per BID), transition (per batch transition), checkpoint
@@ -455,6 +533,7 @@ class VeRedactPQ:
         record), falsy (routine) or a set of RIDs escalated to independent PQZK verification.
         self.last_breakdown (ms) and self.last_nodes (cryptographically verified nodes per type) describe the call."""
         L, c = self.L, self.c
+        mode = mode or self.audit_mode
         body = resp.body
         deep = {rr.RID for rr in resp.records} if deep is True else set(deep or ())
         bd = dict.fromkeys(("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms", "cp_ms", "zk_ms"), 0.0)

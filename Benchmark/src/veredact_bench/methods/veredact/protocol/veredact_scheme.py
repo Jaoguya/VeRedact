@@ -34,8 +34,9 @@ from .veredact import Rejection, VeRedactPQ
 class VeRedactScheme(Scheme):
     key = "veredact"
 
-    def __init__(self, cfg: dict, committee_n: int | None = None, committee_t: int | None = None):
+    def __init__(self, cfg: dict, committee_n: int | None = None, committee_t: int | None = None, variant="full"):
         self.cfg = cfg
+        self.variant = variant
         self.n = committee_n or cfg["veredact"]["committee_n"]
         self.t = committee_t or cfg["veredact"]["committee_t"]
         self._last_submitted = None
@@ -69,7 +70,7 @@ class VeRedactScheme(Scheme):
         self.anchor = make_anchor(self.cfg)
         self.ledger = Ledger(self.cfg, self.crypto, self.anchor, self.n, self.t)
         self.ledger.commit_transactions(dataset.transactions)
-        self.p = VeRedactPQ(self.ledger, self.cfg)
+        self.p = VeRedactPQ(self.ledger, self.cfg, self.variant)
         self.crypto.reset()
 
     def prepare(self, req: RedactionRequest):

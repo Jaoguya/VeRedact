@@ -1,7 +1,8 @@
 """System key -> Scheme instance. The ONLY place the runners learn which systems exist.
 
 Keys match configs/experiments/*.yaml systems:
-  veredact                 VeRedact-PQ (ABRRR + BIMC)
+  veredact                 VeRedact-PQ (CORA + SFMR + SAVER)
+  veredact-<variant>       an internal ablation variant (VeRedactPQ.VARIANTS, e.g. veredact-cora-no-sfmr)
   S1 S13 S27 S34           the four redactable-blockchain baselines (methods/baselines/<scheme>/adapter.py)
   S99                      LETA, the post-quantum batch-authentication baseline (Exp. 0 and Exp. 2 only)
 
@@ -44,8 +45,8 @@ def system_keys(cfg: dict) -> list[str]:
 
 def make(cfg: dict, key: str, committee_n: int | None = None):
     t = threshold(committee_n) if committee_n else None
-    if key == "veredact":
-        return VeRedactScheme(cfg, committee_n, t)
+    if key == "veredact" or key.startswith("veredact-"):
+        return VeRedactScheme(cfg, committee_n, t, variant=key.partition("-")[2] or "full")
     cls = _baseline_class(key)
     if key == "S1":
         return cls(cfg, nodes_n=committee_n, threshold_t=t)

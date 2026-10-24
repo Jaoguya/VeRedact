@@ -194,3 +194,47 @@ def test_deep_escalation_only_for_chosen_requests(audited):
     chosen = frozenset(r.RID for r in recs[:2])
     accepted, nodes = audit(s, recs, deep=chosen)
     assert all(accepted.values()) and nodes["zk"] == 2
+
+
+# ---------------------------------------------------------------- internal variants (ablations)
+def test_cora_no_sfmr_adapts_once_per_request(cfg, ds):
+    s = open_system(cfg, "veredact-cora-no-sfmr", ds)
+    r1 = request_for(ds, s, 0)
+    r2 = request_for(ds, s, 0, avoid={r1.tid})
+    r3 = request_for(ds, s, 1)
+    v0 = s.ledger.batches[0].v
+    res = s.redact([validated(s, r) for r in (r1, r2, r3)])
+    assert all(o.ok for o in res.outcomes)
+    assert res.ch_adaptations == 3  # independent Merkle update + PQCH adaptation per redaction
+    assert s.ledger.batches[0].v == v0 + 2
+
+
+def test_re_zk_committee_reverifies_every_proof(cfg, ds):
+    s = open_system(cfg, "veredact-re-zk", ds)
+    auths = [validated(s, request_for(ds, s, b)) for b in (0, 1, 2)]
+    before = s.crypto.counts["T_ZV"]
+    batch_auth, _ = s.authorize_batch(auths)
+    assert batch_auth is not None
+    assert s.crypto.counts["T_ZV"] - before == 3 * s.ledger.t  # m requests x t members
+
+
+def test_shared_evidence_reverifies_shared_nodes_for_every_record(cfg, ds):
+    from veredact_bench.evaluation.common import build_history
+
+    s = open_system(cfg, "veredact-shared-evidence", ds)
+    build_history(s, ds.trace[:24], 8)
+    s.index_records()
+    recs = s.p.records[:16]
+    accepted, nodes = audit(s, recs)
+    assert all(accepted.values())
+    assert nodes["auth"] == nodes["trans"] == nodes["cp"] == len(recs)
+
+
+def test_per_request_and_fixed_batch_take_arrival_order(cfg, ds):
+    queue = [(f"v{i}", float(i)) for i in range(100)]  # (validated request, admission time)
+    per = open_system(cfg, "veredact-per-request", ds).p
+    fixed = open_system(cfg, "veredact-fixed-batch", ds).p
+    assert per.select_round(queue, now=200.0, arrival_rate=1000.0) == ["v0"]
+    assert fixed.select_round(queue, now=200.0, arrival_rate=1000.0) == [f"v{i}" for i in range(64)]
+    assert not fixed.round_ready(63, oldest_wait=10.0, arrival_rate=1.0)  # waits for its static size
+    assert fixed.round_ready(64, oldest_wait=0.0, arrival_rate=1.0)

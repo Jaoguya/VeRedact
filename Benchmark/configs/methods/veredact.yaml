@@ -16,4 +16,8 @@ veredact:
   rli_shards: 16                # [DERIVED] manuscript Table VII S = [16]
   rli_buckets: 64               # [PROPOSED] logical lookup buckets B per SA-RLI shard (bid_i = H_2(tau_i) mod B)
   rai_shards: 16                # [DERIVED] manuscript Table VII S_A = [16]
+  fixed_batch: 64               # [DERIVED] manuscript Exp. 1 Fixed-Batch variant: static round size [64]
+  cora_w_ch_ms: 102.4           # [DERIVED] CORA w_CH = t T_PA + T_CB + 2 T_CH (Exp. 0, 2026-10-21 run, t = 5:
+                                #   5 x 18.835 + 5.820 + 2 x 1.196 ms); manuscript leaves the weights open
+  cora_w_f_ms: 0.001            # [DERIVED] CORA w_F = T_H per frontier node (SHA3-256, Exp. 0)
   vps_workers: 8                # [PROPOSED] parallel VPS validation workers (<= vcpus / 2)
