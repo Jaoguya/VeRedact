@@ -193,14 +193,15 @@ class VeRedactPQ:
         if not eligible:
             return None
         t2 = time.perf_counter()
-        eligible.sort(key=lambda v: v.RID)
-        leaves = [c.H(v.RID, v.C_VR, v.h_proof, v.alpha, v.b, v.v_b, v.e_i, v.e) for v in eligible]
+        eligible.sort(key=lambda v: (v.b, v.pos, v.RID))  # canonical order (b_i, pos_i, RID_i)
+        leaves = [c.HV("AUTH-LEAF", v.RID, v.C_VR, v.alpha) for v in eligible]  # eta_i
         tree = MerkleTree(leaves)
         c.counts["T_H"] += tree.hash_ops[0]
+        gamma = self.plan_commitment(eligible)
         BID = os.urandom(16)
         ts = int(time.time())
-        C_B = c.H(BID, L.e, len(eligible), tree.root, ts)
-        msg = c.H(C_B, L.e)
+        C_B = c.HV("AUTH-BATCH", BID, L.e, len(eligible), tree.root, gamma, ts)
+        msg = C_B  # each approving member signs C_e^B
         t3 = time.perf_counter()
         bd["commit_ms"] = (t3 - t2) * 1000
         approvals = []
@@ -221,6 +222,7 @@ class VeRedactPQ:
             eligible,
             leaves,
             {v.RID: tree.proof(i) for i, v in enumerate(eligible)},
+            gamma,
         )
         self.auths[BID] = auth
         self.pending_anchor.append(
@@ -232,15 +234,21 @@ class VeRedactPQ:
         )
         return auth
 
-    # ============================================================ Phase 5 (Algorithm 1)
+    def plan_commitment(self, members) -> bytes:
+        """Gamma_e = H_V(CORA-PLAN || enc({(b_i, pos_i)})) over the canonically ordered authorized requests."""
+        return self.c.HV("CORA-PLAN", *[x for v in members for x in (v.b, v.pos)])
+
+    # ============================================================ Phase 5 (SFMR)
     def execute(self, auth: BatchAuth):
         L, c = self.L, self.c
-        # Step 1: verify Auth_e^B (t committee approvals over H(C_B || e)) and every PBRP_i^auth (eta_i in R_e^VR)
-        msg = c.H(auth.C_B, auth.e)
+        # Step 1: verify Auth_e^B (t committee approvals over C_e^B), the plan Gamma_e and every PBRP_i^auth
         if len({k for k, _ in auth.approvals}) < L.t or not all(
-            c.verify(L.committee[k].pk, msg, sig) for k, sig in auth.approvals
+            c.verify(L.committee[k].pk, auth.C_B, sig) for k, sig in auth.approvals
         ):
             return []
+        if self.plan_commitment(auth.members) != auth.gamma:  # positions changed after authorization: withheld
+            return []
+        authorized = {(v.b, v.pos) for v in auth.members}  # P^auth
         by_batch: dict[int, list] = {}
         for i, vr in enumerate(auth.members):
             c.counts["T_H"] += len(auth.proofs[vr.RID]) + 1
@@ -252,7 +260,8 @@ class VeRedactPQ:
             bt = L.batches[b]
             seen, exe = set(), []
             for vr in reqs:  # conflicts: one resulting commitment per transaction per round
-                if vr.req.TID in seen or bt.v != vr.v_b:
+                tx = L.txs[vr.req.TID]
+                if vr.req.TID in seen or bt.v != vr.v_b or (tx.b, tx.pos) not in authorized:  # P^exec in P^auth
                     continue
                 if c.H(vr.req.m_new, vr.req.rho_new) != vr.req.D_new:
                     continue
@@ -279,25 +288,28 @@ class VeRedactPQ:
                 if not ok:
                     raise RuntimeError(f"BIMC multiproof failed for batch {b}")
                 c.counts["T_H"] += bt.tree.update(changes)
-                jobs.append((b, grp, old_root, old_r, bt.tree.root))
+                # Theta_b binds the SFMR root transition to the authorized execution; members check it (P_b in
+                # Gamma_e, MR_b' the deterministic SFMR result) before releasing their PQCH shares
+                theta = c.HV("SFMR-TRANS", auth.BID, b, bt.v, old_root, bt.tree.root, *sorted(changes), auth.gamma)
+                jobs.append((b, grp, old_root, old_r, bt.tree.root, theta))
             R_old = np.stack([j[3] for j in jobs], axis=1)
             P, Z = c.ch_begin_adapt_many(L.pk_ch, [j[2] for j in jobs], R_old, [j[4] for j in jobs])
             deltas = [c.ch_part_adapt_many(L.td[k + 1], Z) for k in range(L.t)]
             R_new = c.ch_combine_many(P, Z, deltas)
             ok = c.ch_verify_many(L.pk_ch, [L.batches[j[0]].ch for j in jobs], [j[4] for j in jobs], R_new)
-            for col, (b, grp, old_root, _, new_root) in enumerate(jobs):
+            for col, (b, grp, old_root, _, new_root, theta) in enumerate(jobs):
                 if not ok[col]:
                     raise RuntimeError(f"PQCH adaptation failed for batch {b}")
                 bt = L.batches[b]
                 bt.r, bt.v = R_new[:, col].copy(), bt.v + 1
-                prepared.append((b, grp, old_root, new_root, bt.v - 1, bt.v, bt.r))
-        for b, grp, old_root, new_root, v_old, v_new, new_r in prepared:  # atomic finalization
+                prepared.append((b, grp, old_root, new_root, bt.v - 1, bt.v, bt.r, theta))
+        for b, grp, old_root, new_root, v_old, v_new, new_r, theta in prepared:  # atomic finalization
             for vr in grp:
                 tx = L.txs[vr.req.TID]
                 D_old = tx.D
                 tx.m, tx.rho, tx.D, tx.e_i = vr.req.m_new, vr.req.rho_new, vr.req.D_new, L.e
                 L._index_put(tx)
-                finalized.append((vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r))
+                finalized.append((vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r, theta))
         if not prepared:
             return []
         R = L.rli.finalize()
@@ -316,7 +328,11 @@ class VeRedactPQ:
         )
         self.pending_anchor.append(self.last_finalization)
         out = []
-        for vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r in finalized:
+        xis = {}  # Xi_b = H_V(EXEC-EVIDENCE || Theta_b || CH_b || v_b' || R_RLI' || v_RLI'): one per batch transition
+        for p in prepared:
+            cp = L.checkpoints[p[0]]
+            xis[p[0]] = c.HV("EXEC-EVIDENCE", p[7], cp.CH, cp.v_b, cp.R_RLI, cp.v_RLI)
+        for vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r, theta in finalized:
             pbrp = {
                 "RID": vr.RID,
                 "eta": auth.leaves[auth.members.index(vr)],
@@ -335,8 +351,11 @@ class VeRedactPQ:
                 "r_new": new_r,
                 "e": L.e,
                 "vr": vr,
+                "theta": theta,
+                "xi": xis[b],
+                "positions": tuple(sorted(L.txs[v.req.TID].pos for v in groups[b])),  # P_b^exec
             }
-            h_pbrp = self.pbrp_digest(vr.RID, auth.BID, tx.I, D_old, tx.D, b, tx.pos, v_old, v_new, old_root, new_root)
+            h_pbrp = self.pbrp_digest(vr.RID, auth.BID, tx.I, D_old, tx.D, b, tx.pos, v_old, v_new, theta, xis[b])
             rr = RedactionRecord(
                 vr.RID,
                 tx.TID,
@@ -403,8 +422,9 @@ class VeRedactPQ:
     def _auth_bytes(self):
         return 16 + 32 + 32 + 8 + 8 + self.L.t * (8 + self.c.sig.sig_size)
 
-    def pbrp_digest(self, RID, BID, I, D, D_new, b, pos, v_b, v_b_new, MR, MR_new) -> bytes:
-        return self.c.H(RID, BID, I, D, D_new, b, pos, v_b, v_b_new, MR, MR_new)
+    def pbrp_digest(self, RID, BID, I, D, D_new, b, pos, v_b, v_b_new, theta, xi) -> bytes:
+        """h_i^PBRP = H_V(PBRP || enc(PBRP_i)); Theta_b already binds (MR_b, MR_b', P_b, v_b, Gamma_e)."""
+        return self.c.HV("PBRP", RID, BID, I, D, D_new, b, pos, v_b, v_b_new, theta, xi)
 
     def rai_entry(self, rr) -> bytes:
         tau = rr.pbrp["tau_A"]
@@ -459,8 +479,7 @@ class VeRedactPQ:
             key = rr.BID
             if key not in checked:
                 auth = self.auths[rr.BID]
-                msg = c.H(auth.C_B, auth.e)
-                checked[key] = all(c.verify(L.committee[k].pk, msg, s) for k, s in auth.approvals)
+                checked[key] = all(c.verify(L.committee[k].pk, auth.C_B, s) for k, s in auth.approvals)
             ok = checked[key]
             t1 = time.perf_counter()
             p = rr.pbrp
@@ -501,8 +520,8 @@ class VeRedactPQ:
                     p["pos"],
                     rr.v_b,
                     rr.v_b_new,
-                    p["MR"],
-                    p["MR_new"],
+                    p["theta"],
+                    p["xi"],
                 )
                 == rr.h_pbrp
             )

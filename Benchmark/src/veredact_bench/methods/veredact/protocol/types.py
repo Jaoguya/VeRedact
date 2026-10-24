@@ -89,6 +89,7 @@ class BatchAuth:  # Auth_e^B
     members: list = field(default_factory=list)  # VR_i in canonical order
     leaves: list = field(default_factory=list)  # eta_i
     proofs: dict = field(default_factory=dict)  # RID -> MP_i^B
+    gamma: bytes = b""  # Gamma_e: CORA authorized execution-plan commitment over the (b_i, pos_i)
 
 
 @dataclass

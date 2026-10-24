@@ -26,6 +26,11 @@ def H(*parts) -> bytes:
     return _h(b"VRPQ/H", *parts)
 
 
+def HV(*parts) -> bytes:
+    """H_V: verification-evidence commitments (AUTH-LEAF, CORA-PLAN, AUTH-BATCH, SFMR-TRANS, EXEC-EVIDENCE, ...)."""
+    return _h(b"VRPQ/HV", *parts)
+
+
 def H1(*parts) -> bytes:
     return _h(b"VRPQ/H1", *parts)
 

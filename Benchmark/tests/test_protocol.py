@@ -101,3 +101,37 @@ def test_cora_prefers_the_overlapping_path_inside_a_batch():
     """With pos 0 chosen, pos 1 shares its path (frontier 3 -> 2) while pos 7 does not (3 -> 4)."""
     queue = [cand(b"P0", 0, 0, admitted=-0.1), cand(b"P7", 0, 7), cand(b"P1", 0, 1)]
     assert pick(queue, target=2) == [b"P0", b"P1"]
+
+
+# ---------------------------------------------------------------- SFMR execution (Phase 5)
+def validated(s, req):
+    a = s.authorize(req)
+    assert a.ok, a.reason
+    return a
+
+
+def test_one_pqch_adaptation_per_affected_batch(cfg, ds):
+    s = open_system(cfg, "veredact", ds)
+    home, other = 0, 1
+    r1 = request_for(ds, s, home)
+    r2 = request_for(ds, s, home, avoid={r1.tid})
+    r3 = request_for(ds, s, other)
+    res = s.redact([validated(s, r) for r in (r1, r2, r3)])
+    assert all(o.ok for o in res.outcomes)
+    assert res.ch_adaptations == 2  # |Omega_e| = 2 batches, not 3 requests
+
+
+def test_execution_outside_the_authorized_plan_is_withheld(cfg, ds):
+    """P_b^exec must be a subset of the positions fixed by Gamma_e: a request whose position is changed after the
+    committee signed is not executed, and its batch keeps its version (the transition is withheld)."""
+    s = open_system(cfg, "veredact", ds)
+    r1 = request_for(ds, s, 0)
+    r2 = request_for(ds, s, 0, avoid={r1.tid})
+    auths = [validated(s, r) for r in (r1, r2)]
+    batch_auth, _ = s.authorize_batch(auths)
+    v_before = s.ledger.batches[0].v
+    moved = next(p for p in range(s.ledger.N) if p not in {m.pos for m in batch_auth.members})
+    batch_auth.members[0] = dataclasses.replace(batch_auth.members[0], pos=moved)
+    res = s.redact(auths, batch_auth)
+    assert not any(o.ok for o in res.outcomes)
+    assert s.ledger.batches[0].v == v_before

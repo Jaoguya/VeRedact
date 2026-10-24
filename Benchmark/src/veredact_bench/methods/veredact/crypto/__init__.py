@@ -68,6 +68,10 @@ class Crypto:
         self.counts["T_H"] += 1
         return hashing.H(*p)
 
+    def HV(self, *p):
+        self.counts["T_H"] += 1
+        return hashing.HV(*p)
+
     def H1(self, *p):
         self.counts["T_H"] += 1
         return hashing.H1(*p)
