@@ -157,10 +157,14 @@ class VeRedactScheme(Scheme):
         if query.tamper:  # Exp. 4 fault injection on copies of the returned records
             recs = [self._tamper(r, query.tamper.get(i), rng) for i, r in enumerate(recs)]
         Q, sigma_Q = self.p.make_query("authorization+state", len(recs))  # auditor signs Q_j^A (untimed)
+        # d_Q requests escalated to PQZK verification (seeded); deep = every request
+        k = round(query.deep_fraction * len(recs))
+        deep = True if query.deep else {r.RID for r in random.Random(self.cfg["meta"]["seed"] + 1).sample(recs, k)}
+        self.p.vcs.clear()  # one fresh auditor per query: SAVER reuse is measured within the query
         t0 = time.perf_counter()
         resp = self.p.audit(recs, Q, sigma_Q)
         t1 = time.perf_counter()
-        accepted = self.p.verify_audit(resp, Q, deep=query.deep)
+        accepted = self.p.verify_audit(resp, Q, deep=deep)
         t2 = time.perf_counter()
         return AuditResult(
             "redaction provenance (authorization + state transition)",
@@ -169,6 +173,7 @@ class VeRedactScheme(Scheme):
             resp.nbytes,
             {i: accepted[r.RID] for i, r in enumerate(recs)},
             dict(self.p.last_breakdown),
+            dict(self.p.last_nodes),
         )
 
     def _tamper(self, rr, kind, rng):
@@ -186,6 +191,12 @@ class VeRedactScheme(Scheme):
         elif kind == "stale":
             r.v_b_new -= 1
         return r
+
+    def set_variant(self, variant: str) -> None:
+        """Switch an audit-only variant onto an existing history (shared-evidence / per-record differ from
+        VeRedact-PQ only in Phase 6, so they audit the history VeRedact-PQ built)."""
+        self.variant = self.p.variant = variant
+        self.p.audit_mode = {"shared-evidence": "shared", "per-record": "per_record"}.get(variant, "saver")
 
     def teardown(self) -> None:
         for f in self.p.pending_anchor:

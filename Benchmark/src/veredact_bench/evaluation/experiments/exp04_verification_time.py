@@ -1,13 +1,15 @@
-"""Exp. 4 — verification time, auditor side (manuscript Fig. 6), with fault injection.
+"""Exp. 4 — selective verification and evidence integrity, auditor side (VeRedact-optimize.tex Fig. 6).
 
-History as in Exp. 3 (VeRedact-PQ submitted in batches of veredact.reference_batch); when Exp. 3 ran just
-before in the same process, its histories are reused (exp03_audit_efficiency.SHARED). Per n_Q, level and
-injected fraction f: a seeded f * n_Q of the returned records are tampered (modified content,
-substituted evidence, stale version — cycled), the auditor verifies, and every record's decision is
-written. f = 0 (no injection) is always run: it is the clean verification time.
-Levels: VeRedact-PQ distinguishes normal/deep; a baseline whose audit has one level runs it for both and
-the row says so (level_supported = 0). S13 decides for the whole query (one bad record rejects all):
-that shows up here as false rejections, which is the protocol's real behaviour.
+History as in Exp. 3 (VeRedact-PQ submitted in authorization batches of veredact.reference_batch); when Exp. 3
+ran just before in the same process, its histories are reused (exp03_audit_efficiency.SHARED).
+Two sweeps per n_Q, each query verified by a fresh auditor (empty verified-context store):
+  escalation  the fraction d_Q / n_Q of returned requests escalated to independent PQZK verification
+              (experiment.deep_fractions); routine verification is d_Q = 0. Baselines define no escalation and
+              run only d_Q = 0 (escalation_supported = 0).
+  integrity   at d_Q = 0, a seeded fraction f of the returned records is tampered with ONE fault class at a time
+              (modified evidence, substituted evidence, stale evidence); every record's decision is written, so
+              the invalid-record rejection rate and the valid-record acceptance rate follow per class. S13 decides
+              for the whole query (one bad record rejects all): false rejections there are its real behaviour.
 """
 
 import random
@@ -16,10 +18,9 @@ from veredact_bench.evaluation.experiments.exp03_audit_efficiency import histori
 from veredact_bench.methods.scheme import AuditQuery
 
 KINDS = ("modified", "substituted", "stale")
-# per-step verification breakdown (rows/metrics only; Fig. 6(b) removed 2026-10-17): response signature +
-# query binding, RAI multiproof, committee approvals, attestations,
-# state-transition and PQCH checks, PQZK (VeRedact-PQ reports these; baselines leave them empty)
-BREAKDOWN = ("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms", "zk_ms")
+# verification-time breakdown (manuscript Fig. 6(b)): RAI and response authentication, request attestations,
+# committee approvals, transition/PQCH, finalized checkpoints, PQZK (VeRedact-PQ; baselines leave them empty)
+BREAKDOWN = ("response_ms", "rai_mp_ms", "attest_ms", "committee_ms", "state_ms", "cp_ms", "zk_ms")
 
 
 def run(cfg, out):
@@ -32,17 +33,19 @@ def run(cfg, out):
 def _run(cfg, out):
     x = cfg["experiment"]
     for key, rpb, s, counts, ds in histories(cfg, out, [cfg["veredact"]["reference_batch"]]):
+        escalates = key.startswith("veredact")
 
-        def specs(s, n):
-            for level in x["levels"]:
-                for f in [0.0, *x["inject_fractions"]]:
+        def specs(s, n, escalates=escalates):
+            for d in x["deep_fractions"] if escalates else [0.0]:
+                yield dict(query=AuditQuery(n, deep_fraction=d, reuse_response=True), d=d, kind="", f=0.0)
+            for kind in KINDS:
+                for f in x["inject_fractions"]:
                     rng = random.Random(cfg["meta"]["seed"] + n)
                     idx = rng.sample(range(n), round(f * n))
-                    tamper = {i: KINDS[j % len(KINDS)] for j, i in enumerate(sorted(idx))}
                     # reuse_response: Exp. 4 times the auditor; a scheme whose response generation is slow (S13:
                     # one accumulator witness per record) builds it once and is verified samples_per_point times
-                    q = AuditQuery(n, deep=level == "deep", tamper=tamper, reuse_response=True)
-                    yield dict(query=q, level=level, f=f)
+                    q = AuditQuery(n, tamper={i: kind for i in idx}, reuse_response=True)
+                    yield dict(query=q, d=0.0, kind=kind, f=f)
 
         for base, spec, sample, res in query_rows(cfg, out, key, rpb, s, counts, ds, x["n_Q"], specs):
             t = spec["query"].tamper
@@ -51,8 +54,9 @@ def _run(cfg, out):
                 **base,
                 status="ok",
                 sample=sample,
-                level=spec["level"],
-                level_supported=int(key.startswith("veredact")),
+                escalation_supported=int(escalates),
+                deep_fraction=spec["d"],
+                fault_kind=spec["kind"] or "none",
                 inject_fraction=spec["f"],
                 injected=len(t),
                 verify_ms=res.verify_ms,
@@ -61,6 +65,7 @@ def _run(cfg, out):
                 false_rejections=sum(1 for i, ok in acc.items() if not ok and i not in t),
                 semantics=res.semantics,
                 **{f"verify_{k}": res.breakdown.get(k, "") for k in BREAKDOWN},
+                **{f"nodes_{k}": v for k, v in res.verified_nodes.items()},
             )
         out.log.info(f"  {key:28s} history={counts}")
         s.teardown()

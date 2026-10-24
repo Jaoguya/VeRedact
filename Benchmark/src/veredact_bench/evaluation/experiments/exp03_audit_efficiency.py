@@ -1,10 +1,13 @@
-"""Exp. 3 — audit efficiency, service side (manuscript Fig. 5).
+"""Exp. 3 — audit and verification efficiency (VeRedact-optimize.tex Fig. 5).
 
 History: every system applies the SAME request list (data/history.py: the shared trace + a seeded top-up of
 distinct transactions up to the largest n_Q; untimed, common.build_history). VeRedact-PQ submits it in
 authorization batches of records_per_batch; baselines have no batches. A history is saved after it is built and
 loaded by later runs (evaluation/history_cache.py, safeguards there); index_records always runs after it.
-Measured: audit() retrieval_ms (query resolution + evidence generation) and evidence_bytes, per n_Q.
+Measured per n_Q and records per authorization batch (the evidence-sharing axis): response generation
+(retrieval_ms), response size (evidence_bytes), auditor-side routine verification (verify_ms, d_Q = 0, a
+fresh auditor per query) and the cryptographically verified evidence nodes (VeRedact-PQ systems).
+The audit-only variants (shared-evidence, per-record) audit the history VeRedact-PQ built (HISTORY_OF).
 When Exp. 4 runs next in the same process, each history is kept and handed to it (SHARED) instead of being
 rebuilt: same dataset, records per batch and largest n_Q, so it is the identical history (2026-10-17: at a
 10^6 ledger the untimed history build dominates both experiments).
@@ -21,6 +24,8 @@ from veredact_bench.methods.scheme import AuditQuery, NotSupported
 # KEEP is set by the runner when exp04_verification_time follows in the same run.
 SHARED: dict = {}
 KEEP = False
+# audit-only variants: same Phases 3-5 as VeRedact-PQ, so they reuse its history (built or loaded once)
+HISTORY_OF = {"veredact-shared-evidence": "veredact", "veredact-per-record": "veredact"}
 
 
 def _history_key(key, rpb, counts) -> tuple:
@@ -42,18 +47,21 @@ def histories(cfg, out, rpb_axis):
                 s, counts = kept
                 out.log.info(f"  {key:28s} history reused from exp03_audit_efficiency: {counts}")
             else:
-                got = history_cache.load(cfg, key, rpb, hid, ds, need)
+                hkey = HISTORY_OF.get(key, key)
+                got = history_cache.load(cfg, hkey, rpb, hid, ds, need)
                 if got:
                     s, counts = got
                     counts = counts | {"history_source": "cache"}
                 else:
-                    s = open_system(cfg, key, ds)
+                    s = open_system(cfg, hkey, ds)
                     counts = build_history(s, reqs, rpb or 1)  # each Phase 4 batch = rpb requests
                     if counts["redacted"] < need:  # never a silently missing point (author rule 2026-10-05)
                         raise RuntimeError(f"{key}: the history list gave {counts['redacted']} < {need} redactions")
                     counts = counts | {"history_id": hid}
-                    history_cache.save(cfg, key, rpb, hid, ds, need, s, counts)
+                    history_cache.save(cfg, hkey, rpb, hid, ds, need, s, counts)
                     counts = counts | {"history_source": "built"}
+                if hkey != key:
+                    s.set_variant(key.partition("-")[2])
                 if hasattr(s, "index_records"):  # after every load too: S13 witnesses are re-timed, never saved
                     s.index_records()
             yield key, rpb, s, counts, ds
@@ -119,6 +127,9 @@ def run(cfg, out):
                 retrieval_ms=res.retrieval_ms,
                 evidence_bytes=res.evidence_bytes,
                 bytes_per_record=res.evidence_bytes / base["n_Q"],
+                verify_ms=res.verify_ms,
+                all_accepted=int(all(res.accepted.values())),
+                **{f"nodes_{k}": v for k, v in res.verified_nodes.items()},
             )
         out.log.info(f"  {key:28s} rpb={rpb} history={counts}")
         done(cfg, key, rpb, s, counts, ds, keep=KEEP)

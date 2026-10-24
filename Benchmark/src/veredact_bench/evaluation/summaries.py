@@ -168,13 +168,19 @@ def _exp03(rows, cfg):
             "history_id": rs[0].get("history_id"),  # one history list for every scheme (check_coverage compares)
             "retrieval_ms": _stats(r["retrieval_ms"] for r in ok),
             "evidence_bytes": _stats(r["evidence_bytes"] for r in ok),
+            "verify_ms": _stats(r.get("verify_ms") for r in ok),
+            # cryptographically verified evidence nodes per query (VeRedact-PQ systems; SAVER vs variants)
+            **{f"nodes_{t}": _stats(r.get(f"nodes_{t}") for r in ok) for t in ("req", "auth", "trans", "cp")},
         }
     return out
 
 
+_EXP4_BREAKDOWN = ("response_ms", "rai_mp_ms", "attest_ms", "committee_ms", "state_ms", "cp_ms", "zk_ms")
+
+
 def _exp04(rows, cfg):
     out = {}
-    for k, rs in _group(rows, "n_Q", "level", "inject_fraction").items():
+    for k, rs in _group(rows, "n_Q", "deep_fraction", "fault_kind", "inject_fraction").items():
         ok = [r for r in rs if r.get("status") == "ok"]
         if not ok:
             out[k] = {"status": rs[0].get("status")}
@@ -185,10 +191,12 @@ def _exp04(rows, cfg):
             "status": "ok",
             "history_id": rs[0].get("history_id"),
             "verify_ms": _stats(r["verify_ms"] for r in ok),
+            **{f"verify_{b}": _stats(r.get(f"verify_{b}") for r in ok) for b in _EXP4_BREAKDOWN},
             # None when nothing was injected (f * n_Q rounds to 0, e.g. 1% of 10 records): 0.0 would read as "missed"
             "injected": injected,
             "detection_rate": M.rate(sum(int(r["detected"]) for r in ok), injected) if injected else None,
             "false_rejection_rate": M.rate(sum(int(r["false_rejections"]) for r in ok), valid),
+            "valid_acceptance_rate": 1 - M.rate(sum(int(r["false_rejections"]) for r in ok), valid) if valid else None,
         }
     return out
 

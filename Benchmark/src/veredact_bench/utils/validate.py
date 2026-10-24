@@ -113,8 +113,8 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
         E("exp2.batch_sizes must include 1 (the per-request point every baseline shares)")
     if min(x["exp2"]["committee_sizes"]) < 4:
         E("exp2.committee_sizes must be >= 4")
-    if final and x["exp3"]["records_per_batch"] != [c["veredact"]["reference_batch"]]:
-        E("exp3.records_per_batch must be [veredact.reference_batch]: one VeRedact-PQ setting per figure")
+    if final and c["veredact"]["reference_batch"] not in x["exp3"]["records_per_batch"]:
+        E("exp3.records_per_batch must include veredact.reference_batch (the default sharing level)")
     if x["exp5"]["zipf_sweep"] != [c["workload"]["zipf_s"]]:
         E("exp5.zipf_sweep must be [workload.zipf_s]: one skew per figure")
     # the history targets distinct transactions (data/history.py): the ceiling is S1's block count (one redaction

@@ -121,7 +121,8 @@ class RedactionResult:
 @dataclass
 class AuditQuery:
     records: int
-    deep: bool = False
+    deep: bool = False  # every returned request escalated to PQZK verification
+    deep_fraction: float = 0.0  # Exp. 4: a seeded fraction d_Q / n_Q escalated (VeRedact-PQ)
     tamper: dict = field(default_factory=dict)  # seq -> fault class, for Exp. 4 fault injection
     reuse_response: bool = False  # Exp. 4 measures the auditor: a scheme may verify a cached response again
 
@@ -134,6 +135,7 @@ class AuditResult:
     evidence_bytes: int
     accepted: dict  # seq -> bool (per-record decision)
     breakdown: dict = field(default_factory=dict)  # verify_ms split by step, where the scheme reports one
+    verified_nodes: dict = field(default_factory=dict)  # VeRedact-PQ: cryptographically verified evidence nodes
 
 
 # ----------------------------------------------------------------------------------------- the contract

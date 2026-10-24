@@ -172,7 +172,8 @@ def test_exp4_detection_rate_undefined_when_nothing_injected():
     rows = [
         dict(
             n_Q=10,
-            level="normal",
+            deep_fraction=0.0,
+            fault_kind="modified",
             inject_fraction=0.01,
             status="ok",
             injected=0,
