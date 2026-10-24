@@ -5,9 +5,9 @@ Branch `s99-leta-exp1-latency`, state of 23 October 2026.
 > **Do not run anything on AWS without the author's explicit yes for that specific action** (booting the
 > server, tests there, reruns, prover machines, moving or deleting results). One yes covers one action.
 
-**In short:** every experiment has run once at the final scale. VeRedact-PQ's Experiment 4 was rerun after a bug
-fix and its result has not been read yet. Experiment 1 was re-planned on 23 Oct (new rates, latency drawn only
-where fully measured, see §4.2); the code is ready, the rerun of all five schemes is not done yet. Everything else
+**In short:** every experiment has run once at the final scale, including VeRedact-PQ's Experiment 4 rerun after a
+bug fix (fetched and written into the paper on 24 Oct). Experiment 1 was re-planned on 23 Oct (new rates, latency drawn only
+where fully measured, see §4.1); the code is ready, the rerun of all five schemes is not done yet. Everything else
 is done, and most of the paper's results section is already updated.
 
 ## 1. What the project is
@@ -57,19 +57,19 @@ pre-built history (~100,000 redactions) for every scheme; it is saved on the ser
 
 ## 3. Status
 
-full = fully measured, partial = some values are lower bounds, pending = result not read, — = not in it.
+full = fully measured, partial = some values are lower bounds, — = not in it.
 
 | Scheme | Exp. 0 | Exp. 1 | Exp. 2 | Exp. 3 | Exp. 4 | Exp. 5 |
 |---|---|---|---|---|---|---|
-| veredact | full | partial | full | full | **pending** | full |
+| veredact | full | partial | full | full | full | full |
 | S1 | full | partial | full | full | full | full |
 | S13 | full | partial | — | full | full | full |
 | S27 | full | partial | — | — | — | full |
 | S34 | full | partial | full | — | — | full |
 | S99 | full | — | full | — | — | — |
 
-- Manuscript: blue copy has the new numbers for Experiments 0, 1, 2, 3, 5 and both tables; Experiment 4's
-  paragraph and figure are still from an older run.
+- Manuscript: blue copy has the new numbers for Experiments 0, 2, 3, 4, 5 and both tables (Exp. 1 see §4.1); its
+  PDF was last compiled before the Experiment 4 update.
 - Experiment 1 throughput is full everywhere; only its latency is partial.
 - Server stopped, nothing running. Cost of the final run series ~US$67; October ~US$225.
 - Commits `1645d0c` (cleanup) and the 23 Oct Exp. 1 change are pushed; their tests have not been run yet (they run on
@@ -77,11 +77,7 @@ full = fully measured, partial = some values are lower bounds, pending = result 
 
 ## 4. Open problems
 
-1. **Experiment 4 rerun not read.** VeRedact-PQ's auditor searched the whole chain from the start, so its cost
-   grew with the chain's age. It now reads only the blocks where its records were written (tested on real
-   Besu), and its Experiment 4 was rerun. The server then powered off; whether the rerun finished is unknown.
-   Log on the server: `Benchmark/results/logs/exp4_rerun_20261021.out`.
-2. **Experiment 1 latency was a lower bound above capacity — fix decided 23 Oct (author: option A), code done,
+1. **Experiment 1 latency was a lower bound above capacity — fix decided 23 Oct (author: option A), code done,
    rerun pending.** Requests arrive for 60 s, then the run waits 30 s; a request unfinished at the stop only gives
    a lower bound (~87 s for every overloaded scheme). Capacity (10^6 run, from the blue text; confirm from
    `metrics.json`): S27 ~130–145/s, VeRedact-PQ ~100–140/s, S1 ~65–72/s, S34 ~6/s, S13 ~5/s.
@@ -96,24 +92,24 @@ full = fully measured, partial = some values are lower bounds, pending = result 
      100–5,000 text (`% TODO` above them) — rewrite after the rerun.
    To do: rerun Exp. 1 for all five schemes (`--force`). Author chose option 1 (23 Oct): all 70 points in one run,
    provers on spot only during VeRedact-PQ's part, hard cap ~1.5x the estimate from the logs.
-3. **S13 at 5,000 req/s stopped late** (386 s instead of ~100 s): client threads were joined one after another,
+2. **S13 at 5,000 req/s stopped late** (386 s instead of ~100 s): client threads were joined one after another,
    each with its own 30 s timeout. **Fixed 23 Oct**: `join_by` gives them one shared deadline; test
    `test_exp1_clients_share_one_deadline`. Throughput was never affected (it counts only the window).
-4. **VeRedact-PQ's provers lagged at 2,000 and 5,000 req/s** — no longer in the paper: those rates were dropped.
-5. **S13's audit times are 3–7% high**: its witnesses are timed 8 at a time on separate cores; the bias is
+3. **VeRedact-PQ's provers lagged at 2,000 and 5,000 req/s** — no longer in the paper: those rates were dropped.
+4. **S13's audit times are 3–7% high**: its witnesses are timed 8 at a time on separate cores; the bias is
    against S13.
-6. **VeRedact-PQ's gas rose, cause unverified**: likely more distinct transaction batches touched per round
+5. **VeRedact-PQ's gas rose, cause unverified**: likely more distinct transaction batches touched per round
    with the larger ledger; not counted yet.
-7. **Saved histories will be rebuilt**: they are reused only if the code that builds them is byte-identical;
+6. **Saved histories will be rebuilt**: they are reused only if the code that builds them is byte-identical;
    the cleanup edited comments there, so the next run rebuilds VeRedact-PQ's (~1 h). S1's and S13's were already
    outdated by the Experiment 4 fix.
-8. **Housekeeping**: 14 old files from 29 Sep in the root of `Benchmark/results/` on the server should move to a
+7. **Housekeeping**: 14 old files from 29 Sep in the root of `Benchmark/results/` on the server should move to a
    `_superseded` folder (not deleted). Checked 23 Oct: the laptop's `Benchmark/results/` is empty and the laptop's
    git stash is empty, so nothing is left to do locally.
 
 ## 5. Decisions needed from the author
 
-- **A. Experiment 1 latency — decided 23 Oct**: latency only where fully measured; rates 1–1,000 req/s, the same for every scheme (§4.2).
+- **A. Experiment 1 latency — decided 23 Oct**: latency only where fully measured; rates 1–1,000 req/s, the same for every scheme (§4.1).
 - **B. S13 witnesses.** Re-time one at a time (removes the bias, ~8x longer for that step), or keep and state
   the bias in one sentence.
 - **C. VeRedact-PQ provers at high rates — resolved 23 Oct** by dropping 2,000 and 5,000 req/s.
@@ -125,15 +121,12 @@ full = fully measured, partial = some values are lower bounds, pending = result 
 
 1. One server boot (~30–45 min, ~US$1): read the Experiment 4 rerun log; fetch its results if finished; run
    `remote.sh '.venv/bin/ruff check src scripts tests && .venv/bin/python -m pytest -q'`; count batches per round
-   for the gas question.
-2. If the rerun did not finish: propose rerunning VeRedact-PQ's Experiment 4 (~2–3 h incl. history rebuild).
-3. Write Experiment 4 into the blue manuscript, copy its figure next to the tex, re-extract
-   `perf_analysis_blue.tex`, compile on the server.
-4. Experiment 1 (code done 23 Oct): in the same boot confirm capacities from `metrics.json` (the lowest must stay
+   for the gas question; compile the blue PDF.
+2. Experiment 1 (code done 23 Oct): in the same boot confirm capacities from `metrics.json` (the lowest must stay
    above 4 req/s), then with a yes rerun Exp. 1 for all five schemes (provers for VeRedact-PQ); regenerate Fig. 3
    and rewrite the two Exp. 1 results paragraphs in the blue manuscript (+ `perf_analysis_blue.tex`).
-5. After B: rerun only the affected part, or add the one-sentence disclosure.
-6. Finally: `scripts/check_coverage.py --tier experiment`, tables and figures, one line in `TASK.md`, commit,
+3. After B: rerun only the affected part, or add the one-sentence disclosure.
+4. Finally: `scripts/check_coverage.py --tier experiment`, tables and figures, one line in `TASK.md`, commit,
    push.
 
 ## 7. What to read, in order

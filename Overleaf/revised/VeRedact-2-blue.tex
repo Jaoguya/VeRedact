@@ -3157,12 +3157,13 @@
 
     \chg{Fig.~\ref{fig:exp4_verify} shows that normal-audit verification
     time of VeRedact-PQ grows approximately linearly with $n_Q$, from
-    6.7\,ms at $n_Q=10$ to 9.4\,s at $n_Q=10^4$, 3.5 to 4.8 times faster than
-    Ref.~\cite{ref1} (32\,ms to 32.6\,s). Ref.~\cite{ref13} verifies one
-    aggregated proof in a nearly constant 53--59\,ms and is therefore faster
-    for large queries. At $n_Q=10^4$, the state-transition and PQCH checks
-    account for 8.1\,s of the 9.4\,s, while committee approvals contribute
-    only 51\,ms ($t|\Omega_{Q_j}^B|T_V$); routine audits therefore rely only
+    64.5\,ms at $n_Q=10$ to 11.5\,s at $n_Q=10^4$ and 121.9\,s at $n_Q=10^5$,
+    1.7 to 3.0 times faster than Ref.~\cite{ref1} (111.9\,ms to 343.7\,s).
+    Ref.~\cite{ref13} verifies one aggregated proof in 62--455\,ms and is
+    therefore faster for large queries. At $n_Q=10^4$, the state-transition
+    and PQCH checks, including reading the anchored checkpoints from their
+    anchoring blocks, account for 9.9\,s of the 11.5\,s, while committee
+    approvals contribute only 59\,ms ($t|\Omega_{Q_j}^B|T_V$); routine audits therefore rely only
     on PQ-signed attestations and hash-based authentication, and complete
     PQZK verification is reserved for challenged or forensic audits.
     Because each returned record carries individual membership and
