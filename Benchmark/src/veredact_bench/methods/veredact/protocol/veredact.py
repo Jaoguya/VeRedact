@@ -72,8 +72,8 @@ class VeRedactPQ:
         prove = None
         if tx is not None:
             bt = L.batches[tx.b]
-            R.v_b = bt.v
-            R.x = self._statement(R, tx, bt.v)
+            R.v_b, R.h_st = bt.v, self.state_digest(tx)
+            R.x = self._statement(R, tx, R.h_st)
             # fault "zk": the requester lacks a valid credential -> a proof over a non-registered witness
             forged = int.from_bytes(os.urandom(15), "big") if tamper == "zk" else None
             prove = (requester, R.x, L.policies[tx.PID].threshold, R.ts_r // 1000, forged)
@@ -94,9 +94,16 @@ class VeRedactPQ:
     def _hR(self, R):
         return self.c.H(R.ID_r, R.TID, R.op, R.D_new, R.e, R.ts_r, R.n_r)
 
-    def _statement(self, R, tx, v_b):
+    def state_digest(self, tx) -> bytes:
+        """h_i^st = H(TID || I || D || pos || enc(State_b)), State_b from batch b's finalized checkpoint A_b. A_b is
+        re-signed only when batch b itself changes, so a redaction in another batch leaves h_i^st unchanged."""
+        cp = self.L.checkpoints[tx.b]
+        return self.c.H(tx.TID, tx.I, tx.D, tx.pos, cp.b, cp.MR, cp.CH, cp.v_b, cp.R_RLI, cp.v_RLI, cp.e)
+
+    def _statement(self, R, tx, h_st):
+        """x_i = (ID_r, TID, op, D_i', C_P, h_i^st, e_i, e, ts_r, n_r)."""
         pol = self.L.policies[tx.PID]
-        return self.c.H(R.ID_r, R.TID, tx.I, tx.D, R.D_new, pol.C_P, R.op, tx.b, v_b, tx.e_i, R.e, R.ts_r, R.n_r)
+        return self.c.H(R.ID_r, R.TID, R.op, R.D_new, pol.C_P, h_st, tx.e_i, R.e, R.ts_r, R.n_r)
 
     # ============================================================ Phase 3 (VPS)
     def validate(self, R: Request, t_submit: float = 0.0):
@@ -127,20 +134,22 @@ class VeRedactPQ:
             return Rejection("public policy", "policy")
         if R.tamper == "stale":
             return Rejection("stale state", "policy")
-        if R.v_b != bt.v:  # honest request overtaken by a redaction of its batch: returned for revalidation
+        h_st = self.state_digest(tx)
+        if R.h_st != h_st:  # honest request overtaken by a redaction of its batch: returned for revalidation
             return Rejection("stale state", "freshness")
-        # Step 4: PQZK private policy (threshold from the authenticated policy, ts_r from the signed request)
-        if R.x != self._statement(R, tx, bt.v) or not c.zk_verify(R.ID_r, R.x, R.proof, pol.threshold, R.ts_r // 1000):
+        # Step 4: state-bound PQZK private policy (threshold from the authenticated policy, ts_r from the request)
+        if R.x != self._statement(R, tx, h_st) or not c.zk_verify(R.ID_r, R.x, R.proof, pol.threshold, R.ts_r // 1000):
             return Rejection("PQZK", "zk")
         # Step 5: validated-request commitment + attestation
         with self._admit:
             self._rid += 1
             RID = self._rid.to_bytes(8, "big")
-        h_proof = c.H(R.proof)
-        C_VR = c.H(RID, self._hR(R), tx.I, tx.D, pol.C_P, tx.b, tx.pos, bt.v, tx.e_i, h_proof)
+        h_proof = c.H(R.proof)  # h_i^PQ
+        C_VR = c.H(RID, self._hR(R), h_st, pol.C_P, h_proof, L.e)
         alpha = c.sign(L.vps.sk, c.H(RID, C_VR, L.e))
         vr = ValidatedRequest(
-            RID, C_VR, tx.b, tx.pos, tx.PID, bt.v, tx.e_i, L.e, R.sigma_R, h_proof, alpha, R, t_submit
+            RID, C_VR, tx.b, tx.pos, tx.PID, bt.v, tx.e_i, L.e, R.sigma_R, h_proof, alpha, R, t_submit,
+            h_st=h_st, v_RLI=L.checkpoints[tx.b].v_RLI,
         )
         self.evidence[RID] = {"R": R, "x": R.x, "proof": R.proof}
         # admission to Q_e: signed receipt rc_i = Sign(sk_V, H(RID || H(R_i) || ts_rc)) returned to the requester
@@ -171,23 +180,13 @@ class VeRedactPQ:
                 ev, tx = self.evidence[vr.RID], L.txs[vr.req.TID]
                 h_proof = c.H(ev["proof"])
                 ok = h_proof == vr.h_proof and vr.C_VR == c.H(
-                    vr.RID,
-                    self._hR(vr.req),
-                    tx.I,
-                    self._D_at_validation(vr),
-                    L.policies[vr.PID].C_P,
-                    vr.b,
-                    vr.pos,
-                    vr.v_b,
-                    vr.e_i,
-                    h_proof,
+                    vr.RID, self._hR(vr.req), vr.h_st, L.policies[vr.PID].C_P, h_proof, vr.e
                 )
             t1 = time.perf_counter()
             bd["attest_ms"] += (t1 - t0) * 1000
             if not ok:
                 continue
-            tx = L.txs[vr.req.TID]
-            fresh = (tx.D, L.batches[vr.b].v, tx.e_i) == (self._D_at_validation(vr), vr.v_b, vr.e_i) and vr.e == L.e
+            fresh = self.state_digest(L.txs[vr.req.TID]) == vr.h_st and vr.e == L.e  # recomputed h_i^st
             bd["fresh_ms"] += (time.perf_counter() - t1) * 1000
             if fresh:
                 eligible.append(vr)
@@ -232,10 +231,6 @@ class VeRedactPQ:
             )
         )
         return auth
-
-    def _D_at_validation(self, vr):
-        # D_i as bound in C_VR; recomputed from the ledger when the state is unchanged
-        return self.L.txs[vr.req.TID].D
 
     # ============================================================ Phase 5 (Algorithm 1)
     def execute(self, auth: BatchAuth):

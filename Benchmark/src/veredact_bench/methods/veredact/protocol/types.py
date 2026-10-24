@@ -53,6 +53,7 @@ class Request:  # R_i plus requester-side material sent alongside
     x: bytes = b""
     proof: bytes = b""
     v_b: int = -1  # batch version the requester proved against (public, read from the checkpoint A_b)
+    h_st: bytes = b""  # state digest h_i^st the requester proved against (Phase 3 Step 4)
     tamper: str = ""  # workload fault injection: "", "sig", "zk", "policy", "stale", "replay", "absent"
     aux: dict = field(default_factory=dict)  # scheme-specific requester-side material
 
@@ -73,6 +74,8 @@ class ValidatedRequest:  # VR_i
     req: Request = None  # supporting evidence (off-ledger evidence store)
     t_submit: float = 0.0
     receipt: tuple = ()  # (ts_rc, rc_i): VPS admission receipt returned to the requester
+    h_st: bytes = b""  # authenticated transaction-state digest h_i^st
+    v_RLI: int = 0  # SA-RLI snapshot of the batch checkpoint the request was validated against
 
 
 @dataclass
