@@ -1,22 +1,19 @@
 """Paper figures from Benchmark/results/<experiment>/<method>/<tier>/ -> Result/Pdf/<name>.pdf and
 Result/Picture/<name>.png.
 
-Names match the manuscript's \\includegraphics (exp1_redaction_throughput, ...). Each figure draws exactly ONE line
-per scheme (VeRedact-PQ, Schemes [1], [13], [27], [34], LETA where it runs), never a second setting of a scheme —
-Fig. 5 at VeRedact-PQ's default batch (veredact.reference_batch), Fig. 6 normal audit, Fig. 7 the default skew
-(workload.zipf_s). Panels follow the captions:
+Names match the manuscript's includegraphics (exp1_redaction_throughput, ...); Overleaf/VeRedact-optimize.tex.
+Each figure draws one line per system: VeRedact-PQ, its internal ablation variants (in VeRedact-PQ's colour),
+Schemes [1], [13], [27], [34] and LETA where they run. Fig. 5 at VeRedact-PQ's default sharing level
+(veredact.reference_batch records per authorization batch). Panels follow the captions:
   Fig. 3  (a) throughput, (b) p95 end-to-end latency (s) vs arrival rate, (c) PQCH adaptations (solid) and
           SFMR frontier nodes (dashed, VeRedact-PQ systems) per 1,000 redactions vs Zipf skew
   Fig. 4  Phase 4 authorization (VeRedact-optimize.tex): (a) amortized per request vs selected-set size m,
           (b) one set of m0 vs committee size; schemes without a batch protocol drawn dashed
-  Fig. 5  (a) response-generation time, (b) response size vs returned records
-  Fig. 6  verification time vs records (normal audit)
+  Fig. 5  (a) response generation, (b) response size, (c) routine verification vs returned records
+  Fig. 6  (a) verification vs PQZK escalation fraction, (b) breakdown, (c) rejection / acceptance per fault class
   Fig. 7  (a) finalization / RAI-checkpoint transaction size, (b) finalization latency per validator count,
           both vs affected batches |Omega_e| (VeRedact-optimize.tex: no gas)
-          (b) VeRedact-PQ gas per redaction vs ABRRR batch size, cheapest baseline as a reference line
-(2026-10-17, author review: Fig. 3(c) and Fig. 6(b) removed; Fig. 4 counts Phase 3 too; no baseline drawn
-against a batch axis it does not have)
-No other figure is drawn: only what the manuscript shows (author decision 2026-10-04).
+No other figure is drawn: only what the manuscript shows.
 """
 
 import math
@@ -113,19 +110,23 @@ def _save(fig, name: str, written: list):
     written.append(f"Result/Pdf/{name}.pdf")
 
 
-def _legend(ax, keys=()):
+def _legend(ax, keys=(), outside=False):
     """Legend of the drawn lines, plus every scheme in keys that has no drawn line (e.g. saturated
-    everywhere in Fig. 3), so every scheme of the figure is always listed."""
+    everywhere in Fig. 3), so every scheme of the figure is always listed. outside: above the panels (many
+    systems, e.g. Fig. 3 with the ablation variants)."""
     handles, labels = ax.get_legend_handles_labels()
     for k in keys:
         if style.label(k) not in labels:
-            lab, col, _, mk = style.METHODS[k]
-            handles.append(plt.Line2D([], [], color=col, marker=mk, linestyle="-"))
+            lab, col, ls, mk = style.METHODS[k]
+            handles.append(plt.Line2D([], [], color=col, marker=mk, linestyle=ls))
             labels.append(lab)
     if handles:
         order = [style.label(k) for k in style.PAPER_METHODS]
         pairs = sorted(zip(handles, labels), key=lambda p: order.index(p[1]) if p[1] in order else 99)
-        ax.legend(*zip(*pairs), frameon=False, ncol=2)
+        if outside:
+            ax.figure.legend(*zip(*pairs), loc="outside upper center", ncol=3, frameon=False)
+        else:
+            ax.legend(*zip(*pairs), frameon=False, ncol=2)
 
 
 def _saturated(ax, key, xs):
@@ -192,7 +193,7 @@ def fig_exp1(tier, written):
     _tag(cpanel, "c")
     if any(ln.get_marker() == "x" for ln in a.lines):  # explain the x only when one is drawn
         a.set_title(r"$\times$ = nothing finalized during the window", loc="right", fontsize=style.FONT_PT - 1)
-    _legend(a, keys=ms)
+    _legend(a, keys=ms, outside=True)
     _save(fig, "exp1_redaction_throughput", written)
 
 
@@ -244,7 +245,7 @@ def fig_exp3(tier, written):
     if not ms:
         return
     cfg = load(tier, "exp03_audit_efficiency")
-    fig, (a, b) = _panels(2)
+    fig, (a, b, c) = _panels(3)
     for key, m in ms.items():
         by_rpb = defaultdict(list)
         for k, v in _points(m).items():
@@ -252,7 +253,7 @@ def fig_exp3(tier, written):
                 by_rpb[k[0]].append((k[1], v))
         if not by_rpb:
             continue
-        # one line per scheme: VeRedact-PQ at its default batch (or the largest one run); baselines have none
+        # one line per system: VeRedact-PQ systems at the default sharing level (or the largest one run)
         nums = [r for r in by_rpb if isinstance(r, float)]
         rpb = (
             (
@@ -264,35 +265,86 @@ def fig_exp3(tier, written):
             else next(iter(by_rpb))
         )
         pts = sorted(by_rpb[rpb], key=lambda p: p[0])
-        vs = [v for _, v in pts]
-        for ax, f in ((a, "retrieval_ms"), (b, "evidence_bytes")):
-            ys = [v[f]["median"] for v in vs]
-            style.line(ax, key, [x for x, _ in pts], ys, yerr=_ci(m, vs, f, "ci95_halfwidth"))
+        for ax, f in ((a, "retrieval_ms"), (b, "evidence_bytes"), (c, "verify_ms")):
+            ok = [(x, v) for x, v in pts if v.get(f, {}).get("n")]
+            if ok:
+                ys = [v[f]["median"] for _, v in ok]
+                style.line(ax, key, [x for x, _ in ok], ys, yerr=_ci(m, [v for _, v in ok], f, "ci95_halfwidth"))
     a.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel="Response generation (ms)")
     b.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel="Response size (bytes)")
-    a.sci_y = b.sci_y = True
+    c.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel="Verification (ms)")
+    a.sci_y = b.sci_y = c.sci_y = True
     _tag(a, "a")
     _tag(b, "b")
-    _legend(b)
+    _tag(c, "c")
+    _legend(c)
     _save(fig, "exp3_audit_efficiency", written)
 
 
 def fig_exp4(tier, written):
+    """(a) verification time vs PQZK escalation fraction d_Q/n_Q at the largest n_Q (baselines: routine level,
+    dashed reference); (b) VeRedact-PQ breakdown per escalation fraction; (c) invalid-record rejection (solid)
+    and valid-record acceptance (hatched) per fault class at the largest injected fraction."""
     ms = metrics("exp04_verification_time", tier)
     if not ms:
         return
-    fig, (a,) = _panels(1, height_in=2.3)
-    for key, m in ms.items():
-        pts = _points(m)
-        xs = sorted(  # normal audit, no injection: one line per scheme
-            (k[0], v) for k, v in pts.items() if k[1] == "normal" and k[2] == 0 and v.get("status") == "ok"
-        )
-        if xs:
-            vs = [v for _, v in xs]
-            ys = [v["verify_ms"]["median"] for v in vs]
-            style.line(a, key, [x for x, _ in xs], ys, yerr=_ci(m, vs, "verify_ms", "ci95_halfwidth"))
-    a.set(xscale="log", yscale="log", xlabel="Verified records $n_Q$", ylabel="Verification time (ms)")
-    a.sci_y = True
+    fig, (a, b, c) = _panels(3, height_in=2.2)
+    ok = {key: {k: v for k, v in _points(m).items() if v.get("status") == "ok"} for key, m in ms.items()}
+    n0 = max((k[0] for pts in ok.values() for k in pts), default=None)
+    if n0 is None:
+        return
+    for key, pts in ok.items():
+        esc = sorted((k[1], v) for k, v in pts.items() if k[0] == n0 and k[2] == "none")
+        if len(esc) > 1:
+            style.line(a, key, [d * 100 for d, _ in esc], [v["verify_ms"]["median"] for _, v in esc])
+        elif esc:  # no escalation defined: its routine verification as a reference line
+            _, col, _, _ = style.METHODS.get(key, (key, "#000000", "-", "o"))
+            a.axhline(esc[0][1]["verify_ms"]["median"], color=col, linestyle="--", label=style.label(key))
+    a.set(yscale="log", xlabel="Escalated requests $d_Q/n_Q$ (%)", ylabel=f"Verification at $n_Q$={int(n0)} (ms)")
+    fracs = sorted({k[1] * 100 for pts in ok.values() for k in pts if k[0] == n0 and k[2] == "none"})
+    a.set_xticks(fracs, [f"{d:g}" for d in fracs])  # ticks at the measured fractions (not the reference lines)
+    a.xaxis.set_minor_locator(ticker.NullLocator())
+    a.fixed_xticks = True
+    parts = (
+        ("response + RAI", ("verify_response_ms", "verify_rai_mp_ms")),
+        ("attestations", ("verify_attest_ms",)),
+        ("committee", ("verify_committee_ms",)),
+        ("transition/PQCH", ("verify_state_ms",)),
+        ("checkpoints", ("verify_cp_ms",)),
+        ("PQZK", ("verify_zk_ms",)),
+    )
+    esc = sorted((k[1], v) for k, v in ok.get("veredact", {}).items() if k[0] == n0 and k[2] == "none")
+    if esc:
+        xs = range(len(esc))
+        bottom = [0.0] * len(esc)
+        shades = ("#cfe3f3", "#9cc7e8", "#56B4E9", "#0072B2", "#004b75", "#E69F00")
+        for (lab, cols), col in zip(parts, shades):
+            ys = [sum((v.get(cc) or {}).get("median") or 0.0 for cc in cols) for _, v in esc]
+            b.bar(xs, ys, bottom=bottom, color=col, label=lab, width=0.6)
+            bottom = [p + q for p, q in zip(bottom, ys)]
+        b.set_xticks(list(xs), [f"{d * 100:g}" for d, _ in esc])
+        b.fixed_xticks = True
+        b.set(xlabel="Escalated requests $d_Q/n_Q$ (%)", ylabel="VeRedact-PQ breakdown (ms)")
+        b.legend(frameon=False, ncol=2)
+    kinds = ("modified", "substituted", "stale")
+    keys = [k for k in ok if any(kk[2] in kinds for kk in ok[k])]
+    width = 0.8 / max(1, 2 * len(keys))
+    for i, key in enumerate(keys):
+        _, col, _, _ = style.METHODS.get(key, (key, "#000000", "-", "o"))
+        f0 = max((k[3] for k in ok[key] if k[2] in kinds and k[0] == n0), default=None)
+        det, val = [], []
+        for kind in kinds:
+            v = ok[key].get((n0, 0.0, kind, f0), {})
+            det.append(v.get("detection_rate") or 0.0)
+            val.append(v.get("valid_acceptance_rate") or 0.0)
+        x0 = [j + (2 * i) * width - 0.4 + width / 2 for j in range(len(kinds))]
+        c.bar(x0, det, width=width, color=col, label=f"{style.label(key)} rejected")
+        c.bar([x + width for x in x0], val, width=width, color="white", edgecolor=col, hatch="//")
+    c.set_xticks(range(len(kinds)), kinds)
+    c.fixed_xticks = True
+    c.set(ylim=(0, 1.05), ylabel="Rate (solid: invalid rejected;\nhatched: valid accepted)")
+    for ax, t in ((a, "a"), (b, "b"), (c, "c")):
+        _tag(ax, t)
     _legend(a)
     _save(fig, "exp4_verification_time", written)
 

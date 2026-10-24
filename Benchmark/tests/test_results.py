@@ -476,3 +476,16 @@ def test_remote_provers_report_a_host_lost_mid_point():
     b.gone.set()
     t.join(5)
     assert rp.lost == [0]
+
+
+def test_variant_result_folders_keep_their_system_key(tmp_path, monkeypatch):
+    """results/<exp>/veredact-per-request/<tier> is read back as system key veredact-per-request (the figures look
+    the variants up by that key)."""
+    from veredact_bench.reporting import load as rload
+
+    for key in ("veredact", "veredact-per-request"):
+        d = tmp_path / "exp01_redaction_throughput" / key / "smoke"
+        d.mkdir(parents=True)
+        (d / "metrics.json").write_text("{}")
+    monkeypatch.setattr(rload, "RESULTS", tmp_path)
+    assert sorted(rload.runs("exp01_redaction_throughput", "smoke")) == ["veredact", "veredact-per-request"]

@@ -16,7 +16,7 @@ def runs(experiment: str, tier: str) -> dict:
     out = {}
     for d in sorted((RESULTS / experiment).glob(f"*/{os.environ.get('VRPQ_RESULTS_TIER') or tier}")):
         if (d / "metrics.json").exists():
-            out[d.parent.name.replace("-", ":", 1)] = d
+            out[d.parent.name] = d  # folder name = system key (veredact-<variant> keys contain '-')
     return out
 
 
