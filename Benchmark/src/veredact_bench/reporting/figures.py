@@ -7,8 +7,8 @@ Fig. 5 at VeRedact-PQ's default batch (veredact.reference_batch), Fig. 6 normal 
 (workload.zipf_s). Panels follow the captions:
   Fig. 3  (a) throughput, (b) p95 end-to-end latency (s) vs arrival rate, (c) PQCH adaptations (solid) and
           SFMR frontier nodes (dashed, VeRedact-PQ systems) per 1,000 redactions vs Zipf skew
-  Fig. 4  COMPLETE authorization (per-request step + share of the batch step): (a) per request vs batch size,
-          (b) one batch of m0 vs committee size; schemes without a batch protocol drawn dashed
+  Fig. 4  Phase 4 authorization (VeRedact-optimize.tex): (a) amortized per request vs selected-set size m,
+          (b) one set of m0 vs committee size; schemes without a batch protocol drawn dashed
   Fig. 5  (a) response-generation time, (b) response size vs returned records
   Fig. 6  verification time vs records (normal audit)
   Fig. 7  (a) gas per redaction of every scheme (VeRedact-PQ at m = 1 and at its default batch),
@@ -217,20 +217,20 @@ def fig_exp2(tier, written):
     fig, (a, b) = _panels(2, height_in=2.2)
     for key, m in ms.items():
         pts = _points(m)
-        if "auth_complete_per_request_ms" not in next(iter(pts.values()), {}):
-            continue  # metrics.json from before the complete-authorization summary: resummarize first
         amort = sorted((k[1], v) for k, v in pts.items() if k[0] == n0)
         per_batch = sorted((k[0], v) for k, v in pts.items() if k[1] == m0)
         batched = any(v["phase4_batch_ms"].get("n") for v in pts.values())
         draw = style.line if batched else _flat
-        for ax, series, f in ((a, amort, "auth_complete_per_request_ms"), (b, per_batch, "auth_complete_per_batch_ms")):
+        # VeRedact-optimize.tex Exp. 2: Phase 4 (attestations, freshness, R_e^VR + Gamma_e, committee), amortized
+        # over m in (a) and per selected set in (b); a baseline without a batch protocol: m own authorizations
+        for ax, series, f in ((a, amort, "auth_per_request_ms"), (b, per_batch, "batch_total_ms")):
             vs = [v for _, v in series]
             draw(ax, key, [x for x, _ in series], [v[f]["median"] for v in vs], yerr=_ci(m, vs, f, "ci95_halfwidth"))
-    a.set(xscale="log", yscale="log", xlabel="Batch size $m$", ylabel="Complete authorization\nper request (ms)")
+    a.set(xscale="log", yscale="log", xlabel="Selected-set size $m$", ylabel="Authorization\nper request (ms)")
     b.set(
         yscale="log",
         xlabel="Committee size $n$ ($t=\\lfloor 2n/3\\rfloor+1$)",
-        ylabel=f"One batch of $m$={int(m0)} (ms)",
+        ylabel=f"One set of $m$={int(m0)} (ms)",
     )
     for ax in (a, b):
         ax.sci_y = True
