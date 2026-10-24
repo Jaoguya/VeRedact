@@ -1,7 +1,7 @@
 # AUDIT_LOG — VeRedact-PQ evaluation code
 
-Audit of the simulation/evaluation code against the manuscript (`Overleaf/VeRedact-2.tex`, mirrored in
-`Overleaf/VeRedact.md`). Rules: no fabricated or tuned numbers; paper preferred over code, every discrepancy
+Audit of the simulation/evaluation code against the manuscript (since 2026-10-24 `Overleaf/VeRedact-optimize.tex`;
+Phases 0–1 below were against `Overleaf/VeRedact-2.tex`). Rules: no fabricated or tuned numbers; paper preferred over code, every discrepancy
 listed; work on `main` (author decision 2026-10-05, no branch), local commit after each verified fix, push on
 "commit push"; all compute on the AWS server (`Benchmark/deploy/aws/remote.sh`); small configuration first; no capped
 figure lines. Unexplained mismatches are reported with evidence, not papered over.
@@ -78,3 +78,15 @@ so Phase 3 applies.
 | A7 | Exp. 1: a saturated point's VPS workers / revalidators / clients kept processing its backlog after the point ended (stop sentinels sat behind thousands of queued requests), loading the NEXT point's cores and GIL | scale run 2026-10-07: a worker of the previous point still in `authorize` during the next point's setup (py-spy) | — (harness) | **fixed**: threads exit on the stop flag and run_point joins every thread before returning; test `test_exp1_point_leaves_no_thread_behind` (S34 at 4,000 req/s) passes with the fix and FAILS with it removed (negative control on the server). Earlier Exp. 1 points that FOLLOW a saturated point may be contaminated — the re-run replaces them |
 | A8 | S1 builds a fresh non-membership witness (a, B = g^b, \|b\| ≈ \|u\|) for EVERY authorization: O(history) per request. Scale run 2026-10-07: S1's Exp. 3 history reached 3,575 of 10^4 redactions after 62 min (~3 s each, growing) — projected 7–14 h for Exp. 3 and again for Exp. 4; also why S1 decided 0 % at every Exp. 1 rate | py-spy: `s01_improved_dch/adapter.py:125` in `build_history`; counts at 3,574 → 3,575 in 3 s | Li et al. Sec. III-B3: a full node "checks whether B has been redacted through the RSA accumulator acc"; manuscript Table IV counts T_Acc as a constant-cost operation | **fixed** (author: "all fix"; paper Sec. III-B3 + manuscript Table IV): P and each approving full node check the accumulated set locally, no per-request witness; acc updated only by a valid redaction; Exp. 0 T_Acc for S1 = the per-redaction update acc^x. Documented in Other/docs/baselines/S1-improved-dch.md. Performance validation: S1 reaching 10^4 redactions in the resumed scale run |
 | A9 | S34's hash pool and S13's witness pool were forked from a multi-threaded process (Python DeprecationWarning: fork() may deadlock the child) | pytest warnings (16) | — | **fixed**: both use the forkserver start method (plain-integer jobs); the A3 requester pool keeps fork (it must inherit the credential state; children use only the prover and signer) |
+
+## Phase 2 — VeRedact-optimize.tex update (2026-10-24)
+
+Code rebuilt test-first for the new manuscript (TASK.md §0). Findings on the way:
+
+| ID | Finding | Evidence | Paper says | Action |
+|:--|:--|:--|:--|:--|
+| A10 | The audit never verified the checkpoint authority's signature on A_b' | `verify_audit` checked the PQCH transition and the anchored MR_b', not sigma_b' | SAVER checkpoint node; cost table counts c_Q T_V | **fixed `10c2811`**: checkpoint node verifies sigma_b' and the anchored MR_b' |
+| A11 | First SAVER version reused a verified result after the evidence changed (altered r_b', different anchored MR_b') | existing tests `test_veredact_state_check_once_per_transition_and_tamper_still_caught`, `test_veredact_auditor_reads_the_anchored_checkpoints` failed | reuse only when chi(v) matches; any change requires fresh verification | **fixed before commit `10c2811`**: chi(v) hashes the node's complete evidence and the chain value read in that audit |
+| A12 | Figures dropped every ablation variant | `reporting/load.runs` turned folder `veredact-per-request` into key `veredact:per-request` | — (harness) | **fixed `5ea1a26`**: folder name = system key; test `test_variant_result_folders_keep_their_system_key` |
+| A13 | Measuring SAVER across samples would overstate it | the verified-context store persists between audits, so samples 2..30 would reuse everything | reuse within the audited context | **by design**: one fresh auditor (empty store) per measured query |
+| A14 | Laptop runs of the harness failed off Linux | `/proc/cpuinfo`, `sysctl`, `resource` | — (harness) | **fixed `2d723d8`**: environment record and peak-memory log fall back off Linux; paper runs stay on the server |

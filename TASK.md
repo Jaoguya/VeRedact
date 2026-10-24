@@ -1,9 +1,44 @@
 # TASK — full-experiment tracker
 
-Updated 2026-10-03. The manuscript (`Overleaf/VeRedact-2.tex`) is final: it is never edited here; text it
-needs goes to `Overleaf/newchange.md`. Update §1 and the run ledger (§1.1) as each step finishes.
+Updated 2026-10-24. The manuscript is `Overleaf/VeRedact-optimize.tex` (final, never edited here; mismatches go to
+`Other/docs/paper-conformance.md`). §0 is the current state; §1–§5 are the history of the previous manuscript
+(VeRedact-2.tex) and its runs, kept for the record. The dated log at the end lists every task.
 
-## 1. Progress
+## 0. Current state (2026-10-24)
+
+The code follows VeRedact-optimize.tex. No experiment has run with it yet; every earlier result is superseded.
+
+### 0.1 Done
+
+| Area | What | Commit |
+|:--|:--|:--|
+| Manuscript | VeRedact-optimize.tex replaces VeRedact-2.tex and the revised/blue copies | `f378786` |
+| Phase 3 | state digest h_i^st from batch b's checkpoint; state-bound statement, C_VR and freshness | `8156ca0` |
+| Phase 4 | CORA selector (`protocol/cora.py`); plan commitment Gamma_e; C_e^B signed directly | `252f735`, `ac1dfdc` |
+| Phase 5 | SFMR frontier, Theta_b, Xi_b, P_exec in P_auth (execution outside the plan withheld) | `ac1dfdc` |
+| Phase 6 | SAVER: evidence nodes, verified-context store, per-request PQZK escalation, checkpoint signature now verified | `10c2811` |
+| Variants | `veredact-<variant>`: per-request, fixed-batch, cora-no-sfmr, re-zk, shared-evidence, per-record | `a8f182c` |
+| Exp. 1 | CORA rounds in the executor; rates 100–5,000; |Omega_e|, adaptations, F_e per 1,000; Fig. 3(c) | `2d723d8` |
+| Exp. 2 | Phase 4 per request and per set; Re-ZK; LETA kept | `7308145` |
+| Exp. 3 / 4 | SAVER efficiency with sharing axis 1/8/64 and verified nodes; escalation 0–100 % and fault classes | `b011327` |
+| Exp. 5 | `exp05_blockchain_overhead`: tx size + finality vs |Omega_e| 1–32, validators 4/7/10; gas removed | `bc2d594` |
+| Figures | Fig. 3–7 follow the new captions; result loader keeps variant keys | `5ea1a26` |
+| Docs | HANDOFF, README, experiments, manifest, conformance | `a2efefc` |
+| Tests | `tests/test_protocol.py` at four seams + variants; laptop env `Benchmark/.venv` (93 pass; 7 need Linux fork) | — |
+
+### 0.2 Left
+
+| # | Step | Needs |
+|:-:|:--|:--|
+| 1 | Check boot: pull branch, full tests (incl. S13, S34, Besu), `make smoke`, move old results aside, time estimate | author yes (~30–45 min, ~US$1) |
+| 2 | Full-run plan with cost options (aws-cost skill); decide repetitions (manuscript: 30) | author decision |
+| 3 | Full run (provers only for VeRedact-PQ's Exp. 1 systems), coverage check, tables + figures, fetch | author yes |
+| 4 | Results text for the author; watch Fixed-Batch vs CORA throughput (laptop smoke hint) | after the run |
+| 5 | S13 witness timing 3–7 % high: re-time or disclose | author decision |
+| 6 | Manuscript gaps to resolve in the text: validation 2·T_S (rc_i), CORA f and weights, Exp. 5 validators | author |
+
+
+## 1. Progress (history: VeRedact-2.tex runs, superseded 2026-10-24)
 
 Rule: when a step finishes, set **Status** to `done <date>` and write in **Result stored at** the exact path
 it produced. `Benchmark/results/` is gitignored: it exists only on the machine that ran it (this laptop or the EC2
