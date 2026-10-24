@@ -10,7 +10,7 @@ sudo shutdown -h +${PILOT_HARD_CAP_MIN:-1800} veredact-pilot-hard-cap   # 30 h: 
 echo "pilot start $(date -u +%FT%TZ)"
 RATES="100 5000" deploy/experiments/validate_provers_loopback.sh; echo "LOOPBACK_EXIT=$?"   # prints "first submission"
 VRPQ_SKIP=exp01_redaction_throughput:veredact deploy/experiments/run_experiments.sh scale \
-  exp02_authorization_latency exp03_audit_efficiency exp04_verification_time exp05_gas_consumption
+  exp02_authorization_latency exp03_audit_efficiency exp04_verification_time exp05_blockchain_overhead
 echo "RUN_EXIT=$?"
 .venv/bin/python scripts/check_coverage.py --tier scale; echo "COV_EXIT=$?"
 echo "pilot end $(date -u +%FT%TZ)"; echo DONE

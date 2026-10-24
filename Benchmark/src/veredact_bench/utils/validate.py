@@ -115,8 +115,8 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
         E("exp2.committee_sizes must be >= 4")
     if final and c["veredact"]["reference_batch"] not in x["exp3"]["records_per_batch"]:
         E("exp3.records_per_batch must include veredact.reference_batch (the default sharing level)")
-    if x["exp5"]["zipf_sweep"] != [c["workload"]["zipf_s"]]:
-        E("exp5.zipf_sweep must be [workload.zipf_s]: one skew per figure")
+    if sorted(x["exp5"]["affected_batches"]) != x["exp5"]["affected_batches"] or x["exp5"]["affected_batches"][0] < 1:
+        E("exp5.affected_batches must be ascending and >= 1")
     # the history targets distinct transactions (data/history.py): the ceiling is S1's block count (one redaction
     # per block), not the trace
     ceiling = c["dataset"]["base_transactions"] // c["baselines"]["S1"]["txs_per_block"]
@@ -124,8 +124,8 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
         E(f"exp3/exp4 n_Q exceeds {ceiling}: S1 (one redaction per block) cannot hold that many redactions")
     if not 0 < x["exp1"]["saturation_tolerance"] < 1 or x["exp1"]["client_threads"] < 1:
         E("exp1.saturation_tolerance must be in (0, 1) and exp1.client_threads >= 1")
-    if x["exp5"]["requests_per_point"] % max(x["exp5"]["batch_sizes"]):
-        E("exp5.requests_per_point must be a multiple of max(exp5.batch_sizes)")
+    if final and c["ledger"]["validators"] not in x["exp5"]["validators"]:
+        E("exp5.validators must include ledger.validators (the default network)")
     s34 = c["baselines"]["S34"]
     if not 1 <= s34["policy_threshold"] <= s34["policy_attributes"]:
         E("baselines.S34 needs 1 <= policy_threshold <= policy_attributes")

@@ -11,4 +11,4 @@ experiments:
   exp02_authorization_latency: {samples_per_point: 5}
   exp03_audit_efficiency: {n_Q: [10, 100, 1000], samples_per_point: 5}
   exp04_verification_time: {n_Q: [10, 100, 1000], samples_per_point: 5}   # = exp03 pilot n_Q (S13: ~100 s per audit at 10^3)
-  exp05_gas_consumption: {requests_per_point: 512}
+  exp05_blockchain_overhead: {samples_per_point: 5}

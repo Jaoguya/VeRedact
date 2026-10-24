@@ -14,4 +14,4 @@ experiments:
   exp04_verification_time:
     samples_per_point: 1
     samples_override: {S13: {"100000": 1}, S1: {"100000": 1}, veredact: {"100000": 1}}
-  exp05_gas_consumption: {requests_per_point: 256}
+  exp05_blockchain_overhead: {samples_per_point: 2}

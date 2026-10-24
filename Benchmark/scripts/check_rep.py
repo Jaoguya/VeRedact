@@ -56,10 +56,10 @@ def main():
                 fail.append(f"exp4 {key} {k}: false rejection rate {v['false_rejection_rate']}")
             if v["detection_rate"] not in (None, 1.0):
                 fail.append(f"exp4 {key} {k}: detection rate {v['detection_rate']}")
-    for key in load(a.tier, "exp05_gas_consumption")["experiment"]["systems"]:
-        for k, v in (metrics("exp05_gas_consumption", key, a.tier) or {}).items():
-            if not v["gas_per_redaction"]:
-                fail.append(f"exp5 {key} {k}: no gas")
+    for key in load(a.tier, "exp05_blockchain_overhead")["experiment"]["systems"]:
+        for k, v in (metrics("exp05_blockchain_overhead", key, a.tier) or {}).items():
+            if not v["finalize_ms"].get("n"):
+                fail.append(f"exp5 {key} {k}: no finalization latency")
     for log in a.logs:
         text = open(log, errors="replace").read()
         if "Traceback (most recent call last)" in text:

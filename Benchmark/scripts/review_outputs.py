@@ -99,4 +99,4 @@ if __name__ == "__main__":
     generic("exp02_authorization_latency", "Fig. 4", ["auth_per_request_ms", "phase4_batch_ms"])
     generic("exp03_audit_efficiency", "Fig. 5", ["retrieval_ms", "evidence_bytes"])
     generic("exp04_verification_time", "Fig. 6", ["verify_ms", "verify_state_ms", "verify_attest_ms"])
-    generic("exp05_gas_consumption", "Fig. 7", ["gas_per_round", "gas_per_redaction"])
+    generic("exp05_blockchain_overhead", "Fig. 7", ["finalize_tx_bytes", "finalize_ms"])

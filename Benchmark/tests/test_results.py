@@ -55,26 +55,34 @@ def test_paper_artifacts_show_only_the_paper_schemes(monkeypatch):
     assert tables.ORDER == list(style.PAPER_METHODS)  # a table lists only the systems its experiment ran
 
 
-def test_gas_figure_never_draws_a_baseline_against_the_batch_axis(monkeypatch, tmp_path):
-    """Fig. 7: (a) one bar per baseline + VeRedact-PQ at m = 1 and at its default batch; (b) only VeRedact-PQ
-    against m, the cheapest baseline as one reference line (baselines have no batching)."""
+def test_blockchain_overhead_figure(monkeypatch, tmp_path):
+    """Fig. 7 (VeRedact-optimize.tex): (a) finalization and RAI-checkpoint transaction size vs |Omega_e| at the
+    default validator count; (b) finalization latency vs |Omega_e|, one line per validator count. No gas."""
     from veredact_bench.reporting import figures, style
 
-    def fake(exp, tier):  # two batch sizes per scheme at the default skew, as Exp. 5 records them
-        pts = {f"zipf_s=0.8|batch_size={b}": {"gas_per_redaction": 1000.0 + b} for b in (1, 8)}
-        return {k: {"points": pts} for k in ("veredact", "S1", "S13", "S27", "S34")}
+    def stat(x):
+        return {"n": 3, "median": x}
+
+    def fake(exp, tier):
+        pts = {
+            f"validators={n}|affected_batches={o}": {
+                "finalize_tx_bytes": stat(4000.0 * o),
+                "rai_tx_bytes": stat(300.0),
+                "finalize_ms": stat(2000.0 + n),
+            }
+            for n in (4, 7)
+            for o in (1, 8)
+        }
+        return {"veredact": {"points": pts}}
 
     monkeypatch.setattr(figures, "_all_metrics", fake)
     monkeypatch.setattr(figures, "OUT", tmp_path)
-    cfg = {"workload": {"zipf_s": 0.8}, "veredact": {"reference_batch": 8}}
-    monkeypatch.setattr(figures, "load", lambda tier, exp: cfg)
+    monkeypatch.setattr(figures, "load", lambda tier, exp: {"ledger": {"validators": 7}})
     drawn = {}
-    monkeypatch.setattr(
-        figures, "_save", lambda fig, name, w: drawn.update({name: [(len(a.patches), len(a.lines)) for a in fig.axes]})
-    )
+    monkeypatch.setattr(figures, "_save", lambda fig, name, w: drawn.update({name: [len(a.lines) for a in fig.axes]}))
     style.apply()
     figures.fig_exp5("smoke", [])
-    assert drawn["exp5_gas_consumption"] == [(4 + 2, 0), (0, 2)]
+    assert drawn["exp5_blockchain_overhead"] == [2, 2]
 
 
 def test_exp1_adaptations_count_every_finalized_redaction():

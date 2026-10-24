@@ -11,7 +11,8 @@ Fig. 5 at VeRedact-PQ's default batch (veredact.reference_batch), Fig. 6 normal 
           (b) one set of m0 vs committee size; schemes without a batch protocol drawn dashed
   Fig. 5  (a) response-generation time, (b) response size vs returned records
   Fig. 6  verification time vs records (normal audit)
-  Fig. 7  (a) gas per redaction of every scheme (VeRedact-PQ at m = 1 and at its default batch),
+  Fig. 7  (a) finalization / RAI-checkpoint transaction size, (b) finalization latency per validator count,
+          both vs affected batches |Omega_e| (VeRedact-optimize.tex: no gas)
           (b) VeRedact-PQ gas per redaction vs ABRRR batch size, cheapest baseline as a reference line
 (2026-10-17, author review: Fig. 3(c) and Fig. 6(b) removed; Fig. 4 counts Phase 3 too; no baseline drawn
 against a batch axis it does not have)
@@ -24,12 +25,10 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 
-from veredact_bench import metrics as M
 from veredact_bench.reporting import style
 from veredact_bench.reporting.load import metrics as _all_metrics
 from veredact_bench.reporting.load import num
 from veredact_bench.utils.config import RESULT_DIR, load
-from veredact_bench.utils.log import get_logger
 
 OUT = RESULT_DIR
 
@@ -299,67 +298,32 @@ def fig_exp4(tier, written):
 
 
 def fig_exp5(tier, written):
-    """(a) gas per finalized redaction of every scheme on the same trace: the baselines send one transaction per
-    redaction (their papers define no batching), VeRedact-PQ without batching (m = 1) and at its default ABRRR
-    batch (veredact.reference_batch); (b) VeRedact-PQ's own batch-size sensitivity, the cheapest baseline as a
-    reference line (a baseline's cost does not depend on m, so it is not drawn against m)."""
-    ms = metrics("exp05_gas_consumption", tier)
-    if not ms or not any(v["gas_per_redaction"] for m in ms.values() for v in m["points"].values()):
-        get_logger().info("exp5: no receipts (in_process ledger) - no gas figure drawn")
+    """(a) size of the redaction-finalization transaction (Phase 5) and of the RAI-checkpoint transaction (Phase 6,
+    dashed) vs |Omega_e| at the default validator count; (b) submission -> QBFT finalization latency of the
+    finalization transaction vs |Omega_e|, one line per validator count."""
+    ms = metrics("exp05_blockchain_overhead", tier)
+    if "veredact" not in ms:
         return
-    cfg = load(tier, "exp05_gas_consumption")
-    s0, m0 = float(cfg["workload"]["zipf_s"]), float(cfg["veredact"]["reference_batch"])
-    gas, err = {}, {}  # key -> {m: gas per redaction} at the default skew, and its 95% CI across repetitions
-    for key, m in ms.items():
-        pts = [(k, v) for k, v in _points(m).items() if k[0] == s0 and v["gas_per_redaction"]]
-        gas[key] = {k[1]: v["gas_per_redaction"] for k, v in pts}
-        err[key] = {k[1]: (v.get("gas_per_redaction_ci95") or 0.0) if m.get("reps") else 0.0 for k, v in pts}
+    v0 = float(load(tier, "exp05_blockchain_overhead")["ledger"]["validators"])
+    pts = _points(ms["veredact"])
     fig, (a, b) = _panels(2, height_in=2.1)
-    bars = []  # (label, value, colour, hatch, ci)
-    for key, g in gas.items():
-        if not g:
-            continue
-        lab, col, _, _ = style.METHODS[key]
-        if key.startswith("veredact"):
-            for mm, h in ((1.0, "//"), (m0, "")):
-                if mm in g:
-                    bars.append((f"{lab}\n$m$={int(mm)}", g[mm], col, h, err[key][mm]))
-        else:
-            mid = sorted(g)[len(g) // 2]  # constant in m (no batching): its value at one measured m
-            bars.append((lab, g[mid], col, "", err[key][mid]))
-    xs = range(len(bars))
-    a.bar(
-        xs,
-        [b_[1] for b_ in bars],
-        yerr=[b_[4] for b_ in bars] if any(b_[4] for b_ in bars) else None,
-        color=[b_[2] for b_ in bars],
-        hatch=[b_[3] for b_ in bars],
-        width=0.6,
-        capsize=2,
-    )
-    a.set_xticks(list(xs), [lab.replace("\n", ", ") for lab, *_ in bars], rotation=30, ha="right")
-    a.set(ylabel="Gas per redaction")
-    a.fixed_xticks = True
-    v = gas.get("veredact", {})
-    if v:
-        pts = sorted(v.items())
-        style.line(b, "veredact", [x for x, _ in pts], [y for _, y in pts], yerr=[err["veredact"][x] for x, _ in pts])
-        base = {k: M.median(list(g.values())) for k, g in gas.items() if g and not k.startswith("veredact")}
-        if base:
-            kmin = min(base, key=base.get)
-            _, col, _, _ = style.METHODS[kmin]
-            b.axhline(base[kmin], color=col, linestyle="--", label=f"{style.label(kmin)}, one tx per redaction")
-        b.set(xscale="log", xlabel="ABRRR batch size $m$", ylabel="Gas per redaction")
-        b.set_xticks([x for x, _ in pts])
-        b.xaxis.set_minor_locator(ticker.NullLocator())
-        b.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{x:g}"))
-        b.fixed_xticks = True  # the reference line's x data are axes coordinates, not batch sizes
-        b.legend(frameon=False)
-    for ax in (a, b):
-        ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
+    _, col, _, mk = style.METHODS["veredact"]
+    base = sorted((k[1], v) for k, v in pts.items() if k[0] == v0)
+    for f, ls, lab in (("finalize_tx_bytes", "-", "redaction finalization"), ("rai_tx_bytes", "--", "RAI checkpoint")):
+        series = [(x, v[f]["median"] / 1024) for x, v in base if v[f].get("n")]
+        if series:
+            a.plot(*zip(*series), color=col, linestyle=ls, marker=mk, label=lab)
+    shades = ("#56B4E9", "#0072B2", "#003F63", "#000000")
+    for i, n in enumerate(sorted({k[0] for k in pts})):
+        series = [(k[1], v["finalize_ms"]["median"] / 1000) for k, v in sorted(pts.items()) if k[0] == n]
+        b.plot(*zip(*series), color=shades[i % len(shades)], marker=mk, label=f"{int(n)} validators")
+    a.set(xscale="log", xlabel="Affected batches $|\\Omega_e|$", ylabel="Transaction size (KiB)")
+    b.set(xscale="log", xlabel="Affected batches $|\\Omega_e|$", ylabel="Finalization latency (s)")
     _tag(a, "a")
     _tag(b, "b")
-    _save(fig, "exp5_gas_consumption", written)
+    a.legend(frameon=False)
+    b.legend(frameon=False)
+    _save(fig, "exp5_blockchain_overhead", written)
 
 
 def make_all(tier: str) -> list[str]:

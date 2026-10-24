@@ -58,6 +58,19 @@ class _Metered:
         return self._read(what, **keys)
 
 
+def payload_bytes(fields: dict) -> int:
+    """Length of an anchoring call's arguments (in-process ledger stand-in for the signed transaction size)."""
+
+    def size(v):
+        if isinstance(v, (bytes, bytearray)):
+            return len(v)
+        if isinstance(v, (list, tuple)):
+            return sum(size(e) for e in v)
+        return 32  # an integer / fixed-size word
+
+    return sum(size(v) for v in fields.values())
+
+
 def gather(futures: list) -> Future:
     """One Future for several anchoring transactions: (slowest ledger_ms, summed gas; None if any is None)."""
     out, left, res = Future(), [len(futures)], []
@@ -112,6 +125,7 @@ class InProcessAnchor(_Metered):
             if "acc" in f:
                 self._accs["latest"] = chain_digest(f["acc"])
         fut = Future()
+        fut.tx_bytes = payload_bytes(fields)  # no signed transaction in-process: the anchored payload's length
         fut.set_result(((time.perf_counter() - t) * 1000, None))
         return fut
 
@@ -214,6 +228,7 @@ class BesuAnchor(_Metered):
         if cp_keys:
             self._cp_keys[h] = list(cp_keys)
         fut = self._register(h, t0)
+        fut.tx_bytes = len(stx.raw_transaction)  # size of the submitted signed transaction (Exp. 5)
         self._senders.submit(self.w3.eth.send_raw_transaction, stx.raw_transaction).add_done_callback(
             lambda f: f.exception() is not None and self._fail(h, f.exception())
         )

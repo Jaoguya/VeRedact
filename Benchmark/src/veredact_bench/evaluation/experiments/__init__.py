@@ -6,7 +6,7 @@ from . import (
     exp02_authorization_latency,
     exp03_audit_efficiency,
     exp04_verification_time,
-    exp05_gas_consumption,
+    exp05_blockchain_overhead,
 )
 
 RUNNERS = {
@@ -17,6 +17,6 @@ RUNNERS = {
         exp02_authorization_latency,
         exp03_audit_efficiency,
         exp04_verification_time,
-        exp05_gas_consumption,
+        exp05_blockchain_overhead,
     )
 }

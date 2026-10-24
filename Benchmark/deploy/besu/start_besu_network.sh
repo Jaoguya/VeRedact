@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 eval "$(.venv/bin/python deploy/aws/aws_config.py)"
 NET=deploy/besu/.network          # generated, gitignored
-N=$BESU_VALIDATORS
+N=${VRPQ_VALIDATORS:-$BESU_VALIDATORS}  # Exp. 5 restarts the network with each validator count
 rm -rf "$NET" && mkdir -p "$NET"
 
 # ---- 1. genesis + validator keys (besu operator generate-blockchain-config) ---------------------

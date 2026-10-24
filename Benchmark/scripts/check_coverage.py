@@ -91,13 +91,12 @@ def main():
             seen[key] = (ds, hs)
         if len(set(seen.values())) > 1:
             gaps.append(f"{exp}: schemes differ in dataset / history: {seen}")
-    x = load(tier, "exp05_gas_consumption")
-    e = x["experiment"]
-    gas_field = "gas_per_redaction" if x["ledger"]["backend"] == "besu" else "redactions"  # in_process: no receipts
+    e = load(tier, "exp05_blockchain_overhead")["experiment"]
     for key in e["systems"]:
-        for s in e["zipf_sweep"]:
-            for m in e["batch_sizes"]:
-                need("exp05_gas_consumption", key, {"zipf_s": s, "batch_size": m}, gas_field)
+        for n in e["validators"]:
+            for omega in e["affected_batches"]:
+                at = {"validators": n, "affected_batches": omega}
+                need("exp05_blockchain_overhead", key, at, "finalize_ms", "median")
     for g in gaps:
         print("GAP", g)
     print(f"coverage {tier}: {checked - len(gaps)}/{checked} (scheme, x) points have a value; {len(gaps)} gaps")

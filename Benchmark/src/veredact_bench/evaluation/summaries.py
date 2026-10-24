@@ -202,18 +202,19 @@ def _exp04(rows, cfg):
 
 
 def _exp05(rows, cfg):
-    out = {}
-    for k, rs in _group(rows, "zipf_s", "batch_size").items():
-        gas = [_num(r["gas_used"]) for r in rs if _num(r["gas_used"]) is not None]
-        red = _num(rs[0]["redactions"]) or 0
-        out[k] = {
-            "transactions": len(rs),
-            "redactions": red,
-            "total_gas": sum(gas) if gas else None,
-            "gas_per_redaction": sum(gas) / red if gas and red else None,
-            "by_operation": {op: _stats(r["gas_used"] for r in g) for op, g in _group(rs, "op").items()},
+    """Per (validators, |Omega_e|): finalization and RAI-checkpoint transaction size and submission -> QBFT
+    finalization latency."""
+    return {
+        k: {
+            "rounds": len(rs),
+            "checkpoints": _stats(r.get("checkpoints") for r in rs),
+            "finalize_tx_bytes": _stats(r.get("finalize_tx_bytes") for r in rs),
+            "finalize_ms": _stats(r.get("finalize_ms") for r in rs),
+            "rai_tx_bytes": _stats(r.get("rai_tx_bytes") for r in rs),
+            "rai_ms": _stats(r.get("rai_ms") for r in rs),
         }
-    return out
+        for k, rs in _group(rows, "validators", "affected_batches").items()
+    }
 
 
 SUMMARIES = {
@@ -222,7 +223,7 @@ SUMMARIES = {
     "exp02_authorization_latency": _exp02,
     "exp03_audit_efficiency": _exp03,
     "exp04_verification_time": _exp04,
-    "exp05_gas_consumption": _exp05,
+    "exp05_blockchain_overhead": _exp05,
 }
 
 

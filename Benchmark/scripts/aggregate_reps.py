@@ -16,7 +16,7 @@ from veredact_bench import metrics as M
 from veredact_bench.utils.config import REPO_ROOT, experiments
 
 R = REPO_ROOT / "results"
-CONCAT_ROWS = ("exp00_primitives", "exp05_gas_consumption")
+CONCAT_ROWS = ("exp00_primitives", "exp05_blockchain_overhead")
 
 
 def _ci(xs):

@@ -1,15 +1,13 @@
 """Paper tables from results/<experiment>/<method>/<tier>/ -> Overleaf/tables/<name>.tex (booktabs, never hand-edited).
 
 tab_primitives.tex    tab:primitives  median (95% CI) of every primitive, VeRedact-PQ then the baselines
-tab_gas.tex           tab:gas         VeRedact-PQ gas per contract operation (median over transactions)
 Only the manuscript's tables are written (author decision 2026-10-04).
 """
 
 import re
 
-from veredact_bench import metrics as M
 from veredact_bench.reporting import style
-from veredact_bench.reporting.load import metrics, num, rows
+from veredact_bench.reporting.load import metrics
 from veredact_bench.utils.config import TABLE_DIR
 
 OUT = TABLE_DIR
@@ -51,21 +49,8 @@ def table_primitives(tier, written):
     _write("tab_primitives", body, written)
 
 
-def table_gas(tier, written):
-    rs = [r for r in rows("exp05_gas_consumption", tier) if r["system"] == "veredact" and num(r["gas_used"])]
-    if not rs:
-        return
-    ops = {}
-    for r in rs:
-        ops.setdefault(r["op"], []).append(num(r["gas_used"]))
-    body = [r"\begin{tabular}{lrr}", r"\toprule", r"Operation & Transactions & Gas (median) \\", r"\midrule"]
-    body += [f"{tex_escape(op)} & {len(g)} & {M.median(g):,.0f} \\\\" for op, g in sorted(ops.items())]
-    body += [r"\bottomrule", r"\end{tabular}"]
-    _write("tab_gas", body, written)
-
-
 def make_all(tier: str) -> list[str]:
     written: list[str] = []
-    for t in (table_primitives, table_gas):
+    for t in (table_primitives,):
         t(tier, written)
     return written

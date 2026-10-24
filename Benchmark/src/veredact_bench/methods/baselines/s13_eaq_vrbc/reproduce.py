@@ -3,7 +3,7 @@
   Figs. 4/5 : audit proof generation / verification vs #challenged blocks c
   Figs. 6/7 : query proof generation / verification vs index of the queried block
   Figs. 8/9 : upload / redact computation vs #transactions per block
-  (on-chain gas, Fig. 3, is measured for VeRedact-PQ's baselines by exp05_gas_consumption on Besu)
+  (its on-chain gas, Fig. 3, is not reproduced: VeRedact-optimize.tex compares no gas)
 Output: results/S13_audit.csv, S13_query.csv, S13_upload_redact.csv
 Usage:  python scripts/paper_reproduction.py s13_eaq_vrbc [--quick]
 """

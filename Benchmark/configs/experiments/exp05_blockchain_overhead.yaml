@@ -1,0 +1,8 @@
+# Experiment 5 — permissioned-blockchain finalization overhead (VeRedact-optimize.tex). Fig. 7.
+experiment:
+  id: exp05_blockchain_overhead
+  paper: [fig:exp5_blockchain]
+  systems: [veredact]             # the manuscript measures VeRedact-PQ's anchoring (no gas comparison)
+  affected_batches: [1, 2, 4, 8, 16, 32]  # [DERIVED] manuscript |Omega_e|
+  validators: [4, 7, 10]          # [DERIVED] author decision 2026-10-24 (manuscript [TBD]); Besu restarted per count
+  samples_per_point: 30           # [PROPOSED] authorization rounds per (validators, |Omega_e|) in the one run
