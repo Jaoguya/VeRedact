@@ -5,6 +5,7 @@
 #   3. scripts/run_eval.py --tier <tier> --experiment <ids|all>  -> results/<exp>/<method>/<tier>/  (log tee'd)
 #   4. scripts/make_tables.py + make_figures.py -> ../Result/ (figures) and ../Overleaf/tables/; results + paper synced to [run].s3_uri when set;
 #      Besu stopped (KEEP_BESU=1 keeps it)
+# FORCE=--force re-runs finished methods.
 # Usage: deploy/experiments/run_experiments.sh <smoke|pilot|experiment> [exp01_redaction_throughput ... | all]
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -27,7 +28,7 @@ fi
 mkdir -p results/logs
 LOG="results/logs/${TIER}_${EXPS// /_}_$(date +%Y%m%d-%H%M%S).log"
 echo "running $EXPS on tier $TIER (ledger=$LEDGER_BACKEND) -> $LOG"
-"$PY" scripts/run_eval.py --tier "$TIER" --experiment $EXPS ${SYSTEMS:+--systems $SYSTEMS} 2>&1 | tee "$LOG"
+"$PY" scripts/run_eval.py --tier "$TIER" --experiment $EXPS ${SYSTEMS:+--systems $SYSTEMS} ${FORCE:-} 2>&1 | tee "$LOG"
 # paper tables/figures only from a single experiment-tier run: a repetition's come from scripts/aggregate_reps.py,
 # and a smoke/scale run must never overwrite Result/ or Overleaf/tables (its numbers are plumbing checks)
 if [[ "$TIER" == experiment && -z "${VRPQ_REP:-}" ]]; then

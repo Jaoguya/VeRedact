@@ -3055,8 +3055,9 @@ transition dependencies, and the fraction of requests escalated to
 deep PQZK verification.
 
 Unless otherwise stated, Table~\ref{tab:params} gives the default
-configuration. Each experiment is repeated 30 times, and results are
-reported with 95\% confidence intervals.
+configuration. Each experiment is repeated in 5 independent runs with
+different random seeds, and results are reported as the mean over the
+runs with 95\% confidence intervals.
 
 To separate architectural effects from cryptographic primitive costs,
 the baselines are reimplemented in the same experimental environment
@@ -3146,7 +3147,7 @@ Ledger size & [$10^5$] transactions \\
 Zipf skew $s$ & [0.8] \\
 Deep-audit fraction & [10\%] \\
 Signature scheme & ML-DSA-65 \\
-Repetitions & 30 runs, 95\% confidence interval \\
+Repetitions & 5 runs, 95\% confidence interval \\
 \hline
 \end{tabular}
 \end{table}

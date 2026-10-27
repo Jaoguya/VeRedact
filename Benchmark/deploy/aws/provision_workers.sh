@@ -13,12 +13,23 @@ NAME=veredact-rep-worker
 SG=$("${A[@]}" ec2 describe-security-groups --filters "Name=group-name,Values=$AWS_NAME_TAG" --query 'SecurityGroups[0].GroupId' --output text)
 deploy/aws/refresh_ssh_rule.sh >/dev/null
 AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text)
-IIDS=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$AWS_INSTANCE_TYPE" --count "$N" \
-        --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" \
-        --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$AWS_VOLUME_GB,VolumeType=gp3}" \
-        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
-        --query 'Instances[].InstanceId' --output text)
-echo "launched: $IIDS"
+# WORKER_MARKET=spot (default, 2026-10-27: ~1/3 of the on-demand price, same instance type) falls back to on demand.
+# Persistent spot with interruption = stop: a power-off stops (results stay on disk) and a reclaimed worker keeps its
+# disk; rerun its repetition (finished (experiment, system) folders are skipped). teardown_workers.sh cancels the requests.
+IIDS=""
+MARKETS=(spot ondemand); [[ "${WORKER_MARKET:-spot}" == ondemand ]] && MARKETS=(ondemand)
+for MK in "${MARKETS[@]}"; do
+  OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
+    'MarketType=spot,SpotOptions={SpotInstanceType=persistent,InstanceInterruptionBehavior=stop}')
+  IIDS=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$AWS_INSTANCE_TYPE" --count "$N" "${OPT[@]}" \
+          --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" \
+          --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$AWS_VOLUME_GB,VolumeType=gp3}" \
+          --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
+          --query 'Instances[].InstanceId' --output text) && break
+  echo "no $MK capacity for $N x $AWS_INSTANCE_TYPE"
+done
+[[ -n "$IIDS" ]] || exit 1
+echo "launched ($MK): $IIDS"
 "${A[@]}" ec2 wait instance-status-ok --instance-ids $IIDS
 : > deploy/aws/.workers
 r=0

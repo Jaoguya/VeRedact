@@ -8,10 +8,8 @@ experiments:
   exp00_primitives: {samples_per_point: 5}
   exp01_redaction_throughput: {warmup_s: 3, duration_s: 10, drain_s: 10}
   exp02_authorization_latency: {samples_per_point: 2}
-  exp03_audit_efficiency:   # 1: n_Q = 10^5 costs minutes to hours per sample
+  exp03_audit_efficiency:   # 1: n_Q = 10^4 costs minutes to hours per sample
     samples_per_point: 1
-    samples_override: {S13: {"10000": 1, "100000": 1}, S1: {"100000": 1}, veredact: {"100000": 1}}
-  exp04_verification_time:
-    samples_per_point: 1
-    samples_override: {S13: {"100000": 1}, S1: {"100000": 1}, veredact: {"100000": 1}}
+    samples_override: {S13: {"10000": 1}}
+  exp04_verification_time: {samples_per_point: 1}
   exp05_blockchain_overhead: {samples_per_point: 2}
