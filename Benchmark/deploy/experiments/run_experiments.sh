@@ -31,7 +31,7 @@ echo "running $EXPS on tier $TIER (ledger=$LEDGER_BACKEND) -> $LOG"
 "$PY" scripts/run_eval.py --tier "$TIER" --experiment $EXPS ${SYSTEMS:+--systems $SYSTEMS} ${FORCE:-} 2>&1 | tee "$LOG"
 # paper tables/figures only from a single experiment-tier run: a repetition's come from scripts/aggregate_reps.py,
 # and a smoke/scale run must never overwrite Result/ or Overleaf/tables (its numbers are plumbing checks)
-if [[ "$TIER" == experiment && -z "${VRPQ_REP:-}" ]]; then
+if [[ "$TIER" == experiment && -z "${VRPQ_REP:-}" && "${SKIP_TABLES:-0}" != 1 ]]; then   # SKIP_TABLES=1: one part of a split run
   { "$PY" scripts/make_tables.py --tier "$TIER" && "$PY" scripts/make_figures.py --tier "$TIER"; } 2>&1 | tee -a "$LOG" \
     || echo "tables/figures failed (results are intact)"
 fi
