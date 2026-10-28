@@ -1,15 +1,16 @@
 # Handoff — VeRedact-PQ benchmark
 
-Branch `s99-leta-exp1-latency`, state of 28 October 2026.
+Branch `s99-leta-exp1-latency`, state of 28 October 2026 (evening).
 
 > **Do not run anything on AWS without the author's explicit yes for that specific action** (booting the
 > server, tests there, reruns, prover machines, moving or deleting results). One yes covers one action.
 
 **In short:** the code follows the final manuscript `Overleaf/VeRedact-optimize.tex` (accepted as-is: the
-"Peppo Implementation Strategy", known code/paper gaps are not fixed). Tests (101) and the smoke run pass on the
-server. **No experiment has been run with the new code yet.** The run plan was redesigned for cost and time: one run
-on three spot workers in ~10 h for ~US$28–33 (instead of ~22 h and ~US$42–46 on one server). It waits for decisions
-A–C from the author (section 5) and the exact words **"start full run"**.
+"Peppo Implementation Strategy"). **No experiment has been run with the new code yet.** Plan C (author, 28 Oct):
+**three independent runs** in **us-east-2**, split by experiment so each experiment's systems share one machine:
+one e1 worker runs Experiment 1 of all three runs with one pair of m7i.48xlarge provers, twelve more workers run the
+other experiments (one per experiment group and run). ~12 h, ~US$38–45. Next: the smoke test of this plan, then
+the exact words **"start full run"**.
 
 ## 1. What the project is
 
@@ -38,8 +39,9 @@ Where things live:
 - `TASK.md` — log of every task; the last lines list what is open.
 
 Where it runs: one AWS server **veredact-bench** (r7i.4xlarge, 16 vCPU, 128 GB, ~US$1.28/h, zone 1a) with a private
-Besu QBFT blockchain on it. Only VeRedact-PQ's four Experiment 1 systems use two large spot **prover** machines; the
-other experiments run on spot **worker** machines of the same type as the server (section 4). Commands go
+Besu QBFT blockchain on it. The full run itself goes to **us-east-2** (`configs/aws.toml` `[run]` region and zone): thirteen spot
+**worker** machines of the same type, one per experiment group and run, and two large spot **prover** machines next to the
+Experiment 1 worker (section 4). veredact-bench is then only used to collect results and draw tables/figures. Commands go
 through `Benchmark/deploy/aws/remote.sh`. The AWS account holds other people's machines: touch only veredact-bench
 and the prover/worker machines the experiments create.
 Tests, lint, runs and figures run on the server through `remote.sh`, never on the laptop.
@@ -55,8 +57,7 @@ Tests, lint, runs and figures run on the server through `remote.sh`, never on th
 | 4 | Selective PQZK escalation; fault detection | escalation 0–100 %; faults 1–10 % | veredact, S1, S13 |
 | 5 | Checkpoint transaction size and finalization latency | affected batches 1–32; validators 4, 7, 10 | veredact |
 
-Scale: 10^5-transaction ledger, n_Q up to 10^4, 30 samples per point inside a run. Repetitions: the author decided
-**one run first**; 5 runs may follow later (the manuscript now says 5 runs, see decision B).
+Scale: 10^5-transaction ledger, n_Q up to 10^4, 30 samples per point within a run, **three runs** (plan C).
 
 ## 3. Status
 
@@ -64,85 +65,58 @@ Scale: 10^5-transaction ledger, n_Q up to 10^4, 30 samples per point inside a ru
 |---|---|
 | Code | follows VeRedact-optimize.tex; 101 tests pass on the server; smoke run 0 errors, coverage 123/123 (26 Oct) |
 | Results with the new code | **none** |
-| Scale run (26 Oct) | stopped in 7 min, nothing measured: `configs/tiers/scale.yaml` had dead n_Q = 10^5 keys; fixed, `validate_config.py scale` 0 errors. The author then chose not to rerun it (option C) |
-| Run scripts | single-run and 5-run modes on spot workers, written and syntax-checked, **never run on AWS** |
-| Manuscript | author asked: "repeated 30 times" -> "5 independent runs" (lines 3057–3060 and Table params). Not yet synced to Overleaf |
-| AWS | everything stopped; no provers, no workers, no open spot requests |
-| Uncommitted | single-run mode (`launch_reps.sh`, `rep_exp1_veredact.sh`, `rep_run.sh`, `collect_reps.sh`, `run_experiments.sh`), new `supersede_results.sh`, `TASK.md`, this file |
+| Scale run (26 Oct) | stopped in 7 min, nothing measured: dead n_Q = 10^5 keys in `configs/tiers/scale.yaml`; fixed (`validate_config.py scale` 0 errors); author chose not to rerun it |
+| Split-run scripts (us-east-2) | written, syntax-checked, **never run on AWS** |
+| Manuscript | 28 Oct (author asked): three independent runs, mean over runs, 95 % CI (t, 2 df); 30 samples per point within a run; not yet synced to Overleaf |
+| AWS | everything stopped; nothing in us-east-2 yet (that region also holds other people's key pairs and groups: pqbvcd, starfish, des431 — never touch them) |
 
-## 4. Cost and time: what was optimized
+## 4. The run plan (C): fair, 3 runs
 
-Prices are AWS ap-southeast-1 on 27 Oct 2026. Spot = spare AWS capacity at a discount; AWS may take the machine back
-at 2 minutes' notice, but the hardware (and so every measured number) is the same as on-demand.
+**Fairness first.** One machine for a whole comparison (`configs/base.yaml` environment), so the run is split by
+experiment, never by system. Parts and workers: `Benchmark/src/veredact_bench/utils/run_plan.py` (tested in
+`tests/test_run_plan.py`).
 
-| Machine | On-demand | Spot now |
+| Worker | Part | Runs |
 |---|---|---|
-| r7i.4xlarge (server, workers) | US$1.28/h | US$0.54–0.62/h |
-| c7i.48xlarge (prover, 192 vCPU) | US$9.88/h | US$3.25–3.57/h (1a, the server's zone, is the dearest) |
+| 1 | e1 | Experiment 1 of runs 1, 2, 3: VeRedact-PQ's four systems with the provers (run after run, ~5 h), then S1/S13/S27/S34 (~7 h) |
+| 2–13 | e2, e3, e4, e05 × run 1–3 | Experiment 2; 3; 4 (own history); 0 + 5 |
 
-**One run, old plan vs new plan**
+- Seeds: run r = 20260929 + (r − 1) × 1000; folders `experiment-rep01..03`; `aggregate_reps.py` gives the mean
+  over runs and a 95 % CI (Student's t, 2 degrees of freedom) and refuses a missing run.
+- Provers: m7i.48xlarge × 2 (same Xeon 8488C and 192 vCPUs as c7i.48xlarge, more memory), then c7i.48xlarge spot,
+  then on demand; launched from the laptop into the e1 worker's subnet (us-east-2a); hard limit 2.5 h per run + 1 h;
+  stop themselves 15 min after use. `provision_provers.sh` now fails (and terminates them) unless every prover
+  listens; before 28 Oct it never started the service from macOS (`timeout` missing).
+- Prebuilt image (`build_image.sh`): workers and provers start in ~3 min instead of ~25; deleted by
+  `teardown_workers.sh`.
+- Real values only: tables never take published numbers; every request is kept; a point stopped by a time limit
+  is a coverage gap; a failed part is rerun whole for its run (`FORCE=--force`); the Experiment 3/4 history is
+  real redactions built before the timed audits. One fixed input: CORA's weights (21 Oct Experiment 0).
 
-| | Old: everything on veredact-bench (`full_run.sh`) | New: split run (`launch_reps.sh single`) |
-|---|---|---|
-| Machines | server ~22 h + 2 provers ~2 h | server ~2 h + 2 provers ~2 h + 3 spot workers ~6–10 h each |
-| Wall time | ~22 h | **~10 h** |
-| Cost | ~US$42–46 | **~US$28–33** |
+**Measured setup (28 Oct, server, 10^5 ledger; untimed, per Experiment 1 point):** VeRedact-PQ 32 s, S13 28 s,
+S27 12 s, S1 reused after its first point, S34 43 ms per newly targeted record (~82,000 per run, ~59 min).
+Reusing/parallelizing setup was dropped: ~40 min per run saved, not worth changing four schemes.
 
-What the new plan changes:
-1. **Workers on spot** (`provision_workers.sh`): same instance type, ~55 % cheaper. Persistent spot with "stop" on
-   interruption: a reclaimed worker keeps its disk; rerunning its part skips finished (experiment, system) folders.
-   `teardown_workers.sh` cancels the spot requests first, or AWS would relaunch the workers.
-2. **One run split over three workers** (`rep_run.sh <run> a|b|c`): a = Exp. 0, 1 (baselines), 2, 5;
-   b = Exp. 3/4 for VeRedact-PQ and S1; c = Exp. 3/4 for S13. Each scheme's Exp. 3/4 history stays on one machine.
-3. **The on-demand server only runs VeRedact-PQ's Exp. 1** with the provers (~2 h instead of ~22 h).
-4. **Provers serve all four Exp. 1 VeRedact-PQ systems** (before: only `veredact`; the three variants would have run
-   without provers and been measured ~4x too slow).
-5. **Old results are moved aside at launch** (`supersede_results.sh`): 52 old `experiment/` and `experiment-rep01/`
-   folders would otherwise be skipped as "finished" or fill a gap left by a failed worker.
-6. **Hard time limits sized to the plan**: server and provers 2.5 h per run (+2 h / +1 h), workers 14 h.
-
-Experiment settings are **unchanged** (same ledger, rates, sweeps, samples, security levels, machine type).
-
-**5 runs** (if chosen later): ~US$125–145 and ~10 h on 15 workers. The single run uses run 1's seed, so it can become
-run 1 by renaming its folders; runs 2–5 then cost ~US$100–115.
-
-**Further savings looked at and not taken**
-
-| Option | Saving | Why not |
-|---|---|---|
-| Provers in the cheapest zone (1c) | ~US$1 per run | the server is in 1a: cross-zone traffic is charged per GB and adds ~1 ms to re-proved requests' latency |
-| Server on spot too | ~US$1–2 per run | needs an IAM role on a spot machine; small gain |
-| Smaller provers (c7i.24xlarge) | ~US$6–7 per run | may not keep up at 5,000 req/s: VeRedact-PQ points would become client-bound (results change) |
-| Fewer samples, shorter Exp. 1 window, fewer sweep points | ~US$1–3 each | results change; must be stated in the paper |
-| No provers | ~US$14–18 per run | VeRedact-PQ measured 4x slower (audit A3) |
-
-**Uncertain estimate:** the prover time (~1.5–2 h per run) comes from ~20 min per system measured on the old code.
-Each extra prover hour costs ~US$7. If the new code is slower than 2.5 h per run, the server's time limit stops it
-and the remaining systems are rerun.
+**Cost and time (estimates, spot prices of 28 Oct):** provers ~5 h (~US$19), 13 workers (~US$0.26/h, ~US$15–20),
+image ~US$1–2, veredact-bench for collecting ~US$0.5: **~US$38–45, ~12 h** (Experiment 1 is the longest part).
+Earlier timings from 19–21 Oct were at the old 10^6 ledger and are ~10× too long for setup.
 
 ## 5. Decisions needed from the author
 
-| # | Decision | Options | Why it matters |
-|---|---|---|---|
-| A | **Confirm the [CONFIRM]/[TBD] values** (`configs/base.yaml`) | SIS chameleon hash n = 256, k = 16 (q = 2^16); 7 Besu validators; 10 ms netem delay | they go into the paper's setup text; changing them after the run means rerunning |
-| B | **Manuscript repetitions** | keep "5 independent runs" (then run 4 more later) or change back to 1 run | the paper now says 5 runs but only 1 is planned |
-| C | **Commit and push** the single-run scripts | yes / no | workers get the code by rsync, but git should match what ran |
-| D | **Start** | type exactly **"start full run"** | nothing runs before that |
-| E | Later: 5 runs or not | +~US$100–115 | narrower confidence intervals; matches the paper if B keeps 5 runs |
-
-Older open points (unchanged): S13's audit witnesses are timed 8 at a time (3–7 % against S13: re-time or disclose);
-bursty on/off workload is in the manuscript but not implemented (config keys only); `scale.yaml` and
-`pilot_scale.sh` comments are partly stale.
+All plan questions are settled (28 Oct grilling). Left: say **"start full run"** after the smoke test. Older open
+points: S13's audit witnesses timed 8 at a time (3–7 % against S13: re-time or disclose); bursty workload not
+implemented; the paper does not name the prover machines yet.
 
 ## 6. What to do next (each AWS step needs the author's yes)
 
-1. Decisions A–C.
-2. On "start full run": `deploy/aws/provision_workers.sh 3`, then `deploy/aws/launch_reps.sh single`
-   (moves old results aside here and on the server, starts the server's Exp. 1 with provers and the three workers).
-3. Check the logs after ~15 min (`results/logs/rep_exp1.out` on the server, `rep_run_r01_<part>.out` on the workers):
-   the split scripts have never run on AWS.
-4. When all have powered off: `deploy/aws/collect_reps.sh single` (coverage check, tables, figures), then
-   `deploy/aws/teardown_workers.sh`. One line in `TASK.md`.
+1. Commit (and push when asked); the image is built from the committed tree.
+2. Smoke test of plan C (~US$3–5): `deploy/aws/build_image.sh` (refuses an uncommitted tree);
+   `deploy/aws/provision_workers.sh 13`; `TIER=smoke deploy/aws/launch_reps.sh 3`; when the workers are off,
+   `TIER=smoke deploy/aws/collect_reps.sh 3` (coverage + aggregation on veredact-bench, nothing moved aside);
+   `TIER=smoke deploy/aws/teardown_workers.sh` (keeps the image for the full run).
+   A failed part: `ONLY="<worker n>" FORCE=--force deploy/aws/launch_reps.sh 3` reruns it whole.
+3. On "start full run": `provision_workers.sh 13` then at once `launch_reps.sh 3`; check logs after ~15 min.
+4. When all have powered off: `collect_reps.sh 3` (aggregate, tables, figures), `teardown_workers.sh`.
 5. The author writes the results text in Overleaf.
 
 ## 7. What to read, in order
@@ -152,8 +126,8 @@ bursty on/off workload is in the manuscript but not implemented (config keys onl
 3. `Overleaf/VeRedact-optimize.tex`, Section Evaluation (what the experiments must show).
 4. `Other/docs/aws-runbook.md`.
 5. `Other/docs/baselines/*.md`.
-6. `Benchmark/deploy/aws/launch_reps.sh`, `collect_reps.sh` and `Benchmark/deploy/experiments/rep_run.sh`,
-   `rep_exp1_veredact.sh` (the split run); `full_run.sh` is the older one-server run (`RESUME=1` finishes it without provers).
+6. `Benchmark/deploy/experiments/rep_run.sh`, `Benchmark/deploy/aws/launch_reps.sh`, `collect_reps.sh` (the split
+   run); `full_run.sh` is the older one-server run (`RESUME=1` finishes it without provers).
 7. `Benchmark/configs/experiments/*.yaml`.
 8. `Benchmark/results/logs/` (durations: `=== <exp> done in`, `<exp> <scheme>: N rows in`).
 

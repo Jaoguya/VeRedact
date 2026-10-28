@@ -353,6 +353,23 @@ def test_aggregate_reps_mean_and_ci():
     assert out["tp"] == 15.0 and out["tp_ci95"] > 0 and out["lb"] is True and out["status"] == "ok"
 
 
+def test_three_run_aggregate_ci_is_students_t_with_two_degrees_of_freedom():
+    import importlib.util
+
+    import pytest
+
+    from veredact_bench.utils.config import REPO_ROOT
+
+    spec = importlib.util.spec_from_file_location("agg", REPO_ROOT / "scripts" / "aggregate_reps.py")
+    agg = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(agg)
+    st = lambda m: {"n": 30, "median": m, "mean": m, "p95": m, "ci95_halfwidth": 0.0}
+    out = agg.combine([{"p": st(1.0)}, {"p": st(2.0)}, {"p": st(3.0)}])["p"]
+    # t(0.975, 2) = 4.302653, sample sd = 1, n = 3: 4.302653 / sqrt(3)
+    assert out["median"] == 2.0 and out["reps"] == 3
+    assert out["ci95_halfwidth"] == pytest.approx(2.48414, abs=1e-4)
+
+
 def test_remote_provers_never_dispatch_after_close():
     """A proof arriving after close() (end of an Exp. 1 point) must not send on the closed connection: the reader
     thread crashed with EBADF in repetition 1 (2026-10-17)."""

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Make the security group allow SSH from THIS machine's current public IP only: add <ip>/32 if missing and
 # revoke every other port-22 rule. Home/mobile IPs change; a stale rule makes SSH time out.
-# Usage: deploy/aws/refresh_ssh_rule.sh      (called by provision_ec2.sh and launch_run.sh)
+# Usage: [REGION=<region>] deploy/aws/refresh_ssh_rule.sh      (default: configs/aws.toml [aws] region)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 eval "$(.venv/bin/python deploy/aws/aws_config.py)"
-A=(aws --profile "$AWS_PROFILE" --region "$AWS_REGION")
+A=(aws --profile "$AWS_PROFILE" --region "${REGION:-$AWS_REGION}")
 CIDR="$AWS_SSH_CIDR"
 [[ "$CIDR" == auto ]] && CIDR="$(curl -fsS https://checkip.amazonaws.com)/32"
 SG=$("${A[@]}" ec2 describe-security-groups --filters "Name=group-name,Values=$AWS_NAME_TAG" \

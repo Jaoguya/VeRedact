@@ -33,6 +33,15 @@ dev_private_key = "0x8f2a55949038a9610f50fb23b5883af3b4ecb3c3bb792cbcefbd1542c69
 dev_address = "0xfe3b557e8fb62b89f4916b721be55ceb828dbd73"
 
 [run]
+region = "us-east-2"             # split full run (workers + provers, deploy/aws/launch_reps.sh): 2026-10-27 author: Ohio,
+                                 #   spot ~half of Singapore, spot quota 1,000 vCPU. veredact-bench stays in [aws] region
+zone = "us-east-2a"               # e1 worker + provers (cheapest m7i.48xlarge spot, 2026-10-28); others try it first too
+prover_types = "m7i.48xlarge c7i.48xlarge"  # spot in this order, then the last on demand: same Xeon 8488C, 192 vCPU
+prover_count = 2                 # 384 vCPU: the pool the quota allows (one pair)
+prover_cap_min_per_run = 180     # prover hard limit = runs x this + 90 min boot (VeRedact-PQ Exp. 1 ~1.7 h per run)
+e1_cap_min_per_run = 300         # e1 worker hard limit = runs x this + 60 (Exp. 1 of a run ~4 h, 28 Oct estimate)
+part_cap_min = 720               # hard limit of every other part (one experiment of one run)
+setup_cap_min = 90               # hard limit while a worker or the image builder is being set up
 # Where finished runs go besides the instance disk. "" = keep on the instance; fetch with fetch_results.sh.
 s3_uri = ""                      # e.g. "s3://<bucket>/veredact" (bucket must exist; the instance needs an IAM role)
 idle_shutdown_minutes = 30       # idle watchdog: power off when no experiment has run for this long

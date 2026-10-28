@@ -5,6 +5,8 @@
 # .venv (pinned versions from pyproject.toml) and runs the test suite.
 #
 # Env: REPO_URL, REPO_BRANCH, REMOTE_DIR  (defaults below)
+#      QUICK=1: on a prebuilt image (deploy/aws/build_image.sh) only refresh the synced code: editable install,
+#               incremental STARK build, signature backend check (no system packages, no liboqs-python, no tests)
 set -euo pipefail
 REPO_URL=${REPO_URL:-https://github.com/Jaoguya/VeRedact.git}
 REPO_BRANCH=${REPO_BRANCH:-main}
@@ -12,7 +14,9 @@ REMOTE_DIR=${REMOTE_DIR:-/opt/veredact}
 LIBOQS_VERSION=0.16.0          # liboqs and liboqs-python are released in lockstep
 RUN_USER=${SUDO_USER:-ubuntu}
 
+QUICK=${QUICK:-0}
 export DEBIAN_FRONTEND=noninteractive
+if [[ $QUICK != 1 ]]; then
 apt-get update -y
 apt-get install -y git curl rsync jq build-essential cmake ninja-build libssl-dev \
   python3.12 python3.12-venv python3.12-dev iproute2 docker.io docker-compose-v2
@@ -35,6 +39,7 @@ if ! command -v aws >/dev/null; then
   (cd /tmp && curl -fsS https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o awscliv2.zip \
      && apt-get install -y -q unzip >/dev/null && unzip -q -o awscliv2.zip && ./aws/install >/dev/null)
 fi
+fi   # QUICK
 
 # ---- repository + venv ----------------------------------------------------------------------
 # Experiment server: REMOTE_DIR holds the repository layout (REMOTE_DIR/Benchmark = the code). Prover hosts
@@ -51,13 +56,13 @@ sudo -u "$RUN_USER" bash -lc "
   command -v cargo >/dev/null || curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
   source \$HOME/.cargo/env
   cd '$BENCH'
-  python3.12 -m venv .venv
-  .venv/bin/pip install -q -U pip
+  [[ $QUICK == 1 ]] || python3.12 -m venv .venv
+  [[ $QUICK == 1 ]] || .venv/bin/pip install -q -U pip
   .venv/bin/pip install -q -e '.[dev,server]'
-  .venv/bin/pip install -q 'liboqs-python @ git+https://github.com/open-quantum-safe/liboqs-python@$LIBOQS_VERSION'
+  [[ $QUICK == 1 ]] || .venv/bin/pip install -q 'liboqs-python @ git+https://github.com/open-quantum-safe/liboqs-python@$LIBOQS_VERSION'
   (cd native/pqzk_stark && ../../.venv/bin/maturin develop --release -q)   # same build as make build-zk / launch_run.sh
   VRPQ_SIG_BACKEND=oqs .venv/bin/python -c 'from veredact_bench.methods.veredact.crypto.pqsig import load_pqsig; print(\"signature backend:\", load_pqsig(\"oqs\").name)'
-  .venv/bin/python -m pytest -q
+  [[ $QUICK == 1 ]] || .venv/bin/python -m pytest -q
 "
 touch "$REMOTE_DIR/.on-server"   # Makefile: run targets here instead of forwarding to the server
 echo "bootstrap complete: $REMOTE_DIR  (log out/in once so the docker group applies)"

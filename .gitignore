@@ -23,3 +23,6 @@ Overleaf/revised/*.log
 Overleaf/revised/*.fls
 Overleaf/revised/*.fdb_latexmk
 Overleaf/revised/*.out
+Benchmark/deploy/aws/.workers
+Benchmark/deploy/aws/.image
+Benchmark/deploy/aws/.image_builder

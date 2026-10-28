@@ -1,32 +1,40 @@
 #!/usr/bin/env bash
-# One repetition of the full run on a WORKER server (deploy/aws/provision_workers.sh): every (experiment, system)
-# of the experiment tier except VeRedact-PQ's Exp. 1 systems (four), which the coordinator runs for every repetition with the
-# shared prover hosts (deploy/experiments/rep_exp1_veredact.sh). Results: results/<exp>/<method>/experiment-repNN/.
-# Ends with DONE and powers the worker off (stop, not terminate: results stay on its disk until collected).
-# <part> splits one repetition over three workers (~10 h each instead of ~18 h on one; each scheme's Exp. 3/4 history
-# stays on one machine): a = Exp. 0, 1 (baselines), 2, 5 · b = Exp. 3/4 VeRedact-PQ + S1 · c = Exp. 3/4 S13 · all = one worker.
-# <rep> = single: one run into results/.../experiment/ (rep 1's seed, no repetition folders).
-#   setsid nohup deploy/experiments/rep_run.sh <rep|single> [a|b|c|all] > results/logs/rep_run.out 2>&1 &
+# One part of a full run on a WORKER (provision_workers.sh); parts and workers: src/veredact_bench/utils/run_plan.py
+# (fair: an experiment's systems share one machine). e1 = Experiment 1 of every run here: VeRedact-PQ's four systems
+# with the provers (VRPQ_PROVERS/VRPQ_PROVER_KEY) for run 1, 2, ..., then the baselines for run 1, 2, ...
+# <runs>: single (results/.../experiment/) | r | 1,2,3 (experiment-repNN/). TIER=smoke: plumbing check only.
+# Ends with DONE and powers off (stop: results stay on disk until collect_reps.sh).
+#   setsid nohup deploy/experiments/rep_run.sh <single|r|1,2,3> <part> > results/logs/rep_run.out 2>&1 &
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-REP=${1:?usage: $0 <rep|single> [a|b|c|all]}
-[[ $REP == single ]] || export VRPQ_REP=$REP
+RUNS=${1:?usage: $0 <single|r|1,2,3> <part>}; PART=${2:?usage: $0 <single|r|1,2,3> <part>}
+TIER=${TIER:-experiment}
 export SKIP_TABLES=1   # tables/figures come from collect_reps.sh once every part is in
-PART=${2:-all}
-export VRPQ_SKIP=exp01_redaction_throughput:veredact,exp01_redaction_throughput:veredact-per-request,exp01_redaction_throughput:veredact-fixed-batch,exp01_redaction_throughput:veredact-cora-no-sfmr
-case "$PART" in
-  a)   EXPS="exp00_primitives exp01_redaction_throughput exp02_authorization_latency exp05_blockchain_overhead" ;;
-  b)   EXPS="exp03_audit_efficiency exp04_verification_time"; export SYSTEMS=veredact,veredact-shared-evidence,veredact-per-record,S1 ;;
-  c)   EXPS="exp03_audit_efficiency exp04_verification_time"; export SYSTEMS=S13 ;;
-  all) EXPS=all ;;
-  *)   echo "unknown part $PART"; exit 1 ;;
-esac
-sudo shutdown -h +${REP_HARD_CAP_MIN:-$([[ $PART == all ]] && echo 1440 || echo 840)} veredact-rep-hard-cap   # a hung run never keeps the worker up
-echo "rep $REP part $PART start $(date -u +%FT%TZ)"
-deploy/experiments/run_experiments.sh experiment $EXPS
-echo "RUN_EXIT=$?"
-.venv/bin/python scripts/check_coverage.py --tier experiment   # gaps of the other parts are expected here
-echo "COV_EXIT=$?"
-echo "rep $REP end $(date -u +%FT%TZ)"
+EXPS=$(.venv/bin/python -m veredact_bench.utils.run_plan experiments "$PART") || { echo "unknown part $PART"; exit 1; }
+VRPQ_EXP1=veredact,veredact-per-request,veredact-fixed-batch,veredact-cora-no-sfmr  # every system that proves
+n=$(tr ',' '\n' <<< "$RUNS" | wc -l)
+# hard cap: REP_HARD_CAP_MIN from launch_reps.sh (configs/aws.toml [run] caps); the defaults are the same values
+sudo shutdown -h +${REP_HARD_CAP_MIN:-$([[ $PART == e1 ]] && echo $(( n * 300 + 60 )) || echo 720)} veredact-rep-hard-cap
+run_of() { if [[ $1 == single ]]; then unset VRPQ_REP; else export VRPQ_REP=$1; fi; }
+echo "runs $RUNS part $PART ($TIER) start $(date -u +%FT%TZ)"
+if [[ $PART == e1 ]]; then
+  if [[ -n "${VRPQ_PROVERS:-}" ]]; then
+    for r in ${RUNS//,/ }; do
+      run_of "$r"; SYSTEMS=$VRPQ_EXP1 deploy/experiments/run_experiments.sh "$TIER" $EXPS
+      echo "STEP1_RUN${r}_EXIT=$?"
+    done
+  else
+    echo "STEP1: no prover hosts - VeRedact-PQ's Exp. 1 systems are NOT run (see coverage gaps)"
+  fi
+  unset VRPQ_PROVERS VRPQ_PROVER_KEY
+  export VRPQ_SKIP=$(sed 's/[^,]*/exp01_redaction_throughput:&/g' <<< "$VRPQ_EXP1")   # done above with provers
+fi
+for r in ${RUNS//,/ }; do
+  run_of "$r"; deploy/experiments/run_experiments.sh "$TIER" $EXPS
+  echo "RUN${r}_EXIT=$?"
+  VRPQ_SKIP= .venv/bin/python scripts/check_coverage.py --tier "$TIER"   # no skip: missing provers show as gaps
+  echo "COV${r}_EXIT=$?"
+done
+echo "runs $RUNS part $PART end $(date -u +%FT%TZ)"
 echo DONE
 sudo shutdown -h +2 veredact-rep-done
