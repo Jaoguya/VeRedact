@@ -2,8 +2,9 @@
 # Launch requester prover hosts for Exp. 1 (audit A4) next to veredact-bench (or SYS_IID=<instance> in
 # REGION=<region>, e.g. the e1 worker of a split run), bootstrap them and start scripts/prover_service.py.
 # Only instances tagged Name=veredact-prover are created (large: they cost money every hour).
-#   deploy/aws/provision_provers.sh [count] ["types"]   (defaults: configs/aws.toml [run] prover_count, prover_types)
-# Each type on spot in turn; spot only (author 2026-10-30: never on demand) unless PROVER_MARKET=ondemand.
+#   deploy/aws/provision_provers.sh ["pools"]   (default: configs/aws.toml [run] prover_pools, e.g. "2xm7i.48xlarge 4xc7i.24xlarge")
+# Each pool shape in turn, one machine per request (a whole pool or none); spot only (author 2026-10-30: never on
+# demand) unless PROVER_MARKET=ondemand. Every shape is the same 384 vCPU of the same Xeon 8488C.
 # SUBNET_ID=<subnet>: launch there instead of the system's subnet. PROVERS_FILE (default deploy/aws/.provers).
 # A prebuilt image (deploy/aws/.image) in this region
 # replaces the Ubuntu image and the full bootstrap. Code lives in REMOTE_DIR/Benchmark, as on the workers.
@@ -12,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 eval "$(.venv/bin/python deploy/aws/aws_config.py 2>/dev/null || python3 deploy/aws/aws_config.py)"
 A=(aws --profile "$AWS_PROFILE" --region "${REGION:-$AWS_REGION}")
-N=${1:-$RUN_PROVER_COUNT}; read -ra TYPES <<< "${2:-$RUN_PROVER_TYPES}"; PORT=7700; NAME=veredact-prover
+read -ra POOLS <<< "${1:-$RUN_PROVER_POOLS}"; PORT=7700; NAME=veredact-prover
 REG=${REGION:-$AWS_REGION}; BENCH=$REPO_REMOTE_DIR/Benchmark
 KEY_FILE="$HOME/.ssh/$AWS_KEY_NAME.pem"
 [[ -n "${SYS_IID:-}" ]] || read -r SYS_IID _ < deploy/aws/.instance
@@ -33,28 +34,33 @@ if [[ -z "$SG" || "$SG" == None ]]; then
 fi
 "${A[@]}" ec2 authorize-security-group-ingress --group-id "$SG" --protocol tcp --port 22 --cidr "$CIDR" >/dev/null 2>&1 || true
 
-echo "[2/5] launch $N x ${TYPES[*]} (same subnet as the system under test)"
+echo "[2/5] launch one of ${POOLS[*]} (same subnet as the system under test)"
 QUICK=0; read -r IREG IMG _ 2>/dev/null < deploy/aws/.image || true
 VOL=30   # the image's snapshot is the workers' volume size: a smaller disk is refused
 if [[ "${IREG:-}" == "$REG" && -n "${IMG:-}" ]]; then AMI=$IMG; QUICK=1; VOL=$AWS_VOLUME_GB
 else AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text); fi
+MK=spot; [[ "${PROVER_MARKET:-spot}" == ondemand ]] && MK=ondemand
+OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
+  'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}')
 IIDS=""
-TRIES=(); for T in "${TYPES[@]}"; do TRIES+=("$T spot"); done
-[[ "${PROVER_MARKET:-spot}" == ondemand ]] && TRIES+=("${TYPES[${#TYPES[@]}-1]} ondemand")
-for TRY in "${TRIES[@]}"; do
-  read -r TYPE MK <<< "$TRY"
-  OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
-    'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}')
-  IIDS=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --count "$N" ${OPT[@]+"${OPT[@]}"} \
-          --instance-initiated-shutdown-behavior terminate \
-          --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" --subnet-id "$SUBNET" \
-          --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$VOL,VolumeType=gp3,DeleteOnTermination=true}" \
-          --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
-          --query 'Instances[].InstanceId' --output text) && break
-  echo "      no $MK $TYPE capacity"
+for POOL in "${POOLS[@]}"; do
+  N=${POOL%%x*}; TYPE=${POOL#*x}; IIDS=""
+  for _ in $(seq 1 "$N"); do
+    id=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --count 1 ${OPT[@]+"${OPT[@]}"} \
+           --instance-initiated-shutdown-behavior terminate \
+           --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" --subnet-id "$SUBNET" \
+           --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$VOL,VolumeType=gp3,DeleteOnTermination=true}" \
+           --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
+           --query 'Instances[].InstanceId' --output text) || { id=""; break; }
+    IIDS="$IIDS $id"
+  done
+  IIDS=${IIDS# }
+  [[ -n "$id" ]] && break   # the whole pool
+  echo "      no $MK capacity for $POOL"
+  [[ -n "$IIDS" ]] && { "${A[@]}" ec2 terminate-instances --instance-ids $IIDS >/dev/null; IIDS=""; }   # never half a pool
 done
 [[ -n "$IIDS" ]] || exit 1
-echo "      $MK $TYPE: $IIDS"
+echo "      $MK $POOL: $IIDS"
 "${A[@]}" ec2 wait instance-status-ok --instance-ids $IIDS
 
 echo "[3/5] bootstrap (liboqs, Rust STARK module, venv) in parallel"
