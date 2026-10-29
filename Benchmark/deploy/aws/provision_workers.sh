@@ -21,7 +21,7 @@ if [[ -z "$SG" || "$SG" == None ]]; then
   "${A[@]}" ec2 authorize-security-group-ingress --group-id "$SG" --ip-permissions "IpProtocol=tcp,FromPort=0,ToPort=65535,UserIdGroupPairs=[{GroupId=$SG}]" >/dev/null
 fi
 REGION=$RUN_REGION deploy/aws/refresh_ssh_rule.sh >/dev/null
-QUICK=0; read -r IREG IMG _ < deploy/aws/.image 2>/dev/null || true
+QUICK=0; read -r IREG IMG _ 2>/dev/null < deploy/aws/.image || true
 if [[ "${NO_IMAGE:-0}" != 1 && "${IREG:-}" == "$RUN_REGION" && -n "${IMG:-}" ]]; then AMI=$IMG; QUICK=1
 else AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text); fi
 SUBNETS=$("${A[@]}" ec2 describe-subnets --filters Name=default-for-az,Values=true \
@@ -46,9 +46,11 @@ launch() {   # launch <count>: ids of <count> workers, first subnet (zone order)
   done
   return 1
 }
-# worker 1 (e1) alone first, so the other workers' capacity can never push it out of the run zone
-IIDS=$(launch 1) || exit 1
-(( N > 1 )) && { IIDS="$IIDS $(launch $(( N - 1 )))" || exit 1; }
+# one worker per request: worker 1 (e1) first, in the run zone if it has room; one request for 12 found no spot in
+# any zone (2026-10-30) where single machines may still fit
+IIDS=""
+for _ in $(seq 1 "$N"); do IIDS="$IIDS $(launch 1)" || exit 1; done
+IIDS=${IIDS# }
 echo "launched (image $AMI): $IIDS"
 "${A[@]}" ec2 wait instance-status-ok --instance-ids $IIDS
 : > "$WF"

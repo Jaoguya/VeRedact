@@ -31,8 +31,9 @@ fi
 "${A[@]}" ec2 authorize-security-group-ingress --group-id "$SG" --protocol tcp --port 22 --cidr "$CIDR" >/dev/null 2>&1 || true
 
 echo "[2/5] launch $N x ${TYPES[*]} (same subnet as the system under test)"
-QUICK=0; read -r IREG IMG _ < deploy/aws/.image 2>/dev/null || true
-if [[ "${IREG:-}" == "$REG" && -n "${IMG:-}" ]]; then AMI=$IMG; QUICK=1
+QUICK=0; read -r IREG IMG _ 2>/dev/null < deploy/aws/.image || true
+VOL=30   # the image's snapshot is the workers' volume size: a smaller disk is refused
+if [[ "${IREG:-}" == "$REG" && -n "${IMG:-}" ]]; then AMI=$IMG; QUICK=1; VOL=$AWS_VOLUME_GB
 else AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text); fi
 IIDS=""
 TRIES=(); for T in "${TYPES[@]}"; do TRIES+=("$T spot"); done; TRIES+=("${TYPES[${#TYPES[@]}-1]} ondemand")
@@ -44,7 +45,7 @@ for TRY in "${TRIES[@]}"; do
   IIDS=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --count "$N" ${OPT[@]+"${OPT[@]}"} \
           --instance-initiated-shutdown-behavior terminate \
           --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" --subnet-id "$SUBNET" \
-          --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=30,VolumeType=gp3,DeleteOnTermination=true}" \
+          --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$VOL,VolumeType=gp3,DeleteOnTermination=true}" \
           --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
           --query 'Instances[].InstanceId' --output text) && break
   echo "      no $MK $TYPE capacity"
@@ -77,9 +78,9 @@ for IID in $IIDS; do
     "${SSH[@]}" "sudo cp $BENCH/deploy/server/prover_watchdog.sh /usr/local/bin/ \
       && echo '* * * * * root /usr/local/bin/prover_watchdog.sh $PORT' | sudo tee /etc/cron.d/veredact-prover >/dev/null"
     echo "[4/5] $IID: start prover service"
-    # every stream of the background service is redirected, so ssh returns at once (macOS has no timeout(1))
-    "${SSH[@]}" "cd $BENCH && VRPQ_PROVER_KEY='$KEY' VRPQ_SIG_BACKEND=oqs setsid nohup .venv/bin/python \
-      scripts/prover_service.py --port $PORT > /tmp/prover.log 2>&1 < /dev/null &"
+    # in a subshell: a backgrounded "cd && service &" keeps the ssh channel open and ssh never returns (2026-10-30)
+    "${SSH[@]}" "cd $BENCH && (VRPQ_PROVER_KEY='$KEY' VRPQ_SIG_BACKEND=oqs setsid nohup .venv/bin/python \
+      scripts/prover_service.py --port $PORT > /tmp/prover.log 2>&1 < /dev/null &)"
     for _ in $(seq 1 60); do "${SSH[@]}" "ss -Hltn sport = :$PORT | grep -q ." && break; sleep 5; done
     "${SSH[@]}" "ss -Hltn sport = :$PORT | grep -q ." && { echo "      $IID: listening on $PORT"; echo "$IID" >> "$READY"; } || echo "      $IID: PROVER SERVICE NOT LISTENING (/tmp/prover.log)"
   ) &

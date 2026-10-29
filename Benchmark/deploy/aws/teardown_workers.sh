@@ -18,7 +18,7 @@ else
 fi
 REGION=$RUN_REGION deploy/aws/teardown_provers.sh   # normally gone already (they stop themselves after use)
 # the prebuilt image (build_image.sh) and its snapshot go after the full run; a smoke keeps them for it (TIER=smoke)
-read -r IREG IMG SNAP _ < deploy/aws/.image 2>/dev/null || true
+read -r IREG IMG SNAP _ 2>/dev/null < deploy/aws/.image || true
 if [[ "${TIER:-experiment}" == experiment && "${KEEP_IMAGE:-0}" != 1 && "${IREG:-}" == "$RUN_REGION" && -n "${IMG:-}" ]]; then
   "${A[@]}" ec2 deregister-image --image-id "$IMG" && "${A[@]}" ec2 delete-snapshot --snapshot-id "$SNAP" && rm -f deploy/aws/.image
   echo "image $IMG and snapshot $SNAP deleted"

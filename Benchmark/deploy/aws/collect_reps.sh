@@ -7,7 +7,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 R=${1:?usage: $0 <single|R>}; TIER=${TIER:-experiment}
-SEL="$TIER-rep[0-9][0-9]/**"; [[ $R == single ]] && SEL="$TIER/**"
+# "***" (the folder and everything in it): macOS's openrsync ignores "dir/**" when it is the sender (2026-10-30)
+SEL="$TIER-rep[0-9][0-9]/***"; [[ $R == single ]] && SEL="$TIER/***"
 eval "$(.venv/bin/python deploy/aws/aws_config.py)"
 A=(aws --profile "$AWS_PROFILE" --region "$RUN_REGION")   # the workers; veredact-bench (remote.sh) stays in AWS_REGION
 KEY="$HOME/.ssh/$AWS_KEY_NAME.pem"
@@ -23,11 +24,7 @@ while read -r r IID _; do
 done < deploy/aws/.workers
 COV="for r in \$(seq 1 $R); do VRPQ_REP=\$r .venv/bin/python scripts/check_coverage.py --tier $TIER; done"
 [[ $R == single ]] && COV=".venv/bin/python scripts/check_coverage.py --tier $TIER"
-if [[ $TIER == experiment ]]; then
-  FETCH=0 deploy/aws/remote.sh deploy/experiments/supersede_results.sh before_collect   # only this run's folders there
-else
-  FETCH=0 deploy/aws/remote.sh true   # a smoke moves nothing aside: its folders are <tier>-* only
-fi
+FETCH=0 deploy/aws/remote.sh TIER=$TIER deploy/experiments/supersede_results.sh before_collect   # only this run's folders there
 IP=$(cut -d' ' -f2 deploy/aws/.instance)
 rsync -azm -e "ssh -i $KEY" --include '*/' --include "$SEL" --exclude '*' "results/" "$AWS_SSH_USER@$IP:$REPO_REMOTE_DIR/Benchmark/results/"
 if [[ $TIER != experiment ]]; then   # a smoke: coverage and aggregation only; no tables, figures or paper

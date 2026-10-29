@@ -194,6 +194,7 @@ def test_remote_prover_service_reproduces_the_requesters(cfg, ds, tmp_path):
     """Audit A4: a prover service rebuilds the point's requester state from the bundle (same registry root) and
     its proofs/signatures validate exactly like local ones; faults stay rejected."""
     import os
+    import signal
     import socket
     import subprocess
     import sys
@@ -210,6 +211,7 @@ def test_remote_prover_service_reproduces_the_requesters(cfg, ds, tmp_path):
     svc = subprocess.Popen(
         [sys.executable, str(REPO_ROOT / "scripts" / "prover_service.py"), "--port", str(port), "--workers", "2"],
         env=env,
+        start_new_session=True,  # its worker processes share the group: all of them stop at the end
     )
     try:
         time.sleep(3)
@@ -234,7 +236,9 @@ def test_remote_prover_service_reproduces_the_requesters(cfg, ds, tmp_path):
         remote.close()
         s.teardown()
     finally:
-        svc.terminate()
+        # terminating the service alone left its 2 workers running (2026-10-28: they kept veredact-bench "busy" for
+        # its idle watchdog, so it stayed up 36 h): end the whole process group
+        os.killpg(svc.pid, signal.SIGTERM)
         svc.wait()
 
 

@@ -14,14 +14,29 @@ TIER=${TIER:-experiment}
 PLAN=(); while read -r line; do PLAN+=("$line"); done < <(.venv/bin/python -m veredact_bench.utils.run_plan workers "$R")
 [[ $(wc -l < deploy/aws/.workers) -eq ${#PLAN[@]} ]] || { echo "deploy/aws/.workers must list ${#PLAN[@]} workers"; exit 1; }
 eval "$(.venv/bin/python deploy/aws/aws_config.py)"
-read -r _ _ _ ICOMMIT < deploy/aws/.image 2>/dev/null || true
+read -r _ _ _ ICOMMIT 2>/dev/null < deploy/aws/.image || true
 if [[ $TIER == experiment && -n "${ICOMMIT:-}" ]]; then   # the image (and the synced tree) must be the committed code
   [[ -z "$(git status --porcelain -- .)" && "$ICOMMIT" == "$(git rev-parse --short HEAD)" ]] \
     || { echo "image commit $ICOMMIT != clean HEAD: rebuild it (build_image.sh) or commit"; exit 1; }
 fi
 KEY="$HOME/.ssh/$AWS_KEY_NAME.pem"
+A=(aws --profile "$AWS_PROFILE" --region "$RUN_REGION")
 REGION=$RUN_REGION deploy/aws/refresh_ssh_rule.sh >/dev/null
-[[ $TIER == experiment && -z "${ONLY:-}" ]] && deploy/experiments/supersede_results.sh before_run
+# a worker that powered off (idle watchdog, finished part) is started again; its public IP changes (2026-10-30 smoke)
+W=$(mktemp)
+while read -r w IID IP; do
+  if [[ -z "${ONLY:-}" || " $ONLY " == *" $w "* ]]; then
+    state=$("${A[@]}" ec2 describe-instances --instance-ids "$IID" --query 'Reservations[0].Instances[0].State.Name' --output text)
+    if [[ $state != running ]]; then
+      "${A[@]}" ec2 start-instances --instance-ids "$IID" >/dev/null; "${A[@]}" ec2 wait instance-status-ok --instance-ids "$IID"
+      IP=$("${A[@]}" ec2 describe-instances --instance-ids "$IID" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+      echo "worker $w was $state: started again at $IP"
+    fi
+  fi
+  echo "$w $IID $IP" >> "$W"
+done < deploy/aws/.workers
+mv "$W" deploy/aws/.workers
+[[ -z "${ONLY:-}" ]] && TIER=$TIER deploy/experiments/supersede_results.sh before_run
 start() {   # start <worker n> <instance> <ip>: its part detached; a failure is reported, the others still start
   local runs part ENV=""; read -r runs part <<< "${PLAN[$(( $1 - 1 ))]}"
   if [[ $part == e1 ]]; then
