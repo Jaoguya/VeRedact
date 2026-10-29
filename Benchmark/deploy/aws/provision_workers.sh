@@ -3,7 +3,8 @@
 # identical to veredact-bench (type, volume), tagged Name=veredact-rep-worker, bootstrapped in parallel with this tree
 # (QUICK=1 from a prebuilt image, deploy/aws/.image). Creates once in the region: key pair and security group
 # veredact-bench (SSH from this IP only, all TCP inside the group). Writes WORKERS_FILE (deploy/aws/.workers).
-# Usage: deploy/aws/provision_workers.sh <N>   (env: WORKER_MARKET, WORKER_NAME, WORKERS_FILE, NO_IMAGE=1)
+# Spot only (author 2026-10-30: never on demand): if any worker finds no spot, the ones launched are terminated.
+# Usage: deploy/aws/provision_workers.sh <N>   (env: WORKER_MARKET=ondemand, ZONE, WORKER_NAME, WORKERS_FILE, NO_IMAGE=1)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 N=${1:?usage: $0 <N>}
@@ -25,11 +26,11 @@ QUICK=0; read -r IREG IMG _ 2>/dev/null < deploy/aws/.image || true
 if [[ "${NO_IMAGE:-0}" != 1 && "${IREG:-}" == "$RUN_REGION" && -n "${IMG:-}" ]]; then AMI=$IMG; QUICK=1
 else AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text); fi
 SUBNETS=$("${A[@]}" ec2 describe-subnets --filters Name=default-for-az,Values=true \
-           --query 'Subnets[].[AvailabilityZone,SubnetId]' --output text | sort | awk -v z="$RUN_ZONE" '$1 == z {print $2; next} {o = o " " $2} END {print o}')
+           --query 'Subnets[].[AvailabilityZone,SubnetId]' --output text | sort | awk -v z="${ZONE:-$RUN_ZONE}" '$1 == z {print $2; next} {o = o " " $2} END {print o}')
 # WORKER_MARKET=spot (default, 2026-10-27: ~1/3 of the on-demand price, same instance type) falls back to on demand.
 # Persistent spot with interruption = stop: a power-off stops (results stay on disk) and a reclaimed worker keeps its
 # disk; rerun its part WHOLE (FORCE=--force, deploy/experiments/rep_run.sh). teardown_workers.sh cancels the requests.
-MARKETS=(spot ondemand); [[ "${WORKER_MARKET:-spot}" == ondemand ]] && MARKETS=(ondemand)
+MARKETS=(spot); [[ "${WORKER_MARKET:-spot}" == ondemand ]] && MARKETS=(ondemand)
 launch() {   # launch <count>: ids of <count> workers, first subnet (zone order) and market with capacity
   local MK SN OPT ids
   for MK in "${MARKETS[@]}"; do
@@ -49,7 +50,14 @@ launch() {   # launch <count>: ids of <count> workers, first subnet (zone order)
 # one worker per request: worker 1 (e1) first, in the run zone if it has room; one request for 12 found no spot in
 # any zone (2026-10-30) where single machines may still fit
 IIDS=""
-for _ in $(seq 1 "$N"); do IIDS="$IIDS $(launch 1)" || exit 1; done
+abandon() {   # some worker found no spot: nothing half-launched is left running (spot requests cancelled first)
+  [[ -n "${IIDS// /}" ]] || exit 1
+  local sirs; sirs=$("${A[@]}" ec2 describe-instances --instance-ids $IIDS --query 'Reservations[].Instances[].SpotInstanceRequestId' --output text)
+  if [[ -n "$sirs" && "$sirs" != None ]]; then "${A[@]}" ec2 cancel-spot-instance-requests --spot-instance-request-ids $sirs >/dev/null; fi
+  "${A[@]}" ec2 terminate-instances --instance-ids $IIDS >/dev/null
+  echo "no spot capacity for all $N workers: the $(wc -w <<< "$IIDS") launched are terminated; retry later"; exit 1
+}
+for _ in $(seq 1 "$N"); do id=$(launch 1) || abandon; IIDS="$IIDS $id"; done
 IIDS=${IIDS# }
 echo "launched (image $AMI): $IIDS"
 "${A[@]}" ec2 wait instance-status-ok --instance-ids $IIDS

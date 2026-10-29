@@ -14,4 +14,4 @@ if [[ -n "$IIDS" ]]; then
 else
   echo "no veredact-prover instances"
 fi
-rm -f deploy/aws/.provers
+rm -f deploy/aws/.provers deploy/aws/.provers_w*

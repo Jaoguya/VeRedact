@@ -6,11 +6,11 @@ Branch `s99-leta-exp1-latency`, state of 28 October 2026 (evening).
 > server, tests there, reruns, prover machines, moving or deleting results). One yes covers one action.
 
 **In short:** the code follows the final manuscript `Overleaf/VeRedact-optimize.tex` (accepted as-is: the
-"Peppo Implementation Strategy"). **No experiment has been run with the new code yet.** Plan C (author, 28 Oct):
-**three independent runs** in **us-east-2**, split by experiment so each experiment's systems share one machine:
-one e1 worker runs Experiment 1 of all three runs with one pair of m7i.48xlarge provers, twelve more workers run the
-other experiments (one per experiment group and run). ~12 h, ~US$38–45. Next: the smoke test of this plan, then
-the exact words **"start full run"**.
+"Peppo Implementation Strategy"). **No experiment has been run with the new code yet.** Final plan (author, 30 Oct):
+**three independent runs** in **us-east-2**, **spot machines only** (no spot: nothing starts, nothing on-demand is
+paid), split by experiment so each experiment's systems share one machine: two e1 workers (Experiment 1 of runs
+1 + 3 and of run 2), each with its own prover pair, and twelve workers for the other experiments. ~8 h,
+~US$35–50 (at most ~US$60). Next: rebuild the image, finish the smoke test, then the exact words "start full run".
 
 ## 1. What the project is
 
@@ -39,7 +39,7 @@ Where things live:
 - `TASK.md` — log of every task; the last lines list what is open.
 
 Where it runs: one AWS server **veredact-bench** (r7i.4xlarge, 16 vCPU, 128 GB, ~US$1.28/h, zone 1a) with a private
-Besu QBFT blockchain on it. The full run itself goes to **us-east-2** (`configs/aws.toml` `[run]` region and zone): thirteen spot
+Besu QBFT blockchain on it. The full run itself goes to **us-east-2** (`configs/aws.toml` `[run]` region and zone): fourteen spot
 **worker** machines of the same type, one per experiment group and run, and two large spot **prover** machines next to the
 Experiment 1 worker (section 4). veredact-bench is then only used to collect results and draw tables/figures. Commands go
 through `Benchmark/deploy/aws/remote.sh`. The AWS account holds other people's machines: touch only veredact-bench
@@ -78,9 +78,14 @@ experiment, never by system. Parts and workers: `Benchmark/src/veredact_bench/ut
 
 | Worker | Part | Runs |
 |---|---|---|
-| 1 | e1 | Experiment 1 of runs 1, 2, 3: VeRedact-PQ's four systems with the provers (run after run, ~5 h), then S1/S13/S27/S34 (~7 h) |
-| 2–13 | e2, e3, e4, e05 × run 1–3 | Experiment 2; 3; 4 (own history); 0 + 5 |
+| 1 | e1 | Experiment 1 of runs 1 and 3: VeRedact-PQ's four systems with prover pair A, then S1/S13/S27/S34 (~8 h) |
+| 2 | e1 | Experiment 1 of run 2, with prover pair B (~4 h) |
+| 3–14 | e2, e3, e4, e05 × run 1–3 | Experiment 2; 3; 4 (own history); 0 + 5 |
 
+- Quota (us-east-2, 1,000 spot vCPU): 4 provers × 192 + 14 workers × 16 = 992.
+- Spot only: workers one per request across zones; each prover pair tries its e1 worker's zone, then the others,
+  and the e1 worker is replaced next to the pair if needed; without spot nothing starts (launched machines are
+  terminated).
 - Seeds: run r = 20260929 + (r − 1) × 1000; folders `experiment-rep01..03`; `aggregate_reps.py` gives the mean
   over runs and a 95 % CI (Student's t, 2 degrees of freedom) and refuses a missing run.
 - Provers: m7i.48xlarge × 2 (same Xeon 8488C and 192 vCPUs as c7i.48xlarge, more memory), then c7i.48xlarge spot,
@@ -97,8 +102,10 @@ experiment, never by system. Parts and workers: `Benchmark/src/veredact_bench/ut
 S27 12 s, S1 reused after its first point, S34 43 ms per newly targeted record (~82,000 per run, ~59 min).
 Reusing/parallelizing setup was dropped: ~40 min per run saved, not worth changing four schemes.
 
-**Cost and time (estimates, spot prices of 28 Oct):** provers ~5 h (~US$19), 13 workers (~US$0.26/h, ~US$15–20),
-image ~US$1–2, veredact-bench for collecting ~US$0.5: **~US$38–45, ~12 h** (Experiment 1 is the longest part).
+**Cost and time (estimates, spot prices of 28–30 Oct):** provers ~12 prover-hours (~US$24–37), 14 workers
+(~US$0.26/h, ~US$9–13), image and collecting ~US$2: **~US$35–50, ~8 h** (e1 worker 1 is the longest part).
+Smoke of 30 Oct: no spot at all in us-east-2 at that moment (everything fell back to on-demand, ~US$14); the
+fallback is now removed.
 Earlier timings from 19–21 Oct were at the old 10^6 ledger and are ~10× too long for setup.
 
 ## 5. Decisions needed from the author
@@ -111,11 +118,11 @@ implemented; the paper does not name the prover machines yet.
 
 1. Commit (and push when asked); the image is built from the committed tree.
 2. Smoke test of plan C (~US$3–5): `deploy/aws/build_image.sh` (refuses an uncommitted tree);
-   `deploy/aws/provision_workers.sh 13`; `TIER=smoke deploy/aws/launch_reps.sh 3`; when the workers are off,
+   `deploy/aws/provision_workers.sh 14`; `TIER=smoke deploy/aws/launch_reps.sh 3`; when the workers are off,
    `TIER=smoke deploy/aws/collect_reps.sh 3` (coverage + aggregation on veredact-bench, nothing moved aside);
    `TIER=smoke deploy/aws/teardown_workers.sh` (keeps the image for the full run).
    A failed part: `ONLY="<worker n>" FORCE=--force deploy/aws/launch_reps.sh 3` reruns it whole.
-3. On "start full run": `provision_workers.sh 13` then at once `launch_reps.sh 3`; check logs after ~15 min.
+3. On "start full run": `provision_workers.sh 14` then at once `launch_reps.sh 3`; check logs after ~15 min.
 4. When all have powered off: `collect_reps.sh 3` (aggregate, tables, figures), `teardown_workers.sh`.
 5. The author writes the results text in Overleaf.
 

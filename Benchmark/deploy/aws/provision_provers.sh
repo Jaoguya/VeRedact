@@ -3,7 +3,9 @@
 # REGION=<region>, e.g. the e1 worker of a split run), bootstrap them and start scripts/prover_service.py.
 # Only instances tagged Name=veredact-prover are created (large: they cost money every hour).
 #   deploy/aws/provision_provers.sh [count] ["types"]   (defaults: configs/aws.toml [run] prover_count, prover_types)
-# Each type on spot in turn, then the last one on demand. A prebuilt image (deploy/aws/.image) in this region
+# Each type on spot in turn; spot only (author 2026-10-30: never on demand) unless PROVER_MARKET=ondemand.
+# SUBNET_ID=<subnet>: launch there instead of the system's subnet. PROVERS_FILE (default deploy/aws/.provers).
+# A prebuilt image (deploy/aws/.image) in this region
 # replaces the Ubuntu image and the full bootstrap. Code lives in REMOTE_DIR/Benchmark, as on the workers.
 # Writes deploy/aws/.provers (gitignored): line 1 = VRPQ_PROVER_KEY, line 2 = VRPQ_PROVERS (private ip:7700,...).
 set -euo pipefail
@@ -16,7 +18,8 @@ KEY_FILE="$HOME/.ssh/$AWS_KEY_NAME.pem"
 [[ -n "${SYS_IID:-}" ]] || read -r SYS_IID _ < deploy/aws/.instance
 SYS_SG=$("${A[@]}" ec2 describe-instances --instance-ids "$SYS_IID" \
           --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' --output text)
-SUBNET=$("${A[@]}" ec2 describe-instances --instance-ids "$SYS_IID" --query 'Reservations[0].Instances[0].SubnetId' --output text)
+SUBNET=${SUBNET_ID:-$("${A[@]}" ec2 describe-instances --instance-ids "$SYS_IID" --query 'Reservations[0].Instances[0].SubnetId' --output text)}
+PF=${PROVERS_FILE:-deploy/aws/.provers}
 CIDR="$(curl -fsS https://checkip.amazonaws.com)/32"
 
 echo "[1/5] security group $NAME (port $PORT from veredact-bench only, SSH from $CIDR)"
@@ -36,8 +39,8 @@ VOL=30   # the image's snapshot is the workers' volume size: a smaller disk is r
 if [[ "${IREG:-}" == "$REG" && -n "${IMG:-}" ]]; then AMI=$IMG; QUICK=1; VOL=$AWS_VOLUME_GB
 else AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text); fi
 IIDS=""
-TRIES=(); for T in "${TYPES[@]}"; do TRIES+=("$T spot"); done; TRIES+=("${TYPES[${#TYPES[@]}-1]} ondemand")
-[[ "${PROVER_MARKET:-spot}" == ondemand ]] && TRIES=("${TYPES[0]} ondemand")
+TRIES=(); for T in "${TYPES[@]}"; do TRIES+=("$T spot"); done
+[[ "${PROVER_MARKET:-spot}" == ondemand ]] && TRIES+=("${TYPES[${#TYPES[@]}-1]} ondemand")
 for TRY in "${TRIES[@]}"; do
   read -r TYPE MK <<< "$TRY"
   OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
@@ -89,7 +92,7 @@ wait
 if [[ $(wc -l < "$READY") -ne "$N" ]]; then   # never hand out a pool that is not fully up
   echo "      not every prover is listening: terminating $IIDS"; "${A[@]}" ec2 terminate-instances --instance-ids $IIDS >/dev/null; exit 1
 fi
-printf '%s\n%s\n' "$KEY" "$(IFS=,; echo "${ADDRS[*]}")" > deploy/aws/.provers
-chmod 600 deploy/aws/.provers
-echo "[5/5] provers: $(sed -n 2p deploy/aws/.provers)   (bootstrap logs: /tmp/veredact-prover-*.log)"
+printf '%s\n%s\n' "$KEY" "$(IFS=,; echo "${ADDRS[*]}")" > "$PF"
+chmod 600 "$PF"
+echo "[5/5] provers: $(sed -n 2p "$PF")   (bootstrap logs: /tmp/veredact-prover-*.log)"
 echo "      they stop themselves 15 min after use; early cleanup: [REGION=<region>] deploy/aws/teardown_provers.sh"

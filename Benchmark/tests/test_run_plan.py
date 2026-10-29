@@ -12,14 +12,16 @@ def test_every_experiment_runs_on_exactly_one_part():
     assert all(len(p) == 1 for p in owners.values()), owners
 
 
-def test_three_runs_put_every_runs_exp1_on_one_machine():
-    """Layout (a): one e1 worker for all runs (the one prover pair serves it run after run), one worker per
-    other part and run."""
+def test_three_runs_put_each_runs_exp1_on_one_of_two_prover_machines():
+    """Final plan (2026-10-30): two e1 workers, each with its own prover pair; a run's Exp. 1 (all its systems) is on
+    exactly one of them; one worker per other part and run."""
     w = run_plan.workers(3)
-    assert w[0] == ("1,2,3", "e1")
+    assert w[:2] == [("1,3", "e1"), ("2", "e1")]
+    e1_runs = [r for x, p in w if p == "e1" for r in x.split(",")]
+    assert sorted(e1_runs) == ["1", "2", "3"]  # every run once, never split
     rest = [x for x in w if x[1] != "e1"]
     assert sorted(rest) == sorted((str(r), p) for r in (1, 2, 3) for p in ("e2", "e3", "e4", "e05"))
-    assert len(w) == 13
+    assert len(w) == 14
 
 
 def test_one_run_uses_the_single_run_folders():

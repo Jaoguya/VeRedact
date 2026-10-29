@@ -32,6 +32,10 @@ AMI=$("${A[@]}" ec2 create-image --instance-id "$IID" --name "veredact-run-image
         "ResourceType=snapshot,Tags=[{Key=Name,Value=veredact-run-image}]" --query ImageId --output text)
 "${A[@]}" ec2 wait image-available --image-ids "$AMI"
 SNAP=$("${A[@]}" ec2 describe-images --image-ids "$AMI" --query 'Images[0].BlockDeviceMappings[0].Ebs.SnapshotId' --output text)
+read -r OREG OAMI OSNAP _ 2>/dev/null < deploy/aws/.image || true   # the image this one replaces goes
+if [[ "${OREG:-}" == "$RUN_REGION" && -n "${OAMI:-}" && "$OAMI" != "$AMI" ]]; then
+  "${A[@]}" ec2 deregister-image --image-id "$OAMI" && "${A[@]}" ec2 delete-snapshot --snapshot-id "$OSNAP" && echo "old image $OAMI deleted"
+fi
 echo "$RUN_REGION $AMI $SNAP $COMMIT" > deploy/aws/.image
 "${A[@]}" ec2 terminate-instances --instance-ids "$IID" >/dev/null
 OK=1
