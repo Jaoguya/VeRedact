@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Start a full run split by experiment over the workers in deploy/aws/.workers (provision_workers.sh), in the order of
 # src/veredact_bench/utils/run_plan.py: the e1 workers first (Experiment 1, each with its own prover pair), then one
-# worker per other part and run. Provers first, spot only: each e1 worker's pair is tried in its zone, then the
-# others; if it only fits elsewhere, that e1 worker is replaced there (provers and e1 share a zone). No spot for a
+# worker per other part and run. Provers first ([run] market): each e1 worker's pair is tried in its zone, then the
+# others; if it only fits elsewhere, that e1 worker is replaced there (provers and e1 share a zone). No pool for a
 # pair: nothing starts (the provers launched are terminated). Older results here move aside first. All detached;
 # each worker powers itself off. Later: collect_reps.sh <runs>, then teardown_workers.sh.
 # Usage: [TIER=smoke] [ONLY="3 7"] [FORCE=--force] deploy/aws/launch_reps.sh <single|R>   (R >= 3)
@@ -55,12 +55,12 @@ while read -r w IID IP; do
     fi
   done
   if [[ -z "$ok" ]]; then
-    echo "no spot capacity for worker $w's prover pair in any zone: nothing is started (retry later)"
+    echo "no capacity for worker $w's prover pool in any zone: nothing is started (retry later)"
     REGION=$RUN_REGION deploy/aws/teardown_provers.sh; exit 1
   fi
   if [[ $ok != "$own" ]]; then   # the pair fits only in another zone: the e1 worker follows it
     T=$(mktemp); ZONE=$(zone_of "$ok") WORKERS_FILE=$T deploy/aws/provision_workers.sh 1 < /dev/null \
-      || { echo "no spot e1 worker next to the provers: nothing is started"; REGION=$RUN_REGION deploy/aws/teardown_provers.sh; exit 1; }
+      || { echo "no e1 worker next to the provers: nothing is started"; REGION=$RUN_REGION deploy/aws/teardown_provers.sh; exit 1; }
     read -r _ NIID NIP < "$T"; rm -f "$T"
     SIR=$("${A[@]}" ec2 describe-instances --instance-ids "$IID" --query 'Reservations[0].Instances[0].SpotInstanceRequestId' --output text)
     if [[ -n "$SIR" && "$SIR" != None ]]; then "${A[@]}" ec2 cancel-spot-instance-requests --spot-instance-request-ids "$SIR" >/dev/null; fi

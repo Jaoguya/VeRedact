@@ -39,6 +39,7 @@ zone = "us-east-2a"               # e1 worker + provers (cheapest m7i.48xlarge s
 # prover pool per e1 worker: 384 vCPU of the same Xeon 8488C in any of these shapes (cheapest first; smaller machines
 # find spot more often, 2026-10-30: no 192-vCPU spot in any us-east-2 zone)
 prover_pools = "2xm7i.48xlarge 2xc7i.48xlarge 4xc7i.24xlarge 4xm7i.24xlarge 8xc7i.12xlarge"
+market = "ondemand"              # workers + provers (author 2026-10-30: no spot; it had no capacity in us-east-2); "spot" possible
 e1_machines = 2                  # e1 workers, each with its own 384-vCPU pool: 2 x 384 + 14 x 16 = 992 of 1,000 vCPU
 prover_cap_min_per_run = 180     # prover hard limit = runs x this + 90 min boot (VeRedact-PQ Exp. 1 ~1.7 h per run)
 e1_cap_min_per_run = 300         # e1 worker hard limit = runs x this + 60 (Exp. 1 of a run ~4 h, 28 Oct estimate)

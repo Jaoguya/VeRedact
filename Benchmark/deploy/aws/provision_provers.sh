@@ -3,8 +3,8 @@
 # REGION=<region>, e.g. the e1 worker of a split run), bootstrap them and start scripts/prover_service.py.
 # Only instances tagged Name=veredact-prover are created (large: they cost money every hour).
 #   deploy/aws/provision_provers.sh ["pools"]   (default: configs/aws.toml [run] prover_pools, e.g. "2xm7i.48xlarge 4xc7i.24xlarge")
-# Each pool shape in turn, one machine per request (a whole pool or none); spot only (author 2026-10-30: never on
-# demand) unless PROVER_MARKET=ondemand. Every shape is the same 384 vCPU of the same Xeon 8488C.
+# Each pool shape in turn, one machine per request (a whole pool or none), in [run] market (PROVER_MARKET overrides).
+# Every shape is the same 384 vCPU of the same Xeon 8488C.
 # SUBNET_ID=<subnet>: launch there instead of the system's subnet. PROVERS_FILE (default deploy/aws/.provers).
 # A prebuilt image (deploy/aws/.image) in this region
 # replaces the Ubuntu image and the full bootstrap. Code lives in REMOTE_DIR/Benchmark, as on the workers.
@@ -39,7 +39,7 @@ QUICK=0; read -r IREG IMG _ 2>/dev/null < deploy/aws/.image || true
 VOL=30   # the image's snapshot is the workers' volume size: a smaller disk is refused
 if [[ "${IREG:-}" == "$REG" && -n "${IMG:-}" ]]; then AMI=$IMG; QUICK=1; VOL=$AWS_VOLUME_GB
 else AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text); fi
-MK=spot; [[ "${PROVER_MARKET:-spot}" == ondemand ]] && MK=ondemand
+MK=${PROVER_MARKET:-$RUN_MARKET}
 OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
   'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}')
 IIDS=""
