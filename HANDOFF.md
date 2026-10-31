@@ -67,20 +67,52 @@ Scale: 10^5-transaction ledger, n_Q up to 10^4, 30 samples per point. The manusc
 | Code | 105 tests pass (image builder, 1b83d44); smoke of the split run: 12 of 13 parts exit 0, e1 not run; 7 bugs fixed (b41848b) |
 | Results with the new code | **none** |
 | Spot attempt (30 Oct) | no spot for any 384-vCPU prover pool in us-east-2: nothing started (~US$2.3) |
-| Uncommitted | `configs/aws.toml [run] market = "ondemand"`; `provision_workers.sh` / `provision_provers.sh` use it; `launch_reps.sh` messages; TASK.md line |
+| On-demand switch | committed and pushed (`d6f70b8`): `configs/aws.toml [run] market`, used by `provision_workers.sh` / `provision_provers.sh` (split run) and `provision_provers_local.sh` (one-server run, O2) |
 | AWS leftovers | image ami-083cb25ef0de5032b + snap-0de92fbdcccc2a935 in us-east-2 (~US$5/month); delete with `teardown_workers.sh` when not needed (ask) |
 | Spent this session (approx.) | veredact-bench idle leak from a test ~US$47 (fixed: killpg in `test_fidelity.py`), smoke ~US$14, spot attempt ~US$2.3, images ~US$1.3 |
 
 ## 5. Decisions needed from the author
 
-**D1. Run plan within US$50 (no spot):**
+**Code reading of 31 Oct (facts, not choices) — O2 as written is not available:**
+- The published latency is **arrival -> finalized** (`summaries._exp01`, `_e2e_latency_ms`; the "from submit"
+  variant was rejected because "it hides client-side waiting"). The wait for a free prover sits in that interval,
+  so a prover pool that changes between points puts a step into Fig. 3 that is an artefact, not a measurement.
+- The rate sweep is *inside* the per-system loop (`exp01.run`), while `Results.begin/end` checkpoints per
+  (experiment, system) and `begin()` deletes the folder. Rates therefore cannot be split over separate runs, so
+  rate-sizing needs either the measuring process to drive AWS mid-experiment or a rework of the results layer.
+- Provers are up only for step 1 of `full_run.sh` (the 4 systems that prove), **~1.7 h**, not the whole run.
+- One `c7i.48xlarge` is 192 cores (`prover_service.py --workers` = `os.cpu_count()`) against ~150 core-s/s at
+  5,000 req/s. Prover-bound shows as `submitted_on_time` falling while decided/offered stays high; note that
+  `check_coverage.py` does NOT fail on it — a saturated point still has a value.
+
+**D1. Run plan within US$50 (no spot). Whichever is chosen, the prover count stays the same for every point:**
 
 | Plan | What | Runs | Time | Cost (estimate) | Code |
 |---|---|---|---|---|---|
-| **O2 (recommended)** | everything on veredact-bench (one machine, fairest); on-demand provers only during Exp. 1, sized to the rate: one 48-vCPU prover for 8 of 10 rates, the full pair for the 2 highest | 1 | ~12–17 h | ~US$30–37 | rate-sized prover pool (new) |
-| O1 | as O2 but the full prover pair for all of Exp. 1 | 1 | ~12–17 h | ~US$58–65 (over budget) | none |
+| **P1** | one server, **1 prover** (`PROVER_COUNT=1`) | 1 | ~12–17 h | ~US$35–42 | none |
+| **P2** | one server, **2 provers** (today's default) | 1 | ~12–17 h | ~US$55–61 (over budget) | none |
+| P3 | 3 repetitions on one server (`rep_sequence.sh`) | 3 | ~36–51 h | ~US$105–124 (over budget) | fix rep_sequence (below) |
 | Split, 3 runs on demand | 14 workers + 2 prover pairs, us-east-2 | 3 | ~8 h | ~US$145–160 (over budget) | none |
+| ~~O2~~ | rate-sized prover pool | — | — | — | not available (see above) |
 | O3 | no provers | — | — | — | not allowed (capped / unfair) |
+
+P1 vs P2 is open: 1 prover may be enough. It is decided by one number in the run's own log, so P1 can be tried
+first and the affected system rerun with `PROVER_COUNT=2` if it comes out prover-bound.
+
+**D1b. One run vs three (the manuscript says three; section 2).** In one run a latency point already has
+6,000–300,000 requests as samples, but `throughput_per_s` is a **single** number per point — that is the figure
+that has no replication. Options, cheapest first:
+
+| Option | What | Cost | Note |
+|---|---|---|---|
+| **A** | throughput CI from sub-windows of the 60 s window (n=6 per point) | **US$0** | post-processing of the stored rows |
+| **B** | bootstrap CI for p95 (`metrics.ci95_halfwidth` covers the MEAN only) | **US$0** | post-processing |
+| C | repeat only the headline points with 2 more seeds (`VRPQ_REP=2,3`; seed += (r-1)*1000, rep 1 = the single run) | ~US$6–10 | reported as a robustness check, not as the CI |
+| D | three full runs | ~US$105–124 | over budget |
+
+A and B are retroactive: `scripts/resummarize.py` recomputes `metrics.json` from the stored `rows.csv`, so a
+single run can be paid for now and the statistics added later without paying AWS again. A one-run plan still
+needs the manuscript's "three runs ... 95 % CI (t, 2 df)" sentence changed — author only.
 
 **D2. Make proving itself faster (fewer prover machines):**
 
@@ -94,9 +126,14 @@ Scale: 10^5-transaction ledger, n_Q up to 10^4, 30 samples per point. The manusc
 **D3. Older open points:** S13's audit witnesses timed 8 at a time (3–7 % against S13: re-time or disclose);
 bursty workload not implemented; the paper does not name the prover machines (author writes it in Overleaf).
 
+**D4. `rep_sequence.sh` is stale** (only matters for P3): its step 1 gives provers to `veredact` alone
+(`SYSTEMS=veredact`, and it skips only `exp01:veredact` afterwards), so the three Exp. 1 variants would run in
+step 2 **without** provers and come out client-bound (~270 proofs/s locally). `full_run.sh` passes all four
+(`VRPQ_EXP1`). It also still defaults to `PROVER_COUNT=2`. Fix before choosing P3.
+
 ## 6. Next steps (each AWS step needs the author's yes)
 
-1. Author picks D1 (and D2). Commit the uncommitted on-demand switch when asked.
+1. Author picks D1 (and D2).
 2. For O2: write the rate-sized prover pool; tests on the server; rebuild the image if workers are used.
 3. Smoke test of the chosen plan (smoke numbers are never results).
 4. On "start full run": run; check logs after ~15 min; collect, aggregate, tables, figures; tear down.

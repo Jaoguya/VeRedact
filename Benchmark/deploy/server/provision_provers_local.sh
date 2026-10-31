@@ -25,10 +25,10 @@ SG=$("${A[@]}" ec2 describe-security-groups --filters "Name=group-name,Values=$N
 AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text)
 
 echo "[1/4] launch $N x $TYPE"
-# PROVER_MARKET=spot (default, 2026-10-18: ~US$3.0/h instead of US$9.88/h on demand) tries spot in every AZ first,
-# then on demand. A spot host reclaimed mid-point is detected by the client (RemoteProvers.lost) and fails the point.
+# Market: [run] market (author 2026-10-30: on demand; PROVER_MARKET overrides), every AZ in turn, no fallback to the
+# other market. A spot host reclaimed mid-point is detected by the client (RemoteProvers.lost) and fails the point.
 IIDS=""
-MARKETS=(spot ondemand); [[ "${PROVER_MARKET:-spot}" == ondemand ]] && MARKETS=(ondemand)
+MARKETS=("${PROVER_MARKET:-$RUN_MARKET}")
 for MK in "${MARKETS[@]}"; do
   OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
     'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}')

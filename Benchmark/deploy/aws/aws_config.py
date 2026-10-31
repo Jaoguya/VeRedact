@@ -16,6 +16,8 @@ from veredact_bench.utils.config import load
 
 root = Path(__file__).resolve().parents[2]
 cfg = tomllib.loads((root / "configs" / "aws.toml").read_text())
+if cfg["run"].get("market") not in ("spot", "ondemand"):   # anything else would silently mean on demand
+    raise SystemExit(f"configs/aws.toml [run] market: {cfg['run'].get('market')!r}, not 'spot' or 'ondemand'")
 for section, values in cfg.items():
     for key, value in values.items():
         print(f"{section.upper()}_{key.upper()}={shlex.quote(str(value))}")

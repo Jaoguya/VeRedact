@@ -20,6 +20,10 @@ LAUNCHED=0
 if [[ "${RESUME:-0}" == 1 ]]; then
   echo "STEP1: skipped (RESUME=1)"
 elif [[ -z "${VRPQ_PROVERS:-}" ]]; then
+  # PROVER_COUNT (open, HANDOFF D1): one c7i.48xlarge is 192 cores against ~150 core-s/s at 5,000 req/s, so 1 may
+  # be enough (~US$20 instead of ~US$40 for the ~1.7 h they are up). Whichever is chosen must stay the same for
+  # EVERY point: the published latency runs arrival -> finalized, so the wait for a free prover is inside p95.
+  # Prover-bound shows as submitted_on_time falling while decided/offered stays high.
   if deploy/server/provision_provers_local.sh "${PROVER_COUNT:-2}" "${PROVER_TYPE:-c7i.48xlarge}"; then
     export VRPQ_PROVER_KEY=$(sed -n 1p deploy/aws/.provers) VRPQ_PROVERS=$(sed -n 2p deploy/aws/.provers)
     LAUNCHED=1

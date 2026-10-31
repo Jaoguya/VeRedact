@@ -33,6 +33,9 @@ dev_private_key = "0x8f2a55949038a9610f50fb23b5883af3b4ecb3c3bb792cbcefbd1542c69
 dev_address = "0xfe3b557e8fb62b89f4916b721be55ceb828dbd73"
 
 [run]
+# This section describes the SPLIT run (launch_reps.sh). On demand it is ~US$145-160: over the US$50 budget and not
+# the chosen plan (HANDOFF D1). The recommended one-server plan O2 runs deploy/experiments/full_run.sh instead, and
+# takes only [run] market from here. The on-demand vCPU quota is NOT the spot quota raised for this region.
 region = "us-east-2"             # split full run (workers + provers, deploy/aws/launch_reps.sh): 2026-10-27 author: Ohio,
                                  #   spot ~half of Singapore, spot quota 1,000 vCPU. veredact-bench stays in [aws] region
 zone = "us-east-2a"               # e1 worker + provers (cheapest m7i.48xlarge spot, 2026-10-28); others try it first too
