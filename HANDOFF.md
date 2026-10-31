@@ -8,11 +8,8 @@ Branch `s99-leta-exp1-latency`, state of 31 October 2026.
 
 **In short:** the code follows the final manuscript `Overleaf/VeRedact-optimize.tex` (accepted as-is: the "Peppo
 Implementation Strategy"). **No experiment has been run with the new code yet.** The author's limits: **no spot**,
-**only machines the author owns and controls (AWS, nothing local or third-party)**, **budget US$50**. The plan is
-open (section 5): everything runs on veredact-bench with on-demand provers during Exp. 1, and the author picks how
-many provers (**P1** 1 prover ~US$35–42, **P2** 2 provers ~US$55–61) and whether one run is enough (**D1b**).
-Neither needs new code. The earlier recommendation O2 (a prover pool sized to the rate) turned out not to be
-available — section 5 says why.
+**only machines the author owns and controls (AWS, nothing local or third-party)**, **budget US$50**. **Proposed plan (31 Oct, "hybrid", awaiting PR approval; section 5a):** Exp. 1 once,
+Exp. 2–5 three times, on-demand m7i.4xlarge servers in us-east-2 and one c8g.48xlarge prover, ~US$30–38.
 
 ## 1. What the project is
 
@@ -74,6 +71,24 @@ Scale: 10^5-transaction ledger, n_Q up to 10^4, 30 samples per point. The manusc
 | AWS leftovers | image ami-083cb25ef0de5032b + snap-0de92fbdcccc2a935 in us-east-2 (~US$5/month); delete with `teardown_workers.sh` when not needed (ask) |
 | Spent this session (approx.) | veredact-bench idle leak from a test ~US$47 (fixed: killpg in `test_fidelity.py`), smoke ~US$14, spot attempt ~US$2.3, images ~US$1.3 |
 
+## 5a. Proposed plan: hybrid (31 Oct, awaiting PR approval)
+
+| Item | Choice |
+|---|---|
+| Exp. 1 | **1 run**; error bars from six 10-s sub-windows (throughput) and bootstrap (p95); 60 s window + 30 s drain unchanged |
+| Exp. 2, 3, 4, 5 | **3 runs**, 10 samples per point per run (30 in total); p95 from the pooled 30 samples |
+| Exp. 0 | 1 run (100 samples per primitive) |
+| Server | m7i.4xlarge (16 vCPU, 64 GiB), us-east-2, on demand; one run per server |
+| Prover | 1 × c8g.48xlarge (192 Graviton cores), on demand, only during VeRedact-PQ's Exp. 1 |
+| STARK field | f128 (unchanged) |
+| Cost / time | ~US$30–38 (estimate) |
+
+Evidence (31 Oct): worst peak memory ever 27.0 GiB (old 10^6 ledger), so 64 GiB is safe. Graviton c8g.24xlarge:
+single proof median 22.6 ms (Intel ~23 ms, so no prover-hardware bias), all 96 cores 3,559 proofs/s < 5,000, so the
+48xlarge (~7,100/s estimated) is needed. Rejected: three full runs (~US$63–70), 30-s Exp. 1 window (flatters
+saturated systems), Exp. 5 once, f128 → f64. Needs: config/code changes, the manuscript's repetition sentence and
+environment line (author, Overleaf), smoke test, then "start full run".
+
 ## 5. Decisions needed from the author
 
 **Code reading of 31 Oct (facts, not choices) — O2 as written is not available:**
@@ -122,7 +137,7 @@ needs the manuscript's "three runs ... 95 % CI (t, 2 df)" sentence changed — a
 | Option | Change | Gain (estimate, not measured) | Conflict |
 |---|---|---|---|
 | **1 (recommended first)** | build the STARK with `target-cpu=native`; same logic, same proofs | ~10–30 % | none; measure first (~15 min, ~US$1, needs a yes) |
-| 2 | field f128 → f64 (Goldilocks) in winterfell; rewrite AIR + Rescue | ~2–4× | breaks Peppo (code as-is); Exp. 0 T_ZP/T_ZV change |
+| ~~2~~ | field f128 → f64 (Goldilocks): **rejected by the author 31 Oct, field stays f128** | ~2–4× | breaks Peppo; saves only ~US$8–17 |
 | 3 | smaller credential registry (`registry_depth` 15 → less) | ∝ trace length | changes a system parameter |
 | — | blowup 8 → 4 | not possible: Rescue α = 5 needs blowup 8 | — |
 
