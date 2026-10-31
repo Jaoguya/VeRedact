@@ -2,7 +2,7 @@
 
     python scripts/run_eval.py --tier smoke --experiment exp01_redaction_throughput
     python scripts/run_eval.py --tier experiment --config configs/experiments/exp02_authorization_latency.yaml
-    python scripts/run_eval.py --tier pilot --experiment all [--force]
+    python scripts/run_eval.py --tier experiment --experiment all [--force]
 
 Results: results/<experiment>/<method>/<tier>/. A finished method (metrics.json present) is skipped
 unless --force.

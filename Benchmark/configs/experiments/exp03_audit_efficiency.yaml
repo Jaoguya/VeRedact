@@ -8,7 +8,7 @@ experiment:
   records_per_batch: [1, 8, 64]  # [PROPOSED] evidence-sharing axis (manuscript: 'varying the number of returned
                                 #   records that share authorization, transition, checkpoint dependencies');
                                 #   1 = no sharing, 64 = veredact.reference_batch (default)
-  samples_per_point: 30         # [PROPOSED] audit queries per (system, records per batch, n_Q) in the one run
+  samples_per_point: 30         # [PROPOSED] queries per (system, records per batch, n_Q); 3 runs x 10
   samples_override:             # [METHOD] fewer queries where one costs minutes to hours (same for every scheme)
     S13: {"10000": 5}           # S13 builds one RSA-accumulator non-membership witness per record (author
                                 #   decision 2026-10-04: 5 at 10^4)

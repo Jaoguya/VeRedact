@@ -6,4 +6,4 @@ experiment:
   n_Q: [10, 100, 1000, 10000]   # [DERIVED] manuscript 10..10^4 (author 2026-10-24: follow VeRedact-optimize.tex)
   deep_fractions: [0.0, 0.01, 0.05, 0.10, 0.25, 1.0]  # [DERIVED] manuscript d_Q / n_Q (VeRedact-PQ only)
   inject_fractions: [0.01, 0.05, 0.10]       # [DERIVED] manuscript [1%-10%], one fault class at a time
-  samples_per_point: 30         # [PROPOSED] verified responses per (system, n_Q, level, fraction) in the one run
+  samples_per_point: 30         # [PROPOSED] responses per (system, n_Q, level, fraction); 3 runs x 10

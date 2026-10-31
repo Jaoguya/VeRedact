@@ -2,8 +2,8 @@
 # Launch requester prover hosts for Exp. 1 (audit A4) next to veredact-bench (or SYS_IID=<instance> in
 # REGION=<region>, e.g. the e1 worker of a split run), bootstrap them and start scripts/prover_service.py.
 # Only instances tagged Name=veredact-prover are created (large: they cost money every hour).
-#   deploy/aws/provision_provers.sh ["pools"]   (default: configs/aws.toml [run] prover_pools, e.g. "2xm7i.48xlarge 4xc7i.24xlarge")
-# Each pool shape in turn, one machine per request (a whole pool or none), in [run] market (PROVER_MARKET overrides).
+#   deploy/aws/provision_provers.sh ["pools"]   (default: configs/aws.toml [run] prover_pools, e.g. "1xc8g.48xlarge")
+# Each pool shape in turn, one machine per request (a whole pool or none), on demand.
 # All shapes of one call must share one architecture (the first decides the AMI).
 # SUBNET_ID=<subnet>: launch there instead of the system's subnet. PROVERS_FILE (default deploy/aws/.provers).
 # A prebuilt image (deploy/aws/.image) in this region
@@ -42,14 +42,11 @@ ARM=0; [[ "${POOLS[0]#*x}" =~ ^[a-z]+[0-9]+g[a-z]*\. ]] && ARM=1
 if [[ $ARM == 0 && "${IREG:-}" == "$REG" && -n "${IMG:-}" ]]; then AMI=$IMG; QUICK=1; VOL=$AWS_VOLUME_GB
 else AMI=$("${A[@]}" ssm get-parameter --name "${AWS_AMI_SSM_PARAMETER/amd64/$([[ $ARM == 1 ]] && echo arm64 || echo amd64)}" \
             --query Parameter.Value --output text); fi
-MK=${PROVER_MARKET:-$RUN_MARKET}
-OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
-  'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}')
 IIDS=""
 for POOL in "${POOLS[@]}"; do
   N=${POOL%%x*}; TYPE=${POOL#*x}; IIDS=""
   for _ in $(seq 1 "$N"); do
-    id=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --count 1 ${OPT[@]+"${OPT[@]}"} \
+    id=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --count 1 \
            --instance-initiated-shutdown-behavior terminate \
            --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" --subnet-id "$SUBNET" \
            --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$VOL,VolumeType=gp3,DeleteOnTermination=true}" \
@@ -59,11 +56,11 @@ for POOL in "${POOLS[@]}"; do
   done
   IIDS=${IIDS# }
   [[ -n "$id" ]] && break   # the whole pool
-  echo "      no $MK capacity for $POOL"
+  echo "      no capacity for $POOL"
   [[ -n "$IIDS" ]] && { "${A[@]}" ec2 terminate-instances --instance-ids $IIDS >/dev/null; IIDS=""; }   # never half a pool
 done
 [[ -n "$IIDS" ]] || exit 1
-echo "      $MK $POOL: $IIDS"
+echo "      $POOL: $IIDS"
 "${A[@]}" ec2 wait instance-status-ok --instance-ids $IIDS
 
 echo "[3/5] bootstrap (liboqs, Rust STARK module, venv) in parallel"

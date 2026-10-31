@@ -1,9 +1,9 @@
 # Paper artifact manifest
 
 Every number in the manuscript (`Overleaf/VeRedact-optimize.tex`) maps to one config, one script run and one results
-folder. `<tier>` is `experiment` for the paper; `smoke` and `pilot` exist only to test the pipeline.
-Regenerate everything with `make all TIER=experiment` (on the server) or, from fetched results,
-`make tables figures TIER=experiment`.
+folder. `<tier>` is `experiment` for the paper (`experiment-reps` after `aggregate_reps.py` for the repeated
+experiments); `smoke` only tests the pipeline. The full run: `Other/docs/aws-runbook.md` §3; tables and figures:
+`VRPQ_RESULTS_TIER=experiment-reps make tables figures TIER=experiment` (done by `collect_reps.sh`).
 
 | Paper item | Generated file | Script | Config | Results path |
 |:--|:--|:--|:--|:--|
@@ -20,4 +20,4 @@ Regenerate everything with `make all TIER=experiment` (on the server) or, from f
 
 Every results folder holds `rows.csv` (per request / sample), `metrics.json` (summary), `config_resolved.yaml`,
 `run_info.json` (git commit, dirty flag, hardware, library versions, runtime) and `run.log`. Which run of
-each experiment is current is recorded in `TASK.md` §1.1.
+each experiment is current is recorded in the `TASK.md` log.

@@ -9,8 +9,8 @@ Measured per n_Q and records per authorization batch (the evidence-sharing axis)
 fresh auditor per query) and the cryptographically verified evidence nodes (VeRedact-PQ systems).
 The audit-only variants (shared-evidence, per-record) audit the history VeRedact-PQ built (HISTORY_OF).
 When Exp. 4 runs next in the same process, each history is kept and handed to it (SHARED) instead of being
-rebuilt: same dataset, records per batch and largest n_Q, so it is the identical history (2026-10-17: at a
-10^6 ledger the untimed history build dominates both experiments).
+rebuilt: same dataset, records per batch and largest n_Q, so it is the identical history (the untimed history
+build dominates both experiments).
 """
 
 from veredact_bench.data.dataset import build_dataset
@@ -106,7 +106,7 @@ def query_rows(cfg, out, key, rpb, s, counts, ds, n_q_axis, extra=lambda s, n: [
         k = cfg["experiment"]["samples_per_point"]
         k = cfg["experiment"].get("samples_override", {}).get(key, {}).get(str(n), k)  # S13 at 10^4 (Exp. 3)
         for spec in extra(s, n):
-            for sample in range(k):  # queries per point, one run
+            for sample in range(k):  # queries per point in this run
                 try:
                     res = s.audit(spec["query"])
                 except NotSupported as e:

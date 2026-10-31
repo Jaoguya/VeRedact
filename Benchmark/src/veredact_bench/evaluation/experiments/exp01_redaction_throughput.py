@@ -83,12 +83,6 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     stop = threading.Event()
     now = lambda: time.perf_counter() - t0  # t0: set below, once the requesters' provers are ready
 
-    pin = x.get("cpu_pin")  # diagnostics only: {"requesters": [cpus], "system": [cpus]} (Linux)
-
-    def pin_to(part):
-        if pin and hasattr(os, "sched_setaffinity"):
-            os.sched_setaffinity(threading.get_native_id(), pin[part])
-
     # audit A3: requester proving (VeRedact-PQ only: the baselines' requesters do no proving) runs in forked
     # processes on their own physical cores, so it competes neither for the system's cores nor for its GIL
     # audit A4: with remote prover hosts (experiment.provers) requesters prove on separate machines and the
@@ -146,7 +140,6 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         remote.submit(make_job, proved)
 
     def client(i):
-        pin_to("requesters")
         for r in ds.trace[i :: x["client_threads"]]:
             if stop.is_set():
                 return
@@ -163,7 +156,6 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     def revalidator():
         """Stale requests are returned to their requester, which re-proves and resubmits (Phases 4/5).
         Latency keeps running from the ORIGINAL submission."""
-        pin_to("requesters")
         while True:
             r = revalq.get()
             if r is None or stop.is_set():
@@ -272,7 +264,6 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     workers = [threading.Thread(target=worker, daemon=True) for _ in range(cfg["veredact"]["vps_workers"])]
     workers_r = [threading.Thread(target=revalidator, daemon=True) for _ in range(x["client_threads"])]
     ex = threading.Thread(target=executor, daemon=True)
-    pin_to("system")  # threads inherit the creator's affinity: workers and executor stay on the system cpus
     for th in clients + workers + workers_r + [ex]:
         th.start()
     join_by(clients, window + x["drain_s"], clock=now)
@@ -297,7 +288,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
         pool.join()
     if remote is not None:
         remote.close()
-        if remote.lost:  # a prover host vanished mid-point (spot reclaim): its requests never got proofs
+        if remote.lost:  # a prover host vanished mid-point: its requests never got proofs
             raise RuntimeError(f"{key} rate={rate} s={zipf_s}: prover host(s) {remote.lost} lost during the point")
     if sys_cpus:
         os.sched_setaffinity(0, sum(cpus.physical_cores(), []))  # setup of the next point uses every core

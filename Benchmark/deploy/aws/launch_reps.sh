@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start a full run split by experiment over the workers in deploy/aws/.workers (provision_workers.sh), in the order of
-# src/veredact_bench/utils/run_plan.py (hybrid plan: Exp. 0 + 1 in run 1 only). Provers first ([run] market,
+# src/veredact_bench/utils/run_plan.py (hybrid plan: Exp. 0 + 1 in run 1 only). Provers first (on demand,
 # [run] prover_pools): the e1 worker's pool is tried in its zone, then the others; if it only fits elsewhere, the e1
 # worker is replaced there (provers and e1 share a zone). No pool: nothing starts (launched provers are terminated). Older results here move aside first. All detached;
 # each worker powers itself off. Later: collect_reps.sh <runs>, then teardown_workers.sh.
@@ -41,7 +41,7 @@ subnet_of() { "${A[@]}" ec2 describe-instances --instance-ids "$1" --query 'Rese
 zone_of() { "${A[@]}" ec2 describe-subnets --subnet-ids "$1" --query 'Subnets[0].AvailabilityZone' --output text; }
 ALL_SUBNETS=$("${A[@]}" ec2 describe-subnets --filters Name=default-for-az,Values=true --query 'Subnets[].SubnetId' --output text)
 selected() { [[ -z "${ONLY:-}" || " $ONLY " == *" $1 "* ]]; }
-# ---- provers first: one spot pair per e1 worker, in its zone (or the e1 worker moves to the pair's zone) -----------
+# ---- provers first: the e1 worker's pool, in its zone (or the e1 worker moves to the pool's zone) ----------------
 while read -r w IID IP; do
   read -r runs part <<< "${PLAN[$(( w - 1 ))]}"
   [[ $part == e1 ]] && selected "$w" || continue
@@ -57,12 +57,10 @@ while read -r w IID IP; do
     echo "no capacity for worker $w's prover pool in any zone: nothing is started (retry later)"
     REGION=$RUN_REGION deploy/aws/teardown_provers.sh; exit 1
   fi
-  if [[ $ok != "$own" ]]; then   # the pair fits only in another zone: the e1 worker follows it
+  if [[ $ok != "$own" ]]; then   # the pool fits only in another zone: the e1 worker follows it
     T=$(mktemp); ZONE=$(zone_of "$ok") WORKERS_FILE=$T deploy/aws/provision_workers.sh 1 < /dev/null \
       || { echo "no e1 worker next to the provers: nothing is started"; REGION=$RUN_REGION deploy/aws/teardown_provers.sh; exit 1; }
     read -r _ NIID NIP < "$T"; rm -f "$T"
-    SIR=$("${A[@]}" ec2 describe-instances --instance-ids "$IID" --query 'Reservations[0].Instances[0].SpotInstanceRequestId' --output text)
-    if [[ -n "$SIR" && "$SIR" != None ]]; then "${A[@]}" ec2 cancel-spot-instance-requests --spot-instance-request-ids "$SIR" >/dev/null; fi
     "${A[@]}" ec2 terminate-instances --instance-ids "$IID" >/dev/null
     W2=$(mktemp); awk -v w="$w" -v l="$w $NIID $NIP" '$1 == w {print l; next} {print}' deploy/aws/.workers > "$W2" && mv "$W2" deploy/aws/.workers
     echo "worker $w moved to $(zone_of "$ok") next to its provers: $NIID $NIP"

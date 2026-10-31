@@ -12,7 +12,7 @@ The manuscript calls it "VRBC [13]".
 | 2 | ✗ | no per-request authorization protocol: authority = trapdoor possession (`auth_cost` = 0 operations). Excluded from `exp2.systems` rather than shown as a meaningless 0 ms bar |
 | 3 | ✓ | Audit phase: challenge → aggregated tags + aggregated non-membership witness (Alg. 2, NI-SimPoE) |
 | 4 | ✓ | AuditVerify (Alg. 3); **one decision for the whole challenged set** |
-| 5 | ✓ | one `recordRedaction` transaction per redaction |
+| 5 | ✗ | Exp. 5 measures VeRedact-PQ's own anchoring only; this scheme's per-redaction ledger write is part of its Exp. 1 |
 
 ## Boundaries
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Power the instance off once nothing has run for [run].idle_shutdown_minutes, so a finished (or crashed)
-# run stops costing money. Installed by deploy/aws/launch_run.sh as a root cron job (every minute).
+# run stops costing money. Installed by deploy/aws/provision_ec2.sh and provision_workers.sh as a root cron job (every minute).
 # "Busy" = any repo script (scripts/, deploy/experiments/), a veredact_bench or bootstrap process, or an interactive SSH session.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -18,7 +18,7 @@ if pgrep -f "veredact_bench|scripts/|deploy/experiments/|bootstrap_server.sh" >/
 fi
 [[ -f "$STAMP" ]] || { date +%s > "$STAMP"; exit 0; }
 # idle since the later of the last busy minute and this boot: the stamp survives a stop/start (/var/tmp), and
-# an old stamp powered the instance off one minute after boot, before launch_run.sh could connect (2026-10-04)
+# an old stamp powered the instance off one minute after boot, before the laptop could connect (2026-10-04)
 boot=$(date -d "$(uptime -s)" +%s)
 last=$(cat "$STAMP"); (( boot > last )) && last=$boot
 idle=$(( ($(date +%s) - last) / 60 ))

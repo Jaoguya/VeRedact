@@ -1,7 +1,7 @@
 # VeRedact-PQ experiments — rules, boundaries, systems
 
-How the evaluation in `Overleaf/VeRedact-optimize.tex` Sec. Evaluation is produced (the manuscript is final; text it
-needs goes to `Overleaf/newchange.md`). Same method as the conference
+How the evaluation in `Overleaf/VeRedact-optimize.tex` Sec. Evaluation is produced (the manuscript is final; where
+code and text differ: `paper-conformance.md`). Same method as the conference
 artefact (ZK-Redact): real execution, one config, one dataset, one contract for every system.
 
 ## 0. Rules (enforced, not aspirational)
@@ -19,9 +19,8 @@ artefact (ZK-Redact): real execution, one config, one dataset, one contract for 
 | 9 | **Equal security.** Baselines at 128-bit classical (RSA ≥ 3072, BLS12-381); VeRedact-PQ at NIST level 3. The experiment tier refuses weaker parameters, the in-process ledger, and any ML-DSA backend but liboqs. | `validate_config`, `__main__.cmd_run` |
 | 10 | **Fidelity tests.** Each system must reject exactly what its paper can reject. | `Benchmark/tests/test_fidelity.py`, `make test` |
 
-Config tiers have identical keys: `smoke` (server, minutes, in-process ledger) → `pilot` (server, Besu,
-resolve sweep bounds, measure variance) → `experiment` (paper numbers). `make validate-config CONFIG=…`
-gates every run; the CLI refuses an invalid config.
+Config tiers have identical keys: `smoke` (minutes, plumbing check only) → `experiment` (paper numbers).
+`make validate TIER=…` gates every run; the CLI refuses an invalid config.
 
 ## 1. The contract (`Benchmark/src/veredact_bench/methods/scheme.py`)
 
@@ -34,7 +33,7 @@ gates every run; the CLI refuses an invalid config.
 | `capabilities()` / `auth_cost()` | what the system can do / what one authorization did | — |
 
 Requester-side work (VeRedact-PQ: ML-DSA sign + STARK prove) is `prepare()` and is never inside an
-authorization timer. The registry (`veredact_bench/registry.py`) is the only place systems are named.
+authorization timer. The registry (`veredact_bench/methods/registry.py`) is the only place systems are named.
 
 ## 2. Systems
 
@@ -81,7 +80,7 @@ Where this differs from manuscript Table I, the code is right and the table must
 | 4 | 6 | veredact, S13, S1 | verification time vs PQZK escalation fraction d_Q/n_Q in {0, 1, 5, 10, 25, 100} % (VeRedact-PQ; baselines routine only) with breakdown; then each fault class (modified, substituted, stale) alone at 1-10 %: invalid-record rejection and valid-record acceptance | per-record decisions written; S13's aggregate decision shows as false rejections; auditors read the chain (`anchor.read`) |
 | 5 | 7 | veredact | redaction-finalization and RAI-checkpoint transaction size and submission -> QBFT finalization latency vs affected batches |Omega_e| in {1, 2, 4, 8, 16, 32}, validators {4, 7, 10} | `exp05_blockchain_overhead`; Besu restarted per validator count (`VRPQ_VALIDATORS`); in-process: payload length, count recorded only; no gas |
 
-Rows 1–5 above are `exp01_redaction_throughput` … `exp05_blockchain_overhead`. Figures follow the captions of VeRedact-optimize.tex: Fig. 3 (a) throughput, (b) p95 latency, (c) adaptations and frontier vs skew; Fig. 4 Phase 4 per request and per set; Fig. 5 generation, size, verification; Fig. 6 escalation, breakdown, fault classes; Fig. 7 transaction size and finalization latency. One line per system; the ablation variants are drawn in VeRedact-PQ's colour (`reporting/style.py`). Repetitions: the manuscript states 30 runs with 95 % confidence intervals; the repetition tooling (`VRPQ_REP`, `scripts/aggregate_reps.py`) provides them; Exp. 2-4 also take `samples_per_point` measurements inside each run.
+Rows 1–5 above are `exp01_redaction_throughput` … `exp05_blockchain_overhead`. Figures follow the captions of VeRedact-optimize.tex: Fig. 3 (a) throughput, (b) p95 latency, (c) adaptations and frontier vs skew; Fig. 4 Phase 4 per request and per set; Fig. 5 generation, size, verification; Fig. 6 escalation, breakdown, fault classes; Fig. 7 transaction size and finalization latency. One line per system; the ablation variants are drawn in VeRedact-PQ's colour (`reporting/style.py`). Repetitions (hybrid plan, author 2026-10-31): Exp. 2-5 in 3 runs of `ceil(samples_per_point / 3)` samples per point (`config.REPS`; seed + (r-1)·1000), combined by `scripts/aggregate_reps.py` (median: mean of the per-run medians with a Student's t CI, 2 df; p95 pooled over the runs); Exp. 0 and 1 in run 1 only (`config.ONCE`), Exp. 1 with a throughput CI over 6 sub-windows and a bootstrap p95 CI. Split over AWS workers: `Benchmark/src/veredact_bench/utils/run_plan.py`.
 
 Ledger (2026-10-24, author: follow VeRedact-optimize.tex): 10^5 synthetic transactions (`configs/datasets/synthetic_ledger.yaml`), n_Q up to 10^4. S1 uses blocks of one transaction (`Other/docs/baselines/S1-improved-dch.md`).
 
@@ -114,10 +113,11 @@ evaluation: `make paper-runs` → `Benchmark/results/reproduction/<S id>/*.csv`.
 - **GIL.** VPS workers are Python threads. ML-DSA (liboqs, ctypes) and the STARK (Rust, `allow_threads`)
   release the GIL; Python glue does not. Exp. 1 throughput is therefore a property of this implementation
   on the stated host, recorded as such — not of the protocol in the abstract.
-- **Single host.** Load generator, VPS, committee and Besu validators share one instance
-  (`[environment]`). The client shortfall is measured (`client_lag_ms`, achieved offered rate) and a
-  client-bound point stops the sweep with a note instead of being reported as saturation. Each STARK
-  proof runs single-core on its requester thread (winterfell without `concurrent`), 16 requester threads.
+- **One host per experiment.** Load generator, VPS, committee and Besu validators share one worker
+  (`[environment]`, m7i.4xlarge). VeRedact-PQ's requesters prove on a separate prover host (c8g.48xlarge,
+  `evaluation/provers.py`; its first proof must verify on the system). The client shortfall is measured
+  (`client_lag_ms`, `submitted_on_time`), never hidden; every rate runs for every system. Each STARK proof
+  runs single-core (winterfell without `concurrent`).
 - **Freshness instability.** A request binds its batch version; under Zipf hot batches a point can tip into
   a re-prove/resubmit storm by chance (pilot 2026-10-04: same point 17–61 % or 100 % decided). Reported,
   not hidden: `decided`, `revalidations` per point.

@@ -279,8 +279,8 @@ class BesuAnchor(_Metered):
 
     def _recheck(self):
         """Full run 2026-10-09: a Future of a MINED transaction (account nonce latest == pending) was never
-        resolved and the harness waited 3.5 h. The block-receipt path missed it (cause not reproduced:
-        scripts/diag_block_receipts.py). Safety net, so no Future can wait forever: a transaction pending
+        resolved and the harness waited 3.5 h. The block-receipt path missed it (cause not reproduced in a
+        dedicated receipt diagnostic). Safety net, so no Future can wait forever: a transaction pending
         > recheck_s is looked up by hash; a receipt resolves it (late_receipt), an unknown transaction is sent
         again (resent), and one pending > receipt_timeout_s fails its Future (timed_out). Counts are logged."""
         now = time.perf_counter()

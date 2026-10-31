@@ -54,7 +54,7 @@ class RemoteProvers:
         self._conns, self._load, self._cap, self._lock = [], [], [], threading.Lock()
         self._cb, self._ids, self._pending = {}, itertools.count(), collections.deque()
         self._closed = False
-        self.lost = []  # hosts whose connection dropped before close() (e.g. a reclaimed spot instance)
+        self.lost = []  # hosts whose connection dropped before close() (e.g. a host that crashed)
         b = bundle(scheme)
         for a in addresses:
             host, port = a.rsplit(":", 1)

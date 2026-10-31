@@ -144,8 +144,21 @@ def test_exp1_single_run_cis_from_subwindows_and_bootstrap():
     from veredact_bench.evaluation.summaries import _exp01
 
     rows = [
-        dict(sweep="rate", rate_rps=1, zipf_s=0.8, seq=i, in_window=1, fault="", status="finalized", batch_id=i,
-             batch_adaptations=1, arrival_s=10.0 + i, submit_s=10.0 + i, latency_ms=100 + i, cutoff_s=100.0)
+        dict(
+            sweep="rate",
+            rate_rps=1,
+            zipf_s=0.8,
+            seq=i,
+            in_window=1,
+            fault="",
+            status="finalized",
+            batch_id=i,
+            batch_adaptations=1,
+            arrival_s=10.0 + i,
+            submit_s=10.0 + i,
+            latency_ms=100 + i,
+            cutoff_s=100.0,
+        )
         for i in range(60)
     ]  # one finalized per second over the 60 s window
     (pt,) = _exp01(rows, {"experiment": {"duration_s": 60, "warmup_s": 10}}).values()
@@ -526,7 +539,7 @@ def test_prover_whose_proof_fails_here_is_refused():
 
 
 def test_remote_provers_report_a_host_lost_mid_point():
-    """A spot prover reclaimed during a point drops its connection: RemoteProvers must report it (the point then
+    """A prover host lost during a point drops its connection: RemoteProvers must report it (the point then
     fails instead of counting its requests as unfinished), but not after close()."""
     import threading
 

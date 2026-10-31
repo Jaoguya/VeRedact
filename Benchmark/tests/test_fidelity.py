@@ -264,7 +264,7 @@ def test_s1_authorization_cost_does_not_grow_with_history(cfg, ds):
 
 
 def test_s1_chain_is_built_once_and_each_point_redacts_its_own_copy(cfg, ds):
-    """S1's chain is cached per process (setup at a 10^6 ledger); a redaction in one point must not leak into the
+    """S1's chain is cached per process (setup at the full ledger); a redaction in one point must not leak into the
     next point's chain, and the one-redaction-per-block rule still holds inside a point."""
     from veredact_bench.methods.baselines.s01_improved_dch import adapter
 

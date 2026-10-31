@@ -10,7 +10,7 @@ adapter: `adapter.py` (`ETCHScheme`, key `S27`) · own evaluation: `reproduce.py
 | 1 | ✓ | per-request threshold redaction (ETCH.Adapt, 2 CA rounds) |
 | 2 | ✗ | no authorization step: redactors "reach a consensus" by unspecified means and the threshold is enforced only inside Adapt (`auth_cost` = 0 operations). Excluded from `exp2.systems`, like S13 |
 | 3/4 | ✗ | no audit protocol → `NotSupported` (nothing synthesised) |
-| 5 | ✓ | one `recordRedaction` per redaction |
+| 5 | ✗ | Exp. 5 measures VeRedact-PQ's own anchoring only; this scheme's per-redaction ledger write is part of its Exp. 1 |
 
 ## Boundaries
 

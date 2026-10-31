@@ -1,6 +1,6 @@
 """validate: gate every run behind a config check.
 
-    python scripts/validate_config.py <smoke|pilot|experiment>
+    python scripts/validate_config.py <smoke|experiment>
 
 Exit 0 = no errors (warnings may remain) · 1 = errors, do not run · 2 = unreadable.
 
@@ -26,7 +26,7 @@ def _keys(d, prefix=""):
 
 def validate(tier: str) -> tuple[list[str], list[str]]:
     c = load_all(tier)
-    final = tier in ("experiment", "scale")  # scale: full-size check run, same rules as the paper run
+    final = tier == "experiment"
     err, warn = [], []
     E = err.append
     W = warn.append
@@ -146,7 +146,7 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
             E(f"output.{k} must be true")
     if o["allow_published_numbers_in_tables"]:
         E("output.allow_published_numbers_in_tables must be false")
-    for e, xe in c["experiments"].items():  # one run per point: the samples inside it carry the statistics
+    for e, xe in c["experiments"].items():  # the paper value per point (a repetition takes ceil(n / REPS), config.py)
         if "samples_per_point" in xe and xe["samples_per_point"] < 30 and final:
             W(f"{e}.samples_per_point={xe['samples_per_point']} < 30: wide confidence intervals")
 

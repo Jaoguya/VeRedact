@@ -6,16 +6,16 @@
 #   4. scripts/make_tables.py + make_figures.py -> ../Result/ (figures) and ../Overleaf/tables/; results + paper synced to [run].s3_uri when set;
 #      Besu stopped (KEEP_BESU=1 keeps it)
 # FORCE=--force re-runs finished methods.
-# Usage: deploy/experiments/run_experiments.sh <smoke|pilot|experiment> [exp01_redaction_throughput ... | all]
+# Usage: deploy/experiments/run_experiments.sh <smoke|experiment> [exp01_redaction_throughput ... | all]
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
-TIER=${1:?usage: $0 <smoke|pilot|experiment> [experiment ids ... | all]}; shift
+TIER=${1:?usage: $0 <smoke|experiment> [experiment ids ... | all]}; shift
 EXPS=${*:-all}
 export TIER
 PY="$ROOT/.venv/bin/python"
 [[ -x "$PY" ]] || { echo "missing $PY — run deploy/server/bootstrap_server.sh or make venv"; exit 1; }
-[[ "$TIER" == experiment || "$TIER" == scale ]] && export VRPQ_SIG_BACKEND=oqs   # liboqs, as in the paper's run
+[[ "$TIER" == experiment ]] && export VRPQ_SIG_BACKEND=oqs   # liboqs, as in the paper's run
 eval "$("$PY" deploy/aws/aws_config.py)"
 
 "$PY" scripts/validate_config.py "$TIER"
@@ -30,7 +30,7 @@ LOG="results/logs/${TIER}_${EXPS// /_}_$(date +%Y%m%d-%H%M%S).log"
 echo "running $EXPS on tier $TIER (ledger=$LEDGER_BACKEND) -> $LOG"
 "$PY" scripts/run_eval.py --tier "$TIER" --experiment $EXPS ${SYSTEMS:+--systems $SYSTEMS} ${FORCE:-} 2>&1 | tee "$LOG"
 # paper tables/figures only from a single experiment-tier run: a repetition's come from scripts/aggregate_reps.py,
-# and a smoke/scale run must never overwrite Result/ or Overleaf/tables (its numbers are plumbing checks)
+# and a smoke run must never overwrite Result/ or Overleaf/tables (its numbers are plumbing checks)
 if [[ "$TIER" == experiment && -z "${VRPQ_REP:-}" && "${SKIP_TABLES:-0}" != 1 ]]; then   # SKIP_TABLES=1: one part of a split run
   { "$PY" scripts/make_tables.py --tier "$TIER" && "$PY" scripts/make_figures.py --tier "$TIER"; } 2>&1 | tee -a "$LOG" \
     || echo "tables/figures failed (results are intact)"

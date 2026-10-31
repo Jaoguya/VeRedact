@@ -10,7 +10,7 @@ adapter: `adapter.py` (`REBSScheme`, key `S34`) · own evaluation: `reproduce.py
 | 1 | ✓ | per-request policy-gated redaction (Trap recovery + ChCld) |
 | 2 | ✓ | authorization = LSSS policy decryption; committee axis = policy attributes l, t = ⌊2l/3⌋+1 |
 | 3/4 | ✗ | "authorizable verification" means only AVN-authorised nodes verify attributes; there is no audit query → `NotSupported` |
-| 5 | ✓ | one `recordRedaction` per redaction |
+| 5 | ✗ | Exp. 5 measures VeRedact-PQ's own anchoring only; this scheme's per-redaction ledger write is part of its Exp. 1 |
 
 ## Boundaries
 

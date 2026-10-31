@@ -2,7 +2,7 @@
 # VeRedact-PQ evaluation — shared settings (every method, every experiment)
 # =============================================================================
 # A run's config = base.yaml + datasets/<meta.dataset>.yaml + methods/*.yaml + experiments/<id>.yaml,
-# then tiers/<tier>.yaml on top (scale overrides only). The fully resolved config is saved next to every
+# then tiers/<tier>.yaml on top (tier overrides only). The fully resolved config is saved next to every
 # result (config_resolved.yaml). A numeric literal in code is a defect: every value lives in configs/.
 #
 # Markers (every value carries one):
@@ -17,9 +17,8 @@ meta:
   dataset: synthetic_ledger     # configs/datasets/<name>.yaml
   # [METHOD] One seed drives dataset generation, request-trace order, committee selection, audit challenges
   # and fault injection; the same seed is used for every method so they see the same data and trace.
-  # One run per configuration point (author decisions 2026-10-03 and 2026-10-19: the 10-repetition plan of
-  # 2026-10-17 was revoked); statistics come from the per-request / per-sample rows of that run. Optional
-  # tooling kept: VRPQ_REP=r runs repetition r with seed + (r - 1) * 1000 into <tier>-repNN/ (aggregate_reps.py).
+  # Hybrid plan (author 2026-10-31): Exp. 2-5 in 3 runs (VRPQ_REP=r: seed + (r - 1) * 1000, <tier>-repNN/,
+  # combined by aggregate_reps.py), Exp. 0 and 1 in run 1 only (config.ONCE).
   seed: 20260929
 
 security:

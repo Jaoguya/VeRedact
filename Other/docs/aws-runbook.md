@@ -7,7 +7,7 @@ scripts use the AWS CLI profile in `Benchmark/configs/aws.toml`.
 ## 0. Credentials (once)
 
 ```bash
-aws sts get-caller-identity --profile default   # must print the account id
+aws sts get-caller-identity --profile veredact   # must print the account id
 ```
 
 Keys pasted into a chat must be rotated in IAM.
@@ -22,34 +22,40 @@ Benchmark/deploy/aws/provision_ec2.sh              # key pair, SSH-only SG, r7i.
 Bootstrap (`Benchmark/deploy/server/bootstrap_server.sh`): Docker, Python 3.12, liboqs 0.16.0 + liboqs-python,
 Rust + maturin (builds `vrpq_stark`), web3/py-solc-x, `.venv` (pinned deps from `Benchmark/pyproject.toml`), then the test suite.
 
-## 2. Run (detached; survives logout)
+## 2. Tests and smoke on veredact-bench
 
 ```bash
-Benchmark/deploy/aws/launch_run.sh smoke           # plumbing check on the server (in-process ledger)
-Benchmark/deploy/aws/launch_run.sh pilot           # Besu; resolve [CONFIRM] values from its variance and saturation
-Benchmark/deploy/aws/launch_run.sh experiment      # paper numbers (refuses unless validate-config passes)
-Benchmark/deploy/aws/launch_run.sh experiment exp02_authorization_latency exp05_gas_consumption   # a subset
+Benchmark/deploy/aws/remote.sh make test lint    # starts the server if needed, syncs this tree, runs there
+Benchmark/deploy/aws/remote.sh make smoke        # plumbing check only (numbers never used)
 ```
 
-The paper's full run is `Benchmark/deploy/experiments/full_run.sh` on the server (provers for VeRedact-PQ's
-Exp. 1, then everything else, coverage, tables, figures); `RESUME=1` skips the prover step to finish a stopped run.
+`remote.sh` points the SSH rule at this machine's current IP (`refresh_ssh_rule.sh`), syncs `Benchmark/`, runs the
+command and copies `Result/` and `Overleaf/tables` back. The idle watchdog (installed by `provision_ec2.sh`) powers
+the server off `[run].idle_shutdown_minutes` after the last command.
 
-`launch_run.sh` points the SSH rule at this machine's current IP (`refresh_ssh_rule.sh`; a changed home
-IP otherwise times out), syncs this working tree, bootstraps a fresh instance or rebuilds the package and
-the STARK module on a bootstrapped one, installs the idle watchdog (power-off after
-`[run].idle_shutdown_minutes` without an experiment or SSH session) and starts
-`Benchmark/deploy/experiments/run_experiments.sh <tier> <exps>` under `nohup`. That script validates the config,
-starts Besu when `ledger.backend = besu` (network shaped by `[ledger]`, `VRPQ_BESU_KEY` = the private
-genesis dev key), runs `Benchmark/scripts/run_eval.py` (results in `Benchmark/results/<experiment>/<method>/<tier>/`; finished methods are
-skipped, so a relaunch continues where a stopped run ended), writes `Overleaf/tables` and `Result/`,
-syncs to `[run].s3_uri` when set, and stops Besu.
+## 3. The paper's full run (split, us-east-2, on demand)
 
-The experiment tier refuses to run with any ML-DSA backend other than liboqs, with the in-process
-ledger, or with baselines below 128-bit security.
-
-## 3. Fetch and stop paying
+Fair by construction: every experiment's systems share one machine (`Benchmark/src/veredact_bench/utils/run_plan.py`).
+Hybrid plan: Exp. 2–5 in 3 runs, Exp. 0 and 1 in run 1 only, 13 workers (`[run] worker_type`, m7i.4xlarge) and one
+prover host (`[run] prover_pools`, c8g.48xlarge, arm64) for VeRedact-PQ's Exp. 1.
 
 ```bash
-Benchmark/deploy/aws/fetch_results.sh              # rsync Benchmark/results/ (without saved histories) and Result/ back
-Benchmark/deploy/aws/teardown_ec2.sh               # stop (disk kept)  |  teardown_ec2.sh terminate
+Benchmark/deploy/aws/build_image.sh              # image of the committed tree (workers start in ~3 min)
+TIER=smoke Benchmark/deploy/aws/provision_workers.sh 13 && TIER=smoke Benchmark/deploy/aws/launch_reps.sh 3   # smoke
+Benchmark/deploy/aws/provision_workers.sh 13     # the full run ("start full run")
+Benchmark/deploy/aws/launch_reps.sh 3            # prover first, then every part, detached; each worker powers off
+Benchmark/deploy/aws/collect_reps.sh 3           # results to veredact-bench: coverage, aggregate_reps.py, tables, figures
+Benchmark/deploy/aws/teardown_workers.sh         # workers, provers, image
+```
+
+A failed part is rerun whole: `ONLY="<worker n>" FORCE=--force Benchmark/deploy/aws/launch_reps.sh 3`.
+Each worker runs `Benchmark/deploy/experiments/rep_run.sh <run> <part>` → `run_experiments.sh` (validates the config,
+starts Besu, runs `scripts/run_eval.py`, stops Besu). The experiment tier refuses any ML-DSA backend other than
+liboqs, the in-process ledger, and baselines below 128-bit security.
+
+## 4. Stop paying
+
+```bash
+Benchmark/deploy/aws/fetch_results.sh            # rsync veredact-bench's Benchmark/results/ and Result/ here
+Benchmark/deploy/aws/teardown_ec2.sh             # stop veredact-bench (disk kept)  |  teardown_ec2.sh terminate
 ```

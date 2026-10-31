@@ -69,5 +69,6 @@ if [[ "${SYNC:-local}" == local ]]; then   # default: ship this working tree (un
 fi                                           # SYNC=git: clone REPO_URL@REPO_BRANCH instead
 "${SSH[@]}" "sudo REPO_URL=$REPO_URL REPO_BRANCH=$REPO_BRANCH REMOTE_DIR=$REPO_REMOTE_DIR bash /tmp/bootstrap_server.sh"
 
-echo "[6/6] ready:  ssh -i $KEY_FILE $AWS_SSH_USER@$IP"
-echo "      then:   deploy/aws/launch_run.sh <smoke|pilot|experiment> [exps]   (from this laptop)"
+"${SSH[@]}" "echo '* * * * * root $REPO_REMOTE_DIR/Benchmark/deploy/server/idle_watchdog.sh' | sudo tee /etc/cron.d/veredact-idle >/dev/null"
+echo "[6/6] ready:  ssh -i $KEY_FILE $AWS_SSH_USER@$IP   (idle watchdog installed)"
+echo "      then:   deploy/aws/remote.sh make test   (from this laptop)"

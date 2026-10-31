@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Launch N workers for a split full run (configs/aws.toml [run] region; worker 1 = e1 alone in [run] zone first),
-# identical to veredact-bench (type, volume), tagged Name=veredact-rep-worker, bootstrapped in parallel with this tree
+# [run] worker_type, tagged Name=veredact-rep-worker, bootstrapped in parallel with this tree
 # (QUICK=1 from a prebuilt image, deploy/aws/.image). Creates once in the region: key pair and security group
 # veredact-bench (SSH from this IP only, all TCP inside the group). Writes WORKERS_FILE (deploy/aws/.workers).
-# Market: [run] market (author 2026-10-30: on demand; WORKER_MARKET overrides). If any worker cannot be launched,
-# the ones already launched are terminated.
-# Usage: deploy/aws/provision_workers.sh <N>   (env: WORKER_MARKET=ondemand, ZONE, WORKER_NAME, WORKERS_FILE, NO_IMAGE=1)
+# On demand. If any worker cannot be launched, the ones already launched are terminated.
+# Usage: deploy/aws/provision_workers.sh <N>   (env: ZONE, WORKER_NAME, WORKERS_FILE, NO_IMAGE=1)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 N=${1:?usage: $0 <N>}
@@ -28,32 +27,24 @@ if [[ "${NO_IMAGE:-0}" != 1 && "${IREG:-}" == "$RUN_REGION" && -n "${IMG:-}" ]];
 else AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text); fi
 SUBNETS=$("${A[@]}" ec2 describe-subnets --filters Name=default-for-az,Values=true \
            --query 'Subnets[].[AvailabilityZone,SubnetId]' --output text | sort | awk -v z="${ZONE:-$RUN_ZONE}" '$1 == z {print $2; next} {o = o " " $2} END {print o}')
-# Persistent spot with interruption = stop: a power-off stops (results stay on disk) and a reclaimed worker keeps its
-# disk; rerun its part WHOLE (FORCE=--force, deploy/experiments/rep_run.sh). teardown_workers.sh cancels the requests.
-MARKETS=("${WORKER_MARKET:-$RUN_MARKET}")
-launch() {   # launch <count>: ids of <count> workers, first subnet (zone order) and market with capacity
-  local MK SN OPT ids
-  for MK in "${MARKETS[@]}"; do
-    OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
-      'MarketType=spot,SpotOptions={SpotInstanceType=persistent,InstanceInterruptionBehavior=stop}')
-    for SN in $SUBNETS; do
-      ids=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$RUN_WORKER_TYPE" --count "$1" \
-              ${OPT[@]+"${OPT[@]}"} --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" --subnet-id "$SN" \
-              --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$AWS_VOLUME_GB,VolumeType=gp3}" \
-              --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
-              --query 'Instances[].InstanceId' --output text) && { echo "$MK $SN: $ids" >&2; echo "$ids"; return; }
-      echo "no $MK capacity for $1 x $RUN_WORKER_TYPE in $SN" >&2
-    done
+# On demand (author 2026-10-30: no spot). A power-off stops the worker (results stay on disk); a failed part is rerun
+# WHOLE (FORCE=--force, deploy/experiments/rep_run.sh).
+launch() {   # launch <count>: ids of <count> workers in the first subnet (zone order) with capacity
+  local SN ids
+  for SN in $SUBNETS; do
+    ids=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$RUN_WORKER_TYPE" --count "$1" \
+            --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" --subnet-id "$SN" \
+            --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$AWS_VOLUME_GB,VolumeType=gp3}" \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
+            --query 'Instances[].InstanceId' --output text) && { echo "$SN: $ids" >&2; echo "$ids"; return; }
+    echo "no capacity for $1 x $RUN_WORKER_TYPE in $SN" >&2
   done
   return 1
 }
-# one worker per request: worker 1 (e1) first, in the run zone if it has room; one request for 12 found no spot in
-# any zone (2026-10-30) where single machines may still fit
+# one worker per request (worker 1 = e1 first, in the run zone if it has room): single machines fit where a batch may not
 IIDS=""
-abandon() {   # some worker found no capacity: nothing half-launched is left running (spot requests cancelled first)
+abandon() {   # some worker found no capacity: nothing half-launched is left running
   [[ -n "${IIDS// /}" ]] || exit 1
-  local sirs; sirs=$("${A[@]}" ec2 describe-instances --instance-ids $IIDS --query 'Reservations[].Instances[].SpotInstanceRequestId' --output text)
-  if [[ -n "$sirs" && "$sirs" != None ]]; then "${A[@]}" ec2 cancel-spot-instance-requests --spot-instance-request-ids $sirs >/dev/null; fi
   "${A[@]}" ec2 terminate-instances --instance-ids $IIDS >/dev/null
   echo "no capacity for all $N workers: the $(wc -w <<< "$IIDS") launched are terminated; retry later"; exit 1
 }

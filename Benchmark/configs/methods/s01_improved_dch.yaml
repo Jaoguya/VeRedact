@@ -27,6 +27,6 @@ baselines:
     txs_per_block: 1            # [PROPOSED] the paper fixes no block size. Jia's rule allows ONE redaction per block,
                                 #   so S1 can hold at most ledger / txs_per_block redactions. 2026-10-05: 8 (12,500
                                 #   blocks, n_Q up to 10^4). 2026-10-18 (author decision, disclosed in the manuscript):
-                                #   1 tx per block, so S1 can redact any record of the 10^6 ledger like the other
-                                #   schemes (n_Q = 10^5 = 10% of it); the one-redaction-per-block rule is kept
+                                #   1 tx per block, so S1 can redact any record of the ledger like the other
+                                #   schemes (n_Q up to 10^4 of 10^5); the one-redaction-per-block rule is kept
                                 #   (Other/docs/baselines/S1-improved-dch.md)

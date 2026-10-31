@@ -13,8 +13,7 @@ there and copies `Result/` back. Any other command: `Benchmark/deploy/aws/remote
 ```bash
 cd Benchmark
 make test lint                          # tests, ruff gate (on the server)
-make smoke                              # every experiment, tiny sizes, in-process ledger (server, ~10 min)
-make all TIER=experiment                # the paper: all experiments + tables + figures (server, see below)
+make smoke                              # every experiment, tiny sizes (plumbing check only)
 make tables figures TIER=experiment     # regenerate Overleaf/tables and Result/ from the server's Benchmark/results/
 ```
 
@@ -31,38 +30,36 @@ One command per paper artifact (`TIER=experiment` for the paper's numbers):
 | Each baseline's own published figures | `make paper-runs` | `Benchmark/results/reproduction/<S id>/*.csv` |
 
 A finished (experiment, method, tier) is skipped on re-run; `make eval ... FORCE=--force` re-runs it.
-The experiment tier refuses to run without Besu and the liboqs ML-DSA-65 backend, so it runs on the server:
+The experiment tier refuses to run without Besu and the liboqs ML-DSA-65 backend.
+
+**The paper's full run** is split over AWS workers in us-east-2, one machine per experiment and run (hybrid plan:
+Exp. 2–5 in 3 runs, Exp. 0 and 1 once); see `HANDOFF.md` and `Other/docs/aws-runbook.md`:
 
 ```bash
-Benchmark/deploy/aws/provision_ec2.sh                     # once: EC2 instance, bootstrap (liboqs, Rust, venv, tests)
-Benchmark/deploy/aws/launch_run.sh smoke                  # first run on Besu
-Benchmark/deploy/aws/launch_run.sh pilot                  # sets the [CONFIRM] values that need measurements
-Benchmark/deploy/aws/launch_run.sh experiment             # the paper's run (detached; idle watchdog powers off)
-Benchmark/deploy/aws/fetch_results.sh                     # copies Benchmark/results/ and Result/ back
-Benchmark/deploy/aws/teardown_ec2.sh
+Benchmark/deploy/aws/build_image.sh                       # prebuilt worker image of the committed code
+Benchmark/deploy/aws/provision_workers.sh 13              # 13 on-demand m7i.4xlarge workers
+Benchmark/deploy/aws/launch_reps.sh 3                     # prover (c8g.48xlarge) first, then every part, detached
+Benchmark/deploy/aws/collect_reps.sh 3                    # results -> veredact-bench: coverage, aggregation, tables, figures
+Benchmark/deploy/aws/teardown_workers.sh                  # workers, provers and the image
 ```
 
-## Hardware and runtime
+## Hardware
 
-| Tier | Machine | Ledger | Runtime |
-|:--|:--|:--|:--|
-| smoke | AWS EC2 r7i.4xlarge (the same server) | in-process | ~10 min |
-| pilot | AWS EC2 r7i.4xlarge (16 vCPU Xeon 8488C, 128 GiB; c7i.4xlarge / 32 GiB until 2026-10-18), Ubuntu 24.04, ap-southeast-1 | 7-validator Besu QBFT | ~3–5 h |
-| experiment | same instance + 2 × c7i.48xlarge prover hosts (Exp. 1, VeRedact-PQ) | same | ~9 h measured (2026-10-09 run, excluding a 3.5 h hang) |
-
-Per-experiment runtimes of the 2026-10-09 run: `Benchmark/results/<exp>/<method>/experiment/run_info.json`.
+| Role | Machine |
+|:--|:--|
+| Each experiment (all its systems) | AWS EC2 m7i.4xlarge (16 vCPU Xeon 8488C, 64 GiB), Ubuntu 24.04, us-east-2, 7-validator Besu QBFT on the same host |
+| VeRedact-PQ's requesters (Exp. 1) | one c8g.48xlarge prover host (192 Graviton4 cores) |
+| Tests, smoke, collection, figures | `veredact-bench` (r7i.4xlarge, ap-southeast-1) |
 
 ## Layout
 
 ```
 VeRedact/
-├── README.md  TASK.md  AUDIT_LOG.md      overview, status and open decisions, audit findings
+├── README.md  HANDOFF.md  TASK.md  AUDIT_LOG.md   overview, plan, status, audit findings
 ├── Overleaf/                             the manuscript
-│   ├── VeRedact-optimize.tex             final manuscript (never edited here)
-│   ├── newchange.md                      text changes still to paste
-│   ├── revised/                          marked-up copies (red / blue) + their PDFs
-│   └── tables/                           generated table: tab_primitives.tex
-├── Result/                               generated figures only
+│   ├── VeRedact-optimize.tex             final manuscript (edited only by the author)
+│   └── tables/                           generated table: tab_primitives.tex (after the run)
+├── Result/                               generated figures only (after the run)
 │   ├── Pdf/                              exp1..exp5_*.pdf (vector, for the paper)
 │   └── Picture/                          exp1..exp5_*.png
 ├── Benchmark/                            the experiment code (the server runs everything from here)
@@ -74,8 +71,8 @@ VeRedact/
 │   ├── contracts/                        Solidity contracts anchored on Besu
 │   ├── scripts/                          entry points: run_eval.py, make_tables.py, make_figures.py, ...
 │   ├── tests/                            metrics, config gating, results layout, fidelity, end-to-end
-│   ├── deploy/                           aws/ (laptop side), server/ (bootstrap, watchdogs, provers),
-│   │                                     besu/ (QBFT network), experiments/ (tier runner, full run)
+│   ├── deploy/                           aws/ (laptop side: server, workers, provers, split run), server/
+│   │                                     (bootstrap, watchdogs), besu/ (QBFT network), experiments/ (runners)
 │   └── results/                          raw runs <experiment>/<method>/<tier>/ (gitignored)
 ├── Reference/                            papers: PDF, LaTeX/Markdown full text, summary, figures
 │   ├── S1_Li2025_ImprovedDCH/  S13_Zhang2025_EAQ-VRBC/  S27_Liu2026_ETCH/  S34_Xue2025_REBS/  S99_Li2026_LETA/

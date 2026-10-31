@@ -85,8 +85,8 @@ class ImprovedDCHScheme(Scheme):
     # ------------------------------------------------------------------ setup (untimed)
     def setup(self, dataset: Dataset) -> None:
         """Keys and the chain (one Improved DCH hash per block, one owner signature per tx), built once per
-        process for a given ledger and parameter set and reused by later points, like S34's hash table: at a
-        10^6-tx ledger with 1-tx blocks (2026-10-18) every Exp. 1 point would otherwise rebuild 10^6 hashes.
+        process for a given ledger and parameter set and reused by later points, like S34's hash table: with 1-tx blocks
+        every Exp. 1 point would otherwise rebuild one hash per transaction of the ledger.
         Each point gets its own copy of the block headers (a redaction updates its block in place)."""
         k = (
             dataset.seed,
@@ -98,7 +98,7 @@ class ImprovedDCHScheme(Scheme):
             self.cfg["baselines"]["S1"]["txs_per_block"],
         )
         if k not in _SETUP:
-            _SETUP.clear()  # one chain at a time: a 10^6-block chain is ~GBs
+            _SETUP.clear()  # one chain at a time: a chain of one block per transaction is large
             _SETUP[k] = self._chain(dataset)
         self.key_, self.owners, self.N, self.g, blocks, self.block_of, self.sig = _SETUP[k]
         self.dch = ImprovedDCH(self.key_)

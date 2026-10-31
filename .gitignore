@@ -14,16 +14,9 @@ Benchmark/results/*
 Benchmark/deploy/aws/.instance
 Benchmark/deploy/aws/.provers
 Benchmark/deploy/aws/.provers_w*
-Benchmark/deploy/aws/.prover_ids
 Benchmark/deploy/besu/.network/
 # Rust build output
 Benchmark/native/pqzk_stark/target/
-# LaTeX build files
-Overleaf/revised/*.aux
-Overleaf/revised/*.log
-Overleaf/revised/*.fls
-Overleaf/revised/*.fdb_latexmk
-Overleaf/revised/*.out
 Benchmark/deploy/aws/.workers
 Benchmark/deploy/aws/.image
 Benchmark/deploy/aws/.image_builder

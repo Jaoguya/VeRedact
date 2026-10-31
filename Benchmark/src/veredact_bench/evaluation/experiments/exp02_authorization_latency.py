@@ -30,7 +30,7 @@ BREAKDOWN = ("attest_ms", "fresh_ms", "commit_ms", "committee_ms")
 
 def run(cfg, out):
     x = cfg["experiment"]
-    reps = x["samples_per_point"]  # authorization batches per point, inside the one run
+    reps = x["samples_per_point"]  # authorization batches per point in this run
     for key in system_keys(cfg):
         if not out.begin(key):
             continue

@@ -8,9 +8,6 @@ A=(aws --profile "$AWS_PROFILE" --region "$RUN_REGION")
 IIDS=$("${A[@]}" ec2 describe-instances --filters "Name=tag:Name,Values=veredact-rep-worker,veredact-image-builder" \
         "Name=instance-state-name,Values=pending,running,stopping,stopped" --query 'Reservations[].Instances[].InstanceId' --output text)
 if [[ -n "$IIDS" ]]; then
-  # persistent spot requests first, or they relaunch the terminated workers
-  SIRS=$("${A[@]}" ec2 describe-instances --instance-ids $IIDS --query 'Reservations[].Instances[].SpotInstanceRequestId' --output text)
-  if [[ -n "$SIRS" && "$SIRS" != None ]]; then "${A[@]}" ec2 cancel-spot-instance-requests --spot-instance-request-ids $SIRS >/dev/null; fi
   "${A[@]}" ec2 terminate-instances --instance-ids $IIDS >/dev/null
   echo "terminated: $IIDS"
 else

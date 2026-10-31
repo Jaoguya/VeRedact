@@ -11,7 +11,7 @@ adapter: `adapter.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `reprod
 | 2 | ✓ | t full nodes each check acc + verify tx/tx' signatures; committee axis = full nodes n, t = ⌊2n/3⌋+1; a batch of m = m independent authorizations |
 | 3 | ✓ | consistency check (Jia Sec. III-C4): per queried block, block + RSA-accumulator membership witness |
 | 4 | ✓ | client verifies Improved DCH + membership per record — per-record decisions; one level only |
-| 5 | ✓ | one `recordRedaction` transaction per redaction; measured at every m (a batch of m = m transactions) |
+| 5 | ✗ | Exp. 5 measures VeRedact-PQ's own anchoring only; this scheme's per-redaction ledger write is part of its Exp. 1 |
 
 ## Boundaries
 
@@ -35,9 +35,9 @@ adapter: `adapter.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `reprod
 | accumulator | RSA, size unstated | RSA-3072 (`accumulator_rsa_bits`), hash-to-prime via `next_prime` | neutral at equal security |
 | tx signatures | unspecified | ECDSA secp256k1 (coincurve) | neutral |
 | one redaction per block | Jia's rule | enforced; a second request to a redacted block is rejected (reported, never retried) | real limit, not a harness artefact |
-| block size | unstated | `txs_per_block` = 1 (10^6 blocks on the 10^6-transaction ledger; author decision 2026-10-18, disclosed in the manuscript) instead of the shared 256-transaction batch, so S1's audit history reaches n_Q = 10^5 without capping. History 2026-10-05: 8 transactions per block (12,500 blocks on 10^5 transactions, n_Q up to 10^4). The one-redaction-per-block rule is unchanged; with one transaction per block it means one redaction per transaction | for S1 (one-leaf Merkle root, fewer rejections of requests to an already-redacted block) |
+| block size | unstated | `txs_per_block` = 1 (10^5 blocks on the 10^5-transaction ledger; author decision 2026-10-18, disclosed in the manuscript) instead of the shared 256-transaction batch, so S1 can redact any record and its audit history reaches n_Q = 10^4 without capping. The one-redaction-per-block rule is unchanged; with one transaction per block it means one redaction per transaction | for S1 (one-leaf Merkle root, fewer rejections of requests to an already-redacted block) |
 | audit history | — | the shared untimed history list of every scheme (`data/history.py`) | neutral (setup, untimed) |
-| chain setup | — | keys + chain (one Improved DCH hash per block, one owner signature per transaction) built once per process and reused by later points with the same ledger and parameters; each point redacts its own copy of the block headers (2026-10-18, like S34's hash table) | neutral (setup, untimed; ~11 min per build at 10^6 blocks) |
+| chain setup | — | keys + chain (one Improved DCH hash per block, one owner signature per transaction) built once per process and reused by later points with the same ledger and parameters; each point redacts its own copy of the block headers (2026-10-18, like S34's hash table) | neutral (setup, untimed) |
 | membership proofs | "gets the membership proof locally or by running GenMem" (Sec. III-C4 step 2) | held locally: built once after the untimed history with RootFactor (all proofs in O(n log n); identical to GenMem, tested); an audit fetches them. Per-query GenMem would cost ~8 s per record at 10^4 redactions (22.6 h for one n_Q = 10^4 audit, measured) | for S1 (generation excludes GenMem), the paper's first option |
 | ledger writes | one per redaction | one per redaction, **pipelined** (finality tracked, not awaited), exactly like VeRedact-PQ's anchoring | neutral — removes a harness-imposed one-block-per-redaction cap |
 

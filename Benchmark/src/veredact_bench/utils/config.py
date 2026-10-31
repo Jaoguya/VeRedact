@@ -7,7 +7,7 @@ composes, in order (later wins):
     configs/datasets/<meta.dataset>.yaml
     configs/methods/*.yaml                       (all methods: VeRedact-PQ + baselines)
     configs/experiments/<experiment>.yaml        (-> cfg["experiment"])
-    configs/tiers/<tier>.yaml                    (scale overrides; its experiments.<id> block -> cfg["experiment"])
+    configs/tiers/<tier>.yaml                    (tier overrides; its experiments.<id> block -> cfg["experiment"])
 
 and returns a plain dict. The resolved dict is what every run saves as config_resolved.yaml.
 """
@@ -22,7 +22,7 @@ PROJECT_ROOT = REPO_ROOT.parent  # the repository: Benchmark/, Overleaf/, Result
 RESULT_DIR = PROJECT_ROOT / "Result"  # paper figures: Result/Pdf/<name>.pdf and Result/Picture/<name>.png
 TABLE_DIR = PROJECT_ROOT / "Overleaf" / "tables"  # paper tables: Overleaf/tables/<name>.tex
 CONFIG_DIR = REPO_ROOT / "configs"
-TIERS = ("smoke", "pilot", "scale", "experiment")
+TIERS = ("smoke", "experiment")
 REP_SEED_STRIDE = 1000  # repetition r runs with meta.seed + (r - 1) * 1000: rep 1 = the single-run seed
 # Hybrid plan (author 2026-10-31): these run in repetition 1 only, with their full samples; every other experiment
 # runs REPS times with ceil(samples / REPS) per point each (30 -> 10, so 30 in total; p95 pooled by aggregate_reps.py)

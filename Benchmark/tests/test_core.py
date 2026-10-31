@@ -83,7 +83,7 @@ def test_dataset_is_deterministic_and_shared(cfg):
     assert build_dataset(cfg, n_requests=50, seed_offset=1).dataset_id != a.dataset_id
 
 
-@pytest.mark.parametrize("tier", ["smoke", "pilot", "experiment"])
+@pytest.mark.parametrize("tier", ["smoke", "experiment"])
 def test_every_tier_validates(tier):
     err, _ = validate(tier)
     assert err == []

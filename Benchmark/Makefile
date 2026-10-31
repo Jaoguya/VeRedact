@@ -4,8 +4,8 @@
 # marker /opt/veredact/.on-server makes the same targets run directly.
 #   make test lint                               tests, ruff gate
 #   make smoke                                   every experiment on the smoke tier
-#   make eval EXP=exp02_authorization_latency TIER=pilot      one experiment on one tier
-#   make all TIER=experiment                     all experiments + tables + figures (server: deploy/aws/launch_run.sh)
+#   make eval EXP=exp02_authorization_latency TIER=smoke      one experiment on one tier
+#   full paper run: split over AWS workers (deploy/aws/launch_reps.sh 3, then collect_reps.sh 3; HANDOFF.md)
 #   make tables figures TIER=experiment          ../Overleaf/tables/*.tex, ../Result/{Pdf,Picture}/ from results/
 TIER ?= smoke
 EXP  ?= all
@@ -13,11 +13,11 @@ PY   := .venv/bin/python
 FORCE ?=
 ON_SERVER := $(wildcard /opt/veredact/.on-server)
 
-.PHONY: venv build-zk test lint validate eval smoke pilot experiment tables figures all capabilities paper-runs clean-results resummarize
+.PHONY: venv build-zk test lint validate eval smoke experiment tables figures all capabilities paper-runs clean-results resummarize
 
 ifeq ($(ON_SERVER),)
 # laptop: forward every target to the server (same target, same variables)
-venv build-zk test lint validate eval smoke pilot experiment tables figures all capabilities paper-runs resummarize:
+venv build-zk test lint validate eval smoke experiment tables figures all capabilities paper-runs resummarize:
 	deploy/aws/remote.sh make $@ TIER=$(TIER) EXP=$(EXP) FORCE=$(FORCE)
 clean-results:
 	@echo "results/ lives on the server; delete there via: deploy/aws/remote.sh make clean-results"
@@ -47,7 +47,7 @@ eval: validate                   ## results/<exp>/<method>/<TIER>/ (finished met
 smoke:
 	$(MAKE) eval TIER=smoke EXP=all
 
-pilot experiment:                ## on the server, with Besu: deploy/experiments/run_experiments.sh
+experiment:                      ## on the server, with Besu: deploy/experiments/run_experiments.sh
 	deploy/experiments/run_experiments.sh $@ all
 
 tables:

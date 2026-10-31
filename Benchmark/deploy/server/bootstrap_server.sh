@@ -60,7 +60,7 @@ sudo -u "$RUN_USER" bash -lc "
   [[ $QUICK == 1 ]] || .venv/bin/pip install -q -U pip
   .venv/bin/pip install -q -e '.[dev,server]'
   [[ $QUICK == 1 ]] || .venv/bin/pip install -q 'liboqs-python @ git+https://github.com/open-quantum-safe/liboqs-python@$LIBOQS_VERSION'
-  (cd native/pqzk_stark && ../../.venv/bin/maturin develop --release -q)   # same build as make build-zk / launch_run.sh
+  (cd native/pqzk_stark && ../../.venv/bin/maturin develop --release -q)   # same build as make build-zk
   VRPQ_SIG_BACKEND=oqs .venv/bin/python -c 'from veredact_bench.methods.veredact.crypto.pqsig import load_pqsig; print(\"signature backend:\", load_pqsig(\"oqs\").name)'
   [[ $QUICK == 1 ]] || .venv/bin/python -m pytest -q
 "
