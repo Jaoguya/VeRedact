@@ -1,6 +1,6 @@
 # Handoff — VeRedact-PQ benchmark
 
-Branch `s99-leta-exp1-latency`, state of 30 October 2026.
+Branch `s99-leta-exp1-latency`, state of 31 October 2026.
 
 > **Do not run anything on AWS without the author's explicit yes for that specific action** (booting a machine,
 > tests, smoke, reruns, provers, moving or deleting results). One yes covers one action. The full run starts only
@@ -9,8 +9,10 @@ Branch `s99-leta-exp1-latency`, state of 30 October 2026.
 **In short:** the code follows the final manuscript `Overleaf/VeRedact-optimize.tex` (accepted as-is: the "Peppo
 Implementation Strategy"). **No experiment has been run with the new code yet.** The author's limits: **no spot**,
 **only machines the author owns and controls (AWS, nothing local or third-party)**, **budget US$50**. The plan is
-open (section 5): recommended **O2**, one run on veredact-bench plus on-demand provers sized to the request rate
-(~US$30–37, ~12–17 h, needs new code).
+open (section 5): everything runs on veredact-bench with on-demand provers during Exp. 1, and the author picks how
+many provers (**P1** 1 prover ~US$35–42, **P2** 2 provers ~US$55–61) and whether one run is enough (**D1b**).
+Neither needs new code. The earlier recommendation O2 (a prover pool sized to the rate) turned out not to be
+available — section 5 says why.
 
 ## 1. What the project is
 
@@ -67,7 +69,8 @@ Scale: 10^5-transaction ledger, n_Q up to 10^4, 30 samples per point. The manusc
 | Code | 105 tests pass (image builder, 1b83d44); smoke of the split run: 12 of 13 parts exit 0, e1 not run; 7 bugs fixed (b41848b) |
 | Results with the new code | **none** |
 | Spot attempt (30 Oct) | no spot for any 384-vCPU prover pool in us-east-2: nothing started (~US$2.3) |
-| On-demand switch | committed and pushed (`d6f70b8`): `configs/aws.toml [run] market`, used by `provision_workers.sh` / `provision_provers.sh` (split run) and `provision_provers_local.sh` (one-server run, O2) |
+| On-demand switch | `configs/aws.toml [run] market`, read as `RUN_MARKET`. `d6f70b8` wired the split-run scripts; `3751697` wired `provision_provers_local.sh` too (it had stayed on spot with an on-demand fallback) and made `aws_config.py` reject any other value. All three launch paths are on demand |
+| Open for the author | D1 (how many provers: P1/P2), D1b (one run vs three), D4 (`rep_sequence.sh` stale). Nothing decided, no default changed |
 | AWS leftovers | image ami-083cb25ef0de5032b + snap-0de92fbdcccc2a935 in us-east-2 (~US$5/month); delete with `teardown_workers.sh` when not needed (ask) |
 | Spent this session (approx.) | veredact-bench idle leak from a test ~US$47 (fixed: killpg in `test_fidelity.py`), smoke ~US$14, spot attempt ~US$2.3, images ~US$1.3 |
 
@@ -134,7 +137,8 @@ step 2 **without** provers and come out client-bound (~270 proofs/s locally). `f
 ## 6. Next steps (each AWS step needs the author's yes)
 
 1. Author picks D1 (and D2).
-2. For O2: write the rate-sized prover pool; tests on the server; rebuild the image if workers are used.
+2. No code is needed for P1/P2, and neither uses the workers or the prebuilt image (`provision_provers_local.sh`
+   boots plain Ubuntu from SSM), so the us-east-2 image + snapshot are now dead weight (~US$5/month, see above).
 3. Smoke test of the chosen plan (smoke numbers are never results).
 4. On "start full run": run; check logs after ~15 min; collect, aggregate, tables, figures; tear down.
 5. The author writes the results text in Overleaf.
