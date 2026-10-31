@@ -67,8 +67,8 @@ def _exp01(rows, cfg):
         # means), p95 CI by bootstrap over the window's requests
         sub = cfg["experiment"].get("subwindows", 6)
         w = dur / sub
-        in_sub = lambda i: sum(start + i * w <= fin_t(r) < start + (i + 1) * w for r in completed)
-        sub_tp = [M.throughput(in_sub(i), w) for i in range(sub)]
+        ends = [fin_t(r) for r in completed]
+        sub_tp = [M.throughput(sum(start + i * w <= t < start + (i + 1) * w for t in ends), w) for i in range(sub)]
         out[k] = {
             "offered": len(win),
             "decided": sum(r["status"] in ("finalized", "rejected", "failed") for r in win),

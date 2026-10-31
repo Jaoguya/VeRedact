@@ -10,7 +10,7 @@ No experiment has run with the current code; every earlier result is superseded.
 
 | # | Left | Needs |
 |:-:|:--|:--|
-| 1 | Tests + lint on the server (new code of 2026-11-01 not yet tested) | author yes |
+| 1 | ~~Tests + lint on the server~~ done 2026-11-01: 108 passed, 1 skipped; ruff clean | — |
 | 2 | Rebuild the us-east-2 image (`build_image.sh`), smoke of the hybrid plan (`TIER=smoke launch_reps.sh 3`): ARM prover boots, cross-check passes, `submitted_on_time` at 5,000 req/s | author yes each |
 | 3 | Full run: `provision_workers.sh 13`, `launch_reps.sh 3`; then `collect_reps.sh 3`, `teardown_workers.sh` | "start full run" |
 | 4 | S13 witness timing (up to ~10 % against S13): re-time or disclose | author decision |
@@ -33,3 +33,4 @@ No experiment has run with the current code; every earlier result is superseded.
 - 2026-10-31 — Author: hybrid plan (Exp. 2–5 × 3 runs of 10 samples, Exp. 0/1 once, m7i.4xlarge workers, one c8g.48xlarge prover, ~US$36–43). PR #1.
 - 2026-11-01 — Review fixes (PR #1): ARM prover AMI and AWS CLI by architecture, `[run] worker_type`, environment m7i.4xlarge / us-east-2, prover cross-check (ARM proof verified on x86), `config.ONCE`/`REPS`, pooled p95, Exp. 1 sub-window and bootstrap CIs. Not tested yet.
 - 2026-11-01 — Stale removed: one-server and pilot run path (`full_run.sh`, `rep_sequence.sh`, `launch_run.sh`, local provers, pilot/scale tiers, diagnostics), spot code, old figures and table, `Overleaf/newchange.md` and `revised/`, old-manuscript docs and history.
+- 2026-11-01 — Server tests: 108 passed, 1 skipped; lint clean after fixing B023 in the Exp. 1 sub-window CI (`summaries.py`).
