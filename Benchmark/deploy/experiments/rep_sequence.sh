@@ -10,6 +10,7 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 FROM=${1:?usage: $0 <from> <to>}; TO=${2:?usage: $0 <from> <to>}
 mkdir -p results/logs
+VRPQ_EXP1=veredact,veredact-per-request,veredact-fixed-batch,veredact-cora-no-sfmr  # every system that proves (D4)
 for r in $(seq "$FROM" "$TO"); do
   rr=$(printf %02d "$r"); LOG=results/logs/rep_r$rr.out
   sudo shutdown -h +${REP_HARD_CAP_MIN:-720} veredact-rep-hard-cap   # replaced by the next repetition's cap
@@ -17,14 +18,14 @@ for r in $(seq "$FROM" "$TO"); do
     echo "rep $r start $(date -u +%FT%TZ)"
     export VRPQ_REP=$r
     if deploy/server/provision_provers_local.sh "${PROVER_COUNT:-2}" "${PROVER_TYPE:-c7i.48xlarge}"; then
-      VRPQ_PROVER_KEY=$(sed -n 1p deploy/aws/.provers) VRPQ_PROVERS=$(sed -n 2p deploy/aws/.provers) SYSTEMS=veredact \
+      VRPQ_PROVER_KEY=$(sed -n 1p deploy/aws/.provers) VRPQ_PROVERS=$(sed -n 2p deploy/aws/.provers) SYSTEMS=$VRPQ_EXP1 \
         deploy/experiments/run_experiments.sh experiment exp01_redaction_throughput
       echo "STEP1_EXIT=$?"
     else
       echo "STEP1: prover hosts could not be launched"
     fi
     deploy/server/teardown_provers_local.sh
-    VRPQ_SKIP=exp01_redaction_throughput:veredact deploy/experiments/run_experiments.sh experiment all
+    VRPQ_SKIP=$(sed 's/[^,]*/exp01_redaction_throughput:&/g' <<< "$VRPQ_EXP1") deploy/experiments/run_experiments.sh experiment all
     echo "RUN_EXIT=$?"
     echo "rep $r end $(date -u +%FT%TZ)"
   } > "$LOG" 2>&1

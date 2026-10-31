@@ -78,10 +78,19 @@ Scale: 10^5-transaction ledger, n_Q up to 10^4, 30 samples per point. The manusc
 | Exp. 1 | **1 run**; error bars from six 10-s sub-windows (throughput) and bootstrap (p95); 60 s window + 30 s drain unchanged |
 | Exp. 2, 3, 4, 5 | **3 runs**, 10 samples per point per run (30 in total); p95 from the pooled 30 samples |
 | Exp. 0 | 1 run (100 samples per primitive) |
-| Server | m7i.4xlarge (16 vCPU, 64 GiB), us-east-2, on demand; one run per server |
+| Server | m7i.4xlarge (16 vCPU, 64 GiB), us-east-2, on demand; split run (`launch_reps.sh 3`): one worker per experiment part and run, 13 workers (run 1: 5, runs 2–3: 4 each) |
 | Prover | 1 × c8g.48xlarge (192 Graviton cores), on demand, only during VeRedact-PQ's Exp. 1 |
 | STARK field | f128 (unchanged) |
 | Cost / time | ~US$30–38 (estimate) |
+
+Review fixes (1 Nov, PR #1, code written, **tests not yet run**): arm64 Ubuntu for "…g" prover types and no x86
+image for them (`provision_provers.sh`); AWS CLI zip by `uname -m` (`bootstrap_server.sh`); workers from
+`[run] worker_type` (no Singapore role, security group or key needed: the laptop launches); `base.yaml`
+environment = m7i.4xlarge / us-east-2 (results also record the real CPU and memory); each prover's first proof must
+verify on the system or the point does not start (`provers._cross_check`, ARM vs x86); `run_plan.py` +
+`config.ONCE`/`REPS` (samples 30 → 10 per run, S13 at 10^4 5 → 2); `aggregate_reps.py` pools p95 and copies Exp. 0/1;
+Exp. 1 `throughput_per_s_ci95` (6 sub-windows) and `latency_ms.p95_ci95` (bootstrap); `rep_sequence.sh` D4 fixed.
+Still to check in the smoke: `submitted_on_time` at 5,000 req/s (prover at ~70 % load).
 
 Evidence (31 Oct): worst peak memory ever 27.0 GiB (old 10^6 ledger), so 64 GiB is safe. Graviton c8g.24xlarge:
 single proof median 22.6 ms (Intel ~23 ms, so no prover-hardware bias), all 96 cores 3,559 proofs/s < 5,000, so the

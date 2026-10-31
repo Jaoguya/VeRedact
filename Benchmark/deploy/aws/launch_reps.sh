@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Start a full run split by experiment over the workers in deploy/aws/.workers (provision_workers.sh), in the order of
-# src/veredact_bench/utils/run_plan.py: the e1 workers first (Experiment 1, each with its own prover pair), then one
-# worker per other part and run. Provers first ([run] market): each e1 worker's pair is tried in its zone, then the
-# others; if it only fits elsewhere, that e1 worker is replaced there (provers and e1 share a zone). No pool for a
-# pair: nothing starts (the provers launched are terminated). Older results here move aside first. All detached;
+# src/veredact_bench/utils/run_plan.py (hybrid plan: Exp. 0 + 1 in run 1 only). Provers first ([run] market,
+# [run] prover_pools): the e1 worker's pool is tried in its zone, then the others; if it only fits elsewhere, the e1
+# worker is replaced there (provers and e1 share a zone). No pool: nothing starts (launched provers are terminated). Older results here move aside first. All detached;
 # each worker powers itself off. Later: collect_reps.sh <runs>, then teardown_workers.sh.
 # Usage: [TIER=smoke] [ONLY="3 7"] [FORCE=--force] deploy/aws/launch_reps.sh <single|R>   (R >= 3)
 #   ONLY: (re)start only these workers (a failed part is rerun whole: with FORCE=--force; e1 gets new provers)

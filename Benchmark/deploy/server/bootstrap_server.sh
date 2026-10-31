@@ -34,9 +34,9 @@ if [[ "$(cat /usr/local/lib/liboqs.version 2>/dev/null)" != "$LIBOQS_VERSION" ]]
   ldconfig
 fi
 
-# ---- AWS CLI v2 (veredact-bench launches its own prover hosts with its IAM role; no keys stored) -----
+# ---- AWS CLI v2 (veredact-bench launches its own prover hosts with its IAM role; no keys stored); x86_64 or aarch64
 if ! command -v aws >/dev/null; then
-  (cd /tmp && curl -fsS https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o awscliv2.zip \
+  (cd /tmp && curl -fsS https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip -o awscliv2.zip \
      && apt-get install -y -q unzip >/dev/null && unzip -q -o awscliv2.zip && ./aws/install >/dev/null)
 fi
 fi   # QUICK

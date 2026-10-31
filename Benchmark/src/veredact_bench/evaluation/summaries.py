@@ -63,6 +63,12 @@ def _exp01(rows, cfg):
         completed = [r for r in done if _num(r.get("latency_ms")) is not None and start <= fin_t(r) < end]
         rounds = {r["batch_id"]: r for r in done if r.get("batch_id") not in ("", None)}  # one row per round
         e2e, censored = _e2e_latency_ms(win, rs)
+        # Exp. 1 runs once (hybrid plan 2026-10-31): throughput CI over equal sub-windows of the window (batch
+        # means), p95 CI by bootstrap over the window's requests
+        sub = cfg["experiment"].get("subwindows", 6)
+        w = dur / sub
+        in_sub = lambda i: sum(start + i * w <= fin_t(r) < start + (i + 1) * w for r in completed)
+        sub_tp = [M.throughput(in_sub(i), w) for i in range(sub)]
         out[k] = {
             "offered": len(win),
             "decided": sum(r["status"] in ("finalized", "rejected", "failed") for r in win),
@@ -73,8 +79,9 @@ def _exp01(rows, cfg):
             "finalized": len(fin),  # arrived in the window and finalized (any time): kept for traceability
             "completed_in_window": len(completed),
             "throughput_per_s": M.throughput(len(completed), dur),
+            "throughput_per_s_ci95": M.ci95_halfwidth(sub_tp),
             # end-to-end (arrival -> finalized) over the window's arrivals; unfinished = lower bound (_e2e_latency_ms)
-            "latency_ms": _stats(e2e),
+            "latency_ms": _stats(e2e) | ({"p95_ci95": M.bootstrap_ci95_halfwidth(e2e, 95)} if e2e else {}),
             "latency_censored_fraction": M.rate(censored, len(e2e)),
             # a percentile is exact only if fewer requests than its tail were censored; else it is a lower bound
             "latency_p95_lower_bound": censored > 0.05 * len(e2e),

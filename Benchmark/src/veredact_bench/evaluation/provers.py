@@ -15,6 +15,7 @@ import collections
 import itertools
 import os
 import threading
+import time
 from dataclasses import asdict
 from multiprocessing.connection import Client
 
@@ -30,6 +31,16 @@ def bundle(scheme) -> dict:
         "sks": [r.sk for r in scheme.ledger.requesters],
         "root": zk.root,  # checked by the service after rebuilding
     }
+
+
+def _cross_check(addr, conn, zk) -> None:
+    """One proof from the host must verify HERE: a host of another architecture (Graviton provers, x86 system)
+    that made unverifiable proofs would otherwise show up only as rejected requests, which latency leaves out."""
+    x, ts = os.urandom(32), int(time.time())
+    conn.send(("job", -1, ((0, x, 1, ts, None), 0, os.urandom(32))))
+    _, _, proof, _ = conn.recv()
+    if not zk.verify(0, x, proof, 1, ts):
+        raise RuntimeError(f"prover {addr}: its proof does not verify on the system")
 
 
 class RemoteProvers:
@@ -52,6 +63,7 @@ class RemoteProvers:
             kind, info = c.recv()
             if kind != "ready":
                 raise RuntimeError(f"prover {a}: {info}")
+            _cross_check(a, c, scheme.crypto.zk)
             self._conns.append((c, threading.Lock()))
             self._load.append(0)
             self._cap.append(int(info))  # the host's worker processes

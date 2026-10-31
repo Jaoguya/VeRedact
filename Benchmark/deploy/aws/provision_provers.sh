@@ -4,7 +4,7 @@
 # Only instances tagged Name=veredact-prover are created (large: they cost money every hour).
 #   deploy/aws/provision_provers.sh ["pools"]   (default: configs/aws.toml [run] prover_pools, e.g. "2xm7i.48xlarge 4xc7i.24xlarge")
 # Each pool shape in turn, one machine per request (a whole pool or none), in [run] market (PROVER_MARKET overrides).
-# Every shape is the same 384 vCPU of the same Xeon 8488C.
+# All shapes of one call must share one architecture (the first decides the AMI).
 # SUBNET_ID=<subnet>: launch there instead of the system's subnet. PROVERS_FILE (default deploy/aws/.provers).
 # A prebuilt image (deploy/aws/.image) in this region
 # replaces the Ubuntu image and the full bootstrap. Code lives in REMOTE_DIR/Benchmark, as on the workers.
@@ -37,8 +37,11 @@ fi
 echo "[2/5] launch one of ${POOLS[*]} (same subnet as the system under test)"
 QUICK=0; read -r IREG IMG _ 2>/dev/null < deploy/aws/.image || true
 VOL=30   # the image's snapshot is the workers' volume size: a smaller disk is refused
-if [[ "${IREG:-}" == "$REG" && -n "${IMG:-}" ]]; then AMI=$IMG; QUICK=1; VOL=$AWS_VOLUME_GB
-else AMI=$("${A[@]}" ssm get-parameter --name "$AWS_AMI_SSM_PARAMETER" --query Parameter.Value --output text); fi
+# Graviton ("<family><gen>g...", e.g. c8g.48xlarge): arm64 Ubuntu and the full bootstrap (the image is x86_64)
+ARM=0; [[ "${POOLS[0]#*x}" =~ ^[a-z]+[0-9]+g[a-z]*\. ]] && ARM=1
+if [[ $ARM == 0 && "${IREG:-}" == "$REG" && -n "${IMG:-}" ]]; then AMI=$IMG; QUICK=1; VOL=$AWS_VOLUME_GB
+else AMI=$("${A[@]}" ssm get-parameter --name "${AWS_AMI_SSM_PARAMETER/amd64/$([[ $ARM == 1 ]] && echo arm64 || echo amd64)}" \
+            --query Parameter.Value --output text); fi
 MK=${PROVER_MARKET:-$RUN_MARKET}
 OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
   'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}')

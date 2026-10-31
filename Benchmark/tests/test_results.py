@@ -138,6 +138,23 @@ def test_exp1_throughput_counts_redactions_finalized_during_the_window():
     assert abs(pt["throughput_per_s"] - 2 / 60) < 1e-9
 
 
+def test_exp1_single_run_cis_from_subwindows_and_bootstrap():
+    """Exp. 1 runs once: throughput CI over 6 sub-windows (steady 1/s -> 0), p95 CI by bootstrap (> 0, seeded)."""
+    from veredact_bench import metrics as M
+    from veredact_bench.evaluation.summaries import _exp01
+
+    rows = [
+        dict(sweep="rate", rate_rps=1, zipf_s=0.8, seq=i, in_window=1, fault="", status="finalized", batch_id=i,
+             batch_adaptations=1, arrival_s=10.0 + i, submit_s=10.0 + i, latency_ms=100 + i, cutoff_s=100.0)
+        for i in range(60)
+    ]  # one finalized per second over the 60 s window
+    (pt,) = _exp01(rows, {"experiment": {"duration_s": 60, "warmup_s": 10}}).values()
+    assert pt["throughput_per_s"] == 1.0 and pt["throughput_per_s_ci95"] == 0.0
+    assert pt["latency_ms"]["p95_ci95"] > 0
+    xs = list(range(1000))
+    assert M.bootstrap_ci95_halfwidth(xs, 95) == M.bootstrap_ci95_halfwidth(xs, 95)
+
+
 def test_exp1_latency_is_end_to_end_and_never_drops_unfinished_requests():
     """Latency = arrival -> finalized over the window's arrivals; a request unfinished at the cutoff enters with
     cutoff - arrival (lower bound), a protocol rejection is excluded. Client-side waiting is included."""
@@ -336,6 +353,16 @@ def test_repetition_seed_and_folder(monkeypatch):
     assert load("smoke")["meta"]["seed"] == base
 
 
+def test_repetition_splits_samples_except_once_experiments(monkeypatch):
+    """Hybrid plan: a repeated experiment takes ceil(n / 3) samples per run (30 -> 10, S13 5 -> 2); Exp. 0 keeps all."""
+    from veredact_bench.utils.config import load
+
+    monkeypatch.setenv("VRPQ_REP", "2")
+    e3 = load("experiment", "exp03_audit_efficiency")["experiment"]
+    assert e3["samples_per_point"] == 10 and e3["samples_override"]["S13"]["10000"] == 2
+    assert load("experiment", "exp00_primitives")["experiment"]["samples_per_point"] == 100
+
+
 def test_aggregate_reps_mean_and_ci():
     import importlib.util
 
@@ -368,6 +395,22 @@ def test_three_run_aggregate_ci_is_students_t_with_two_degrees_of_freedom():
     # t(0.975, 2) = 4.302653, sample sd = 1, n = 3: 4.302653 / sqrt(3)
     assert out["median"] == 2.0 and out["reps"] == 3
     assert out["ci95_halfwidth"] == pytest.approx(2.48414, abs=1e-4)
+
+
+def test_aggregate_p95_is_pooled_over_runs():
+    """Hybrid plan: 10 samples per run are too few for a p95, so the aggregate p95 is the pooled one; the median and
+    its CI stay over the per-run medians."""
+    import importlib.util
+
+    from veredact_bench.utils.config import REPO_ROOT
+
+    spec = importlib.util.spec_from_file_location("agg", REPO_ROOT / "scripts" / "aggregate_reps.py")
+    agg = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(agg)
+    st = lambda m, p: {"n": 10, "median": m, "mean": m, "p95": p, "ci95_halfwidth": 0.0}
+    pooled = {"p": {"lat": {"n": 30, "median": 2.0, "mean": 2.0, "p95": 9.0, "ci95_halfwidth": 0.0}}}
+    out = agg.combine([{"p": {"lat": st(1.0, 4.0)}}, {"p": {"lat": st(3.0, 6.0)}}], pooled)["p"]["lat"]
+    assert out["p95"] == 9.0 and out["p95_pooled"] and out["median"] == 2.0
 
 
 def test_remote_provers_never_dispatch_after_close():
@@ -455,6 +498,31 @@ def test_prover_service_starts_every_worker_before_ready(monkeypatch):
 
     ps.serve(Conn(), 3)
     assert alive == [(("ready", 3), 3)]
+
+
+def test_prover_whose_proof_fails_here_is_refused():
+    """Graviton provers, x86 system: a host's first proof must verify on the system, else the point never starts."""
+    import pytest
+
+    from veredact_bench.evaluation.provers import _cross_check
+
+    class Conn:
+        def send(self, m):
+            self.job = m
+
+        def recv(self):
+            return ("done", -1, b"proof", b"sig")
+
+    class Zk:
+        def __init__(self, ok):
+            self.ok = ok
+
+        def verify(self, requester, x, proof, threshold, ts):
+            return self.ok and proof == b"proof"
+
+    _cross_check("h:1", Conn(), Zk(True))
+    with pytest.raises(RuntimeError, match="does not verify"):
+        _cross_check("h:1", Conn(), Zk(False))
 
 
 def test_remote_provers_report_a_host_lost_mid_point():

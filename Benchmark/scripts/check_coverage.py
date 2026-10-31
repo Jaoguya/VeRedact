@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from veredact_bench.utils.config import REPO_ROOT, load, results_tier
+from veredact_bench.utils.config import ONCE, REPO_ROOT, load, rep, results_tier
 
 R = REPO_ROOT / "results"
 
@@ -48,7 +48,7 @@ def main():
 
     def need(exp, key, want, field, inner=None, label=""):
         nonlocal checked
-        if (exp, key) in skip:
+        if (exp, key) in skip or (exp in ONCE and (rep() or 1) > 1):  # hybrid plan: run 1 only
             return
         checked += 1
         p = pts(exp, key, tier)

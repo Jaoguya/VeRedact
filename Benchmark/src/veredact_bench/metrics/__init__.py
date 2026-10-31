@@ -8,6 +8,7 @@ Exp. 2-4, every primitive call in exp00). Confidence intervals of the mean use S
 import math
 from collections.abc import Sequence
 
+import numpy as np
 from scipy import stats
 
 
@@ -70,3 +71,16 @@ def per_thousand(events: float, completed: int) -> float:
 def rate(hits: int, total: int) -> float:
     """hits / total, e.g. detected tampered records / injected, falsely rejected / valid."""
     return hits / total if total else 0.0
+
+
+def bootstrap_ci95_halfwidth(values: Sequence[float], q: float, resamples: int = 1000, seed: int = 0) -> float:
+    """Half-width of the 95% percentile-bootstrap CI of the q-th percentile (Exp. 1 p95: one run, many requests)."""
+    xs = np.asarray(values, dtype=float)
+    if len(xs) < 2:
+        return 0.0
+    rng, est = np.random.default_rng(seed), []
+    for _ in range(0, resamples, 20):  # 20 resamples at a time: bounded memory at 300,000 requests per point
+        idx = rng.integers(0, len(xs), size=(min(20, resamples - len(est)), len(xs)))
+        est.extend(np.percentile(xs[idx], q, axis=1))
+    lo, hi = np.percentile(est, [2.5, 97.5])
+    return float(hi - lo) / 2

@@ -24,6 +24,10 @@ TABLE_DIR = PROJECT_ROOT / "Overleaf" / "tables"  # paper tables: Overleaf/table
 CONFIG_DIR = REPO_ROOT / "configs"
 TIERS = ("smoke", "pilot", "scale", "experiment")
 REP_SEED_STRIDE = 1000  # repetition r runs with meta.seed + (r - 1) * 1000: rep 1 = the single-run seed
+# Hybrid plan (author 2026-10-31): these run in repetition 1 only, with their full samples; every other experiment
+# runs REPS times with ceil(samples / REPS) per point each (30 -> 10, so 30 in total; p95 pooled by aggregate_reps.py)
+ONCE = ("exp00_primitives", "exp01_redaction_throughput")
+REPS = 3
 
 
 def rep() -> int | None:
@@ -77,7 +81,19 @@ def load(tier: str, experiment: str | None = None) -> dict:
             raise ValueError("VRPQ_REP must be >= 1")
         cfg["meta"]["rep"] = r
         cfg["meta"]["seed"] += (r - 1) * REP_SEED_STRIDE
+        if experiment is not None and experiment not in ONCE:
+            _split_samples(cfg["experiment"])
     return cfg
+
+
+def _split_samples(e: dict) -> None:
+    """samples_per_point and every samples_override count -> ceil(n / REPS) for one repetition."""
+    per = lambda n: -(-n // REPS)
+    if "samples_per_point" in e:
+        e["samples_per_point"] = per(e["samples_per_point"])
+    for xs in (e.get("samples_override") or {}).values():
+        for x in xs:
+            xs[x] = per(xs[x])
 
 
 def load_all(tier: str) -> dict:

@@ -4,8 +4,8 @@
 [aws]
 profile = "veredact"             # AWS CLI profile with EC2 permissions
 region = "ap-southeast-1"        # Singapore (closest to Thailand)
-instance_type = "r7i.4xlarge"    # = configs/base.yaml environment.instance_type (16 vCPU / 128 GiB; c7i.4xlarge with
-                                 #   32 GiB until 2026-10-18: out of memory at the 10^6-transaction ledger)
+instance_type = "r7i.4xlarge"    # veredact-bench only (collects, draws); the run's machines: [run] worker_type
+                                 #   (c7i.4xlarge with 32 GiB until 2026-10-18: out of memory at the 10^6 ledger)
 volume_gb = 100
 # Ubuntu 24.04 LTS, resolved at launch from the public SSM parameter (no hard-coded AMI id)
 ami_ssm_parameter = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
@@ -33,17 +33,16 @@ dev_private_key = "0x8f2a55949038a9610f50fb23b5883af3b4ecb3c3bb792cbcefbd1542c69
 dev_address = "0xfe3b557e8fb62b89f4916b721be55ceb828dbd73"
 
 [run]
-# This section describes the SPLIT run (launch_reps.sh). On demand it is ~US$145-160: over the US$50 budget and not
-# the chosen plan (HANDOFF D1). The recommended one-server plan O2 runs deploy/experiments/full_run.sh instead, and
-# takes only [run] market from here. The on-demand vCPU quota is NOT the spot quota raised for this region.
+# The SPLIT run (launch_reps.sh), hybrid plan (author 2026-10-31, HANDOFF 5a): 13 workers (Exp. 0 + 1 in run 1 only,
+# Exp. 2-5 in runs 1-3) and one Graviton prover for run 1's Exp. 1. ~US$30-38 on demand.
 region = "us-east-2"             # split full run (workers + provers, deploy/aws/launch_reps.sh): 2026-10-27 author: Ohio,
                                  #   spot ~half of Singapore, spot quota 1,000 vCPU. veredact-bench stays in [aws] region
 zone = "us-east-2a"               # e1 worker + provers (cheapest m7i.48xlarge spot, 2026-10-28); others try it first too
-# prover pool per e1 worker: 384 vCPU of the same Xeon 8488C in any of these shapes (cheapest first; smaller machines
-# find spot more often, 2026-10-30: no 192-vCPU spot in any us-east-2 zone)
-prover_pools = "2xm7i.48xlarge 2xc7i.48xlarge 4xc7i.24xlarge 4xm7i.24xlarge 8xc7i.12xlarge"
+worker_type = "m7i.4xlarge"      # 16 vCPU (Xeon 8488C) / 64 GiB = configs/base.yaml environment; peak 27 GiB measured
+# prover pool of the e1 worker: Graviton c8g.48xlarge (192 cores, ~7,100 proofs/s est. from c8g.24xlarge's 3,559
+# measured 2026-10-31; single proof 22.6 ms = Intel's). A "...g" type boots the arm64 Ubuntu (provision_provers.sh)
+prover_pools = "1xc8g.48xlarge"
 market = "ondemand"              # workers + provers (author 2026-10-30: no spot; it had no capacity in us-east-2); "spot" possible
-e1_machines = 2                  # e1 workers, each with its own 384-vCPU pool: 2 x 384 + 14 x 16 = 992 of 1,000 vCPU
 prover_cap_min_per_run = 180     # prover hard limit = runs x this + 90 min boot (VeRedact-PQ Exp. 1 ~1.7 h per run)
 e1_cap_min_per_run = 300         # e1 worker hard limit = runs x this + 60 (Exp. 1 of a run ~4 h, 28 Oct estimate)
 part_cap_min = 720               # hard limit of every other part (one experiment of one run)

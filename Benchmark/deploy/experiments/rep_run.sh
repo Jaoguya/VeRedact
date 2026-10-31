@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One part of a full run on a WORKER (provision_workers.sh); parts and workers: src/veredact_bench/utils/run_plan.py
-# (fair: an experiment's systems share one machine). e1 = Experiment 1 of every run here: VeRedact-PQ's four systems
-# with the provers (VRPQ_PROVERS/VRPQ_PROVER_KEY) for run 1, 2, ..., then the baselines for run 1, 2, ...
+# (fair: an experiment's systems share one machine). e1 = Experiment 1 (run 1 only, hybrid plan): VeRedact-PQ's four
+# systems with the provers (VRPQ_PROVERS/VRPQ_PROVER_KEY), then the baselines.
 # <runs>: single (results/.../experiment/) | r | 1,2,3 (experiment-repNN/). TIER=smoke: plumbing check only.
 # Ends with DONE and powers off (stop: results stay on disk until collect_reps.sh).
 #   setsid nohup deploy/experiments/rep_run.sh <single|r|1,2,3> <part> > results/logs/rep_run.out 2>&1 &
@@ -10,7 +10,7 @@ cd "$(dirname "$0")/../.."
 RUNS=${1:?usage: $0 <single|r|1,2,3> <part>}; PART=${2:?usage: $0 <single|r|1,2,3> <part>}
 TIER=${TIER:-experiment}
 export SKIP_TABLES=1   # tables/figures come from collect_reps.sh once every part is in
-EXPS=$(.venv/bin/python -m veredact_bench.utils.run_plan experiments "$PART") || { echo "unknown part $PART"; exit 1; }
+EXPS=$(.venv/bin/python -m veredact_bench.utils.run_plan experiments "$PART" "$RUNS") || { echo "unknown part $PART"; exit 1; }
 VRPQ_EXP1=veredact,veredact-per-request,veredact-fixed-batch,veredact-cora-no-sfmr  # every system that proves
 n=$(tr ',' '\n' <<< "$RUNS" | wc -l)
 # hard cap: REP_HARD_CAP_MIN from launch_reps.sh (configs/aws.toml [run] caps); the defaults are the same values

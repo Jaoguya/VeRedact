@@ -37,12 +37,12 @@ launch() {   # launch <count>: ids of <count> workers, first subnet (zone order)
     OPT=(); [[ "$MK" == spot ]] && OPT=(--instance-market-options \
       'MarketType=spot,SpotOptions={SpotInstanceType=persistent,InstanceInterruptionBehavior=stop}')
     for SN in $SUBNETS; do
-      ids=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$AWS_INSTANCE_TYPE" --count "$1" \
+      ids=$("${A[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$RUN_WORKER_TYPE" --count "$1" \
               ${OPT[@]+"${OPT[@]}"} --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" --subnet-id "$SN" \
               --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$AWS_VOLUME_GB,VolumeType=gp3}" \
               --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
               --query 'Instances[].InstanceId' --output text) && { echo "$MK $SN: $ids" >&2; echo "$ids"; return; }
-      echo "no $MK capacity for $1 x $AWS_INSTANCE_TYPE in $SN" >&2
+      echo "no $MK capacity for $1 x $RUN_WORKER_TYPE in $SN" >&2
     done
   done
   return 1

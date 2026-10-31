@@ -12,6 +12,7 @@ experiment:
                                 #   finalized redaction of the point)
   duration_s: 60                # [PROPOSED] steady-state window per point
   warmup_s: 10                  # [METHOD] discarded before measuring
+  subwindows: 6                 # [METHOD] hybrid plan (2026-10-31): Exp. 1 runs once; throughput CI over 6 x 10 s
   cpu_pin: null                 # [METHOD] off. Diagnostics (scripts/diag_core_isolation.py) set
                                 #   {requesters: [...], system: [...]} to emulate requesters on their own machines
   requester_cores: 4            # [METHOD] physical cores (both hyperthreads) for requester processes; the system

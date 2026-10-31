@@ -12,16 +12,13 @@ def test_every_experiment_runs_on_exactly_one_part():
     assert all(len(p) == 1 for p in owners.values()), owners
 
 
-def test_three_runs_put_each_runs_exp1_on_one_of_two_prover_machines():
-    """Final plan (2026-10-30): two e1 workers, each with its own prover pair; a run's Exp. 1 (all its systems) is on
-    exactly one of them; one worker per other part and run."""
+def test_hybrid_three_runs_run_exp0_and_exp1_once():
+    """Hybrid plan (2026-10-31): one worker per part and run; Exp. 0 and 1 only in run 1, the rest in every run."""
     w = run_plan.workers(3)
-    assert w[:2] == [("1,3", "e1"), ("2", "e1")]
-    e1_runs = [r for x, p in w if p == "e1" for r in x.split(",")]
-    assert sorted(e1_runs) == ["1", "2", "3"]  # every run once, never split
-    rest = [x for x in w if x[1] != "e1"]
-    assert sorted(rest) == sorted((str(r), p) for r in (1, 2, 3) for p in ("e2", "e3", "e4", "e05"))
-    assert len(w) == 14
+    assert w[:5] == [("1", p) for p in ("e1", "e2", "e3", "e4", "e05")]
+    assert w[5:] == [(str(r), p) for r in (2, 3) for p in ("e2", "e3", "e4", "e05")]
+    assert run_plan.experiments_of("e05", 2) == ["exp05_blockchain_overhead"]
+    assert run_plan.experiments_of("e1", 3) == []
 
 
 def test_one_run_uses_the_single_run_folders():
