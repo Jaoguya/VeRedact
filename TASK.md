@@ -11,7 +11,7 @@ No experiment has run with the current code; every earlier result is superseded.
 | # | Left | Needs |
 |:-:|:--|:--|
 | 1 | ~~Tests + lint on the server~~ done 2026-11-01: 108 passed, 1 skipped; ruff clean | — |
-| 2 | Rebuild the us-east-2 image (`build_image.sh`), smoke of the hybrid plan (`TIER=smoke launch_reps.sh 3`): ARM prover boots, cross-check passes, `submitted_on_time` at 5,000 req/s | author yes each |
+| 2 | ~~Image + smoke~~ done 2026-11-01 (image ami-0e4ab1f2f46b8e16d, commit 913e892); `submitted_on_time` at 5,000 req/s only checkable in the full run | — |
 | 3 | Full run: `provision_workers.sh 13`, `launch_reps.sh 3`; then `collect_reps.sh 3`, `teardown_workers.sh` | "start full run" |
 | 4 | S13 witness timing (up to ~10 % against S13): re-time or disclose | author decision |
 | 5 | S99 in Exp. 0 / 2: keep or drop | author decision |
@@ -34,3 +34,4 @@ No experiment has run with the current code; every earlier result is superseded.
 - 2026-11-01 — Review fixes (PR #1): ARM prover AMI and AWS CLI by architecture, `[run] worker_type`, environment m7i.4xlarge / us-east-2, prover cross-check (ARM proof verified on x86), `config.ONCE`/`REPS`, pooled p95, Exp. 1 sub-window and bootstrap CIs. Not tested yet.
 - 2026-11-01 — Stale removed: one-server and pilot run path (`full_run.sh`, `rep_sequence.sh`, `launch_run.sh`, local provers, pilot/scale tiers, diagnostics), spot code, old figures and table, `Overleaf/newchange.md` and `revised/`, old-manuscript docs and history.
 - 2026-11-01 — Server tests: 108 passed, 1 skipped; lint clean after fixing B023 in the Exp. 1 sub-window CI (`summaries.py`).
+- 2026-11-01 — Smoke of the hybrid plan (us-east-2): image ami-0e4ab1f2f46b8e16d (913e892, 108 tests); 13 workers + ARM prover c8g.48xlarge (full bootstrap, listening); 13 parts exit 0, 0 tracebacks; collect coverage 123/123 (run 1), 59/59 (runs 2-3); aggregation: Exp. 0/1 copied, Exp. 2-5 3 runs; prover served every Exp. 1 point (ARM proofs verified on x86, no rejections). Per-worker COV=1 is expected noise (checks all experiments on a one-part worker). Workers + prover terminated, image kept. Logs: results/logs/smoke_hybrid_20261101.out, collect_smoke_hybrid_20261101.out.
