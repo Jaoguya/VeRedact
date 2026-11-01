@@ -32,7 +32,8 @@ fi
 for r in ${RUNS//,/ }; do
   run_of "$r"; deploy/experiments/run_experiments.sh "$TIER" $EXPS
   echo "RUN${r}_EXIT=$?"
-  VRPQ_SKIP= .venv/bin/python scripts/check_coverage.py --tier "$TIER"   # no skip: missing provers show as gaps
+  # this part's experiments only (the others run on other workers); no skip: missing provers show as gaps
+  VRPQ_SKIP= .venv/bin/python scripts/check_coverage.py --tier "$TIER" --experiments $EXPS
   echo "COV${r}_EXIT=$?"
 done
 echo "runs $RUNS part $PART end $(date -u +%FT%TZ)"

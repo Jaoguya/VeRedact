@@ -20,7 +20,7 @@ cleanup() {   # a failed build never leaves the on-demand builder behind
   rm -f "$WF"
 }
 trap cleanup EXIT
-WORKER_MARKET=ondemand WORKER_NAME=veredact-image-builder WORKERS_FILE=$WF NO_IMAGE=1 deploy/aws/provision_workers.sh 1
+WORKER_NAME=veredact-image-builder WORKERS_FILE=$WF NO_IMAGE=1 deploy/aws/provision_workers.sh 1
 read -r _ IID IP < "$WF"
 grep -q "bootstrapped" <(ssh -n -i "$KEY" -o StrictHostKeyChecking=accept-new "$AWS_SSH_USER@$IP" \
   "test -f $REPO_REMOTE_DIR/.on-server && echo bootstrapped") || { echo "builder bootstrap failed (results/logs/worker-bootstrap-1.log)"; exit 1; }

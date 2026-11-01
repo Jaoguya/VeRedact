@@ -1,6 +1,6 @@
 """No-cap check (author rule 2026-10-05): every scheme of an experiment has a value at EVERY x point of its
 figure. Reads results/<exp>/<method>/<tier>/metrics.json; prints one line per gap and exits 1 if any.
-Usage: scripts/check_coverage.py --tier smoke"""
+Usage: scripts/check_coverage.py --tier smoke [--experiments exp01_redaction_throughput ...]"""
 
 import argparse
 import json
@@ -40,7 +40,9 @@ def has(points, want: dict, field: str, inner=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tier", default="smoke")
-    tier = ap.parse_args().tier
+    ap.add_argument("--experiments", nargs="*", help="check only these (one worker's part of a split run)")
+    a = ap.parse_args()
+    tier, only = a.tier, set(a.experiments or [])
     gaps, checked = [], 0
 
     # VRPQ_SKIP="exp:system,...": pairs another server owns in a repeated run (as run_eval skips them)
@@ -48,7 +50,7 @@ def main():
 
     def need(exp, key, want, field, inner=None, label=""):
         nonlocal checked
-        if (exp, key) in skip or (exp in ONCE and (rep() or 1) > 1):  # hybrid plan: run 1 only
+        if (exp, key) in skip or (only and exp not in only) or (exp in ONCE and (rep() or 1) > 1):  # ONCE: run 1
             return
         checked += 1
         p = pts(exp, key, tier)

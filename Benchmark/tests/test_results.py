@@ -587,3 +587,24 @@ def test_variant_result_folders_keep_their_system_key(tmp_path, monkeypatch):
         (d / "metrics.json").write_text("{}")
     monkeypatch.setattr(rload, "RESULTS", tmp_path)
     assert sorted(rload.runs("exp01_redaction_throughput", "smoke")) == ["veredact", "veredact-per-request"]
+
+
+def test_coverage_of_one_part_checks_only_its_experiments(tmp_path, monkeypatch, capsys):
+    """A split-run worker holds one part: its coverage check must not report the other parts' experiments as gaps."""
+    import importlib.util
+    import sys
+
+    import pytest
+
+    from veredact_bench.utils.config import REPO_ROOT
+
+    spec = importlib.util.spec_from_file_location("cov", REPO_ROOT / "scripts" / "check_coverage.py")
+    cov = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cov)
+    monkeypatch.setattr(cov, "R", tmp_path)  # no results at all: every checked point is a gap
+    argv = ["check_coverage", "--tier", "smoke", "--experiments", "exp05_blockchain_overhead"]
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit):
+        cov.main()
+    gaps = [line for line in capsys.readouterr().out.splitlines() if line.startswith("GAP")]
+    assert gaps and all("exp05_blockchain_overhead" in g for g in gaps)

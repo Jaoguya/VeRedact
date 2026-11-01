@@ -16,8 +16,9 @@ PLAN=(); while read -r line; do PLAN+=("$line"); done < <(.venv/bin/python -m ve
 eval "$(.venv/bin/python deploy/aws/aws_config.py)"
 read -r _ _ _ ICOMMIT 2>/dev/null < deploy/aws/.image || true
 if [[ $TIER == experiment && -n "${ICOMMIT:-}" ]]; then   # the image (and the synced tree) must be the committed code
-  [[ -z "$(git status --porcelain -- .)" && "$ICOMMIT" == "$(git rev-parse --short HEAD)" ]] \
-    || { echo "image commit $ICOMMIT != clean HEAD: rebuild it (build_image.sh) or commit"; exit 1; }
+  # Benchmark/ only: a docs commit outside it (TASK.md, HANDOFF.md) moves HEAD but not the code the image holds
+  [[ -z "$(git status --porcelain -- .)" && "$(git rev-parse "$ICOMMIT:./")" == "$(git rev-parse HEAD:./)" ]] \
+    || { echo "Benchmark/ differs from image commit $ICOMMIT (or is uncommitted): rebuild it (build_image.sh) or commit"; exit 1; }
 fi
 KEY="$HOME/.ssh/$AWS_KEY_NAME.pem"
 A=(aws --profile "$AWS_PROFILE" --region "$RUN_REGION")
