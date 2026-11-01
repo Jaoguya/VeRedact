@@ -19,10 +19,8 @@ exact witnesses: response bytes and verification are measured directly; generati
 single-core witness times of its blocks + the directly measured challenge-dependent aggregation.
 """
 
-import multiprocessing
 import os
 import time
-from concurrent.futures import ProcessPoolExecutor
 
 from veredact_bench.evaluation.anchor import gather, make_anchor
 from veredact_bench.methods.baselines.s13_eaq_vrbc.construction import Ledger, nonmem_create_raw
@@ -119,30 +117,18 @@ class EAQVRBCScheme(Scheme):
         )
 
     def index_records(self) -> None:
-        """After the (untimed) history: Alg. 1 witness of every redacted block, built once and timed per
-        witness on one core. Built in parallel on one worker per PHYSICAL core (hyperthread siblings slow each
-        other: a timing bias against S13); a few are re-timed serially, and if parallel times are inflated by
-        more than 10 % every witness is re-timed serially, so the reported times are single-core times."""
+        """After the (untimed) history: Alg. 1 witness of every redacted block, built once and each timed alone,
+        one after another in this process (author 2026-11-01: no parallel build, whose contention inflated S13's
+        times by 3-7 %; ~6 s per block at 10^4 redactions)."""
         u, N, theta = self.p.u, self.p.N, self.L.acc.theta()
         blocks = sorted({s for _, s in self.redacted})
         xs = [self.p.H1(i, self.L.tags[i][2]) for i in blocks]
-        workers = max(1, min(self.cfg["environment"]["vcpus"] // 2, os.cpu_count() or 1))
-        ctx = multiprocessing.get_context("forkserver")  # fork from a multi-threaded process can deadlock
-        with ProcessPoolExecutor(workers, mp_context=ctx, initializer=_wit_init, initargs=(u, N, theta)) as ex:
-            built = list(ex.map(_wit_job, xs))
         _wit_init(u, N, theta)
-        k = min(4, len(xs))
-        solo = [_wit_job(x)[1] for x in xs[:k]]
-        par = [ms for _, ms in built[:k]]
-        ratio = (sorted(solo)[k // 2] / sorted(par)[k // 2]) if k else 1.0
-        if ratio < 0.9:  # parallel timing inflated: time every witness on its own instead
-            built = [(w, _wit_job(x)[1]) for (w, _), x in zip(built, xs)]
-        self.witness_calibration = ratio
+        built = [_wit_job(x) for x in xs]
         self._theta_n = len(self.L.acc.revoked)
         self._wit = {i: (x, w, ms) for i, x, (w, ms) in zip(blocks, xs, built)}
         get_logger().info(
-            f"  S13 witnesses: {len(xs)} blocks on {workers} workers, serial/parallel = {ratio:.2f}"
-            f"{' -> re-timed serially' if ratio < 0.9 else ''}, median "
+            f"  S13 witnesses: {len(xs)} blocks timed one at a time, median "
             f"{sorted(ms for _, _, ms in self._wit.values())[len(xs) // 2]:.0f} ms each"
         )
 

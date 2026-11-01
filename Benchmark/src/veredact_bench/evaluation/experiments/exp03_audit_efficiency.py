@@ -98,8 +98,6 @@ def query_rows(cfg, out, key, rpb, s, counts, ds, n_q_axis, extra=lambda s, n: [
             history_source=counts["history_source"],
             setup_s=s.setup_s,
             **capability_fields(s),
-            # S13 only: serial / parallel per-witness time (its witnesses are timed in a process pool)
-            **({"witness_calibration": s.witness_calibration} if hasattr(s, "witness_calibration") else {}),
         )
         if n > have:  # the history list reaches max n_Q: a shortfall is a bug, never a missing point
             raise RuntimeError(f"{key}: n_Q={n} but the history holds only {have} redactions")

@@ -24,7 +24,7 @@ its own ablation variants; this repository measures all of them on the same mach
 | `veredact-re-zk` | Exp. 2 variant | every committee member re-verifies each PQZK proof |
 | `veredact-shared-evidence` / `-per-record` | Exp. 3 variants | shared evidence per record / complete evidence per record |
 | `S1` / `S13` / `S27` / `S34` | [1] / [13] / [27] / [34] | Improved DCH / EAQ-VRBC / ETCH / REBS, each running its own paper's algorithm |
-| `S99` | — | LETA, post-quantum batch authentication; Exp. 0 and 2 only (author: keep or drop) |
+| `S99` | — | LETA, post-quantum batch authentication; Exp. 0 and 2 only (kept, author 2026-11-01) |
 
 Where things live: `Benchmark/` (code, configs, deploy, tests), `Other/docs/` (experiments, AWS runbook, paper
 conformance, one note per baseline), `TASK.md` (open items and log), `AUDIT_LOG.md` (correctness findings).
@@ -71,8 +71,8 @@ Intel's, so no prover-hardware bias.
 
 | Item | Choice |
 |---|---|
-| S13 witness timing | timed in parallel, re-timed serially only above 10 % inflation: up to ~10 % against S13 (3–7 % observed). Re-time (recommended) or disclose |
-| S99 | keep in Exp. 0 / 2 or drop |
+| S13 witness timing | **decided 2026-11-01: re-timed** — each witness timed alone, one after another (~+33 min per Exp. 3/4 worker) |
+| S99 | **decided 2026-11-01: kept** in Exp. 0 / 2 (cite it in the manuscript) |
 | Manuscript (Overleaf) | repetitions sentence, environment line, prover host sentence, Exp. 1 latency definition, Exp. 5 validators — `Other/docs/paper-conformance.md` §2 |
 
 ## 6. Next steps (each AWS step needs the author's yes)

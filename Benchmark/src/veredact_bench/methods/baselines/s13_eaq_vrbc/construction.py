@@ -248,7 +248,7 @@ def nonmem_create(A: Accumulator, x_h1: int, theta: int | None = None) -> NonMem
 
 
 def nonmem_create_raw(u: int, N: int, theta: int, x_h1: int) -> NonMemWit:
-    """Alg. 1 on plain integers (picklable: process-pool workers build witnesses in parallel).
+    """Alg. 1 on plain integers (the adapter builds and times one witness per redacted block).
     b is about as large as theta, so u^b mod N grows with the revocation history (Alg. 1 as written;
     the Auditee does not hold phi(N) and cannot reduce b)."""
     x, s = x_h1, [1]

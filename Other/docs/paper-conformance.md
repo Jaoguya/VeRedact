@@ -25,9 +25,9 @@ the results text or a reviewer touches them. The manuscript is edited only by th
 | Setup, environment | "evaluated on a server" | each experiment on one AWS m7i.4xlarge (16 vCPU Xeon 8488C, 64 GiB, us-east-2); VeRedact-PQ's requesters prove on a separate c8g.48xlarge (Graviton4) — proof time equal to the server's (22.6 ms median) |
 | Exp. 1 latency | "submission → finalized" | arrival → finalized; requests unfinished at the cutoff are censored (lower bound) |
 | Exp. 5 | validators [TBD] | 4, 7, 10 |
-| Baselines | four classical baselines | + S99 LETA (Li et al., IEEE JSAC 2026) in Exp. 0 and 2 (author: keep or drop) |
+| Baselines | four classical baselines | + S99 LETA (Li et al., IEEE JSAC 2026) in Exp. 0 and 2 (kept, author 2026-11-01): cite it and add its Table I row |
 | S1 block size | — | one transaction per block (disclosed; `Other/docs/baselines/S1-improved-dch.md`) |
-| S13 witness timing | — | timed in parallel, re-timed serially only above 10 % inflation: up to ~10 % against S13 (3–7 % observed). Author: re-time or disclose |
+| S13 witness timing | — | each witness timed alone, one after another (author 2026-11-01); disclose that generation time = summed single-core witness times + measured aggregation |
 | tab:primitives | [TBD] | filled from Exp. 0 (`make tables`) |
 
 ## 3. Table I vs. the generated capability matrix (`make capabilities`)

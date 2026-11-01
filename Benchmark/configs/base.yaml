@@ -52,7 +52,7 @@ environment:
   # >= 8 vCPUs for the system under test at veredact.vps_workers = 8. Results also record the real CPU and memory.
   instance_type: m7i.4xlarge    # [PROPOSED] hybrid plan 2026-10-31 (= configs/aws.toml [run] worker_type): Xeon 8488C,
                                 #   16 vCPU, 64 GiB (peak 27 GiB measured at the old 10^6 ledger; r7i.4xlarge until then)
-  vcpus: 16                     # = 8 physical cores x 2 hyperthreads; S13 times witnesses on vcpus // 2
+  vcpus: 16                     # = 8 physical cores x 2 hyperthreads
   region: us-east-2
 
 ledger:
