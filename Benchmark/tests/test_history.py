@@ -69,7 +69,7 @@ def test_saved_history_round_trip_gives_the_same_audit(cfg, ds, key):
         t.index_records()  # S13 witnesses are rebuilt and re-timed after a load, never taken from the file
     assert _audit(t) == before and all(before.values())
     if key == "S13":
-        assert t._wit and t.witness_calibration > 0
+        assert t._wit and all(ms > 0 for _, _, ms in t._wit.values())  # every witness timed on its own
     t.teardown()
 
 
