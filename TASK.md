@@ -12,7 +12,7 @@ No experiment has run with the current code; every earlier result is superseded.
 |:-:|:--|:--|
 | 1 | ~~Tests + lint on the server~~ done 2026-11-01: 108 passed, 1 skipped; ruff clean | — |
 | 2 | ~~Image + smoke~~ done 2026-11-01 (smoke on 913e892; full-run image ami-0453af8e0c1365923, commit 1122a00); `submitted_on_time` at 5,000 req/s only checkable in the full run | — |
-| 3 | Full run: `provision_workers.sh 13`, `launch_reps.sh 3`; then `collect_reps.sh 3`, `teardown_workers.sh` | "start full run" |
+| 3 | Full run — PAUSED (author 2026-11-02); workers stopped, image ami-0b477a5fcbfdd36e1 ready; `launch_reps.sh 3`, then `collect_reps.sh 3`, `teardown_workers.sh` | "start full run" + budget |
 | 4 | ~~S13 witness timing~~ decided 2026-11-01: re-timed serially | — |
 | 5 | ~~S99~~ decided 2026-11-01: kept in Exp. 0 / 2 | — |
 | 6 | Manuscript text (`paper-conformance.md` §2): repetitions, environment, prover host, Exp. 1 latency definition, Exp. 5 validators | author |
@@ -41,3 +41,5 @@ No experiment has run with the current code; every earlier result is superseded.
 - 2026-11-01 — Author: "Start full run" (Peppo and Yew approved PR #2 over LINE). Full run launched from fix-launch-guard (Benchmark/ = 1122a00, image ami-0453af8e0c1365923).
 - 2026-11-01 — Full run FAILED before any experiment: the ARM prover bootstrap over SSH from the laptop broke twice (laptop asleep on battery: "Connection reset", "Broken pipe"); 3rd try died on a security-group lookup error (reported as "no capacity"). Provers terminated (i-08ad5679cad1a464c up 11:22–14:03 UTC); 13 workers stopped by the idle watchdog, not terminated. Wasted ~US$30–40 (estimate).
 - 2026-11-01 — Fix (author): laptop sleep no longer breaks a launch — bootstrap runs detached on workers and provers, the laptop polls with retries (`deploy/aws/remote_lib.sh`); non-e1 parts start before the provers; a worker stopped while waiting is restarted; prover failure message names the real cause. Shell only, syntax-checked; not run yet.
+- 2026-11-02 — Image rebuilt with the sleep-safe bootstrap: ami-0b477a5fcbfdd36e1 / snap-02f145bfa3aa32fc3 (ee33357), 109 tests on the builder; old image deleted.
+- 2026-11-02 — Author: full run paused, everything stopped (13 workers + veredact-bench stopped, no provers); HANDOFF updated.

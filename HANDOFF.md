@@ -1,15 +1,17 @@
 # Handoff — VeRedact-PQ benchmark
 
-Branch `s99-leta-exp1-latency` (PR #1), state of 1 November 2026.
+Branch `fix-launch-guard` (latest; PR #1 and #2 closed), state of 2 November 2026. **The full run is PAUSED by the author.**
 
 > **Do not run anything on AWS without the author's explicit yes for that specific action** (booting a machine,
 > tests, smoke, reruns, provers, moving or deleting results). One yes covers one action. The full run starts only
 > on the exact words **"start full run"**.
 
 **In short:** the code follows the final manuscript `Overleaf/VeRedact-optimize.tex` (accepted as-is: the "Peppo
-Implementation Strategy"). **No experiment has run with the current code yet.** The author's limits: on-demand AWS
-machines the author controls (nothing local or third-party), budget **US$50**. The plan is the **hybrid plan** (§4),
-~US$36–43 for the full run. The code of 1 November is **not tested yet**.
+Implementation Strategy"). **No experiment has run with the current code yet.** The plan is the **hybrid plan** (§4).
+Code tested (109 passed), smoke passed (1 Nov), image ready. The first full-run launch (1 Nov) failed before any
+experiment: the prover set-up ran inside the laptop's SSH session and died when the laptop slept; fixed in `ee33357`
+(detached set-up + polling, `deploy/aws/remote_lib.sh`). Spent ~US$137 so far (US$75 billed to 29 Oct + ~US$62
+estimated), of which ~US$84 wasted; the author's budget was US$50. **Restart only on the author's "start full run".**
 
 ## 1. What the project is
 
@@ -60,9 +62,9 @@ Scale: 10^5-transaction ledger, n_Q up to 10^4.
 | Exp. 2–5 | 3 runs × 10 samples per point (30 in total; S13 at n_Q = 10^4: 3 × 2); median = mean of per-run medians with a t CI (2 df); p95 pooled over the runs (`aggregate_reps.py`) |
 | Exp. 0, 1 | run 1 only (`config.ONCE`); Exp. 1 throughput CI over 6 × 10-s sub-windows, bootstrap p95 CI; 60 s window + 30 s drain |
 | Machines | split run in us-east-2, on demand: one m7i.4xlarge worker per experiment part and run (13: run 1 = e1, e2, e3, e4, e05; runs 2–3 = e2, e3, e4, e05); every system of an experiment on one machine |
-| Prover | 1 × c8g.48xlarge (arm64 Ubuntu, full bootstrap), only for run 1's Exp. 1 |
+| Prover | 1 × c8g.48xlarge (arm64 Ubuntu, full detached bootstrap ~25–30 min), only for run 1's Exp. 1 |
 | STARK | f128 field (author) |
-| Cost / time | ~US$36–43, ~5–6 h wall time (estimate; Exp. 2–5 hours not yet known) |
+| Cost / time | ~US$38–47 incl. S13 re-timing, ~5–6 h wall time (estimate; Exp. 2–5 hours not yet known) |
 
 Evidence: worst peak memory ever 27.0 GiB (old 10^6 ledger), so 64 GiB is safe; Graviton proof median 22.6 ms =
 Intel's, so no prover-hardware bias.
@@ -77,23 +79,27 @@ Intel's, so no prover-hardware bias.
 
 ## 6. Next steps (each AWS step needs the author's yes)
 
-1. Tests + lint on the server: `Benchmark/deploy/aws/remote.sh make test lint`.
-2. Commit; rebuild the image: `deploy/aws/build_image.sh` (refuses an uncommitted tree).
-3. Smoke: `provision_workers.sh 13`, `TIER=smoke launch_reps.sh 3`, then `TIER=smoke collect_reps.sh 3`. Check: the ARM
-   prover boots, the cross-check passes, `submitted_on_time` stays high at 5,000 req/s.
-4. On "start full run": `provision_workers.sh 13`, `launch_reps.sh 3`; logs after ~15 min.
-5. When all workers are off: `collect_reps.sh 3` (coverage, aggregation, tables, figures), `teardown_workers.sh`.
-6. The author writes the results text.
+1. Author decides the budget (~US$38–47 more) and says **"start full run"**.
+2. Launch from `fix-launch-guard` (Benchmark/ = image commit `ee33357`), laptop plugged in or awake:
+   `caffeinate -is deploy/aws/launch_reps.sh 3` (the 13 stopped workers in `deploy/aws/.workers` are started again;
+   parts other than e1 start first, then the prover, then e1). Check the e1 log after ~45 min:
+   `submitted_on_time` at 5,000 req/s; if low, rerun e1 with a second prover (~US$17).
+3. When all workers are off: `collect_reps.sh 3` (coverage, aggregation, tables, figures), `teardown_workers.sh`.
+4. The author writes the results text; merge `fix-launch-guard` into the main line when the author asks.
 
 Full commands: `Other/docs/aws-runbook.md`.
 
-## 7. AWS state
+## 7. AWS state (2 Nov, paused)
 
-| Item | State |
-|---|---|
-| veredact-bench | r7i.4xlarge, ap-southeast-1; powers itself off when idle |
-| us-east-2 | image ami-083cb25ef0de5032b + snap-0de92fbdcccc2a935 (old commit, ~US$5/month; `build_image.sh` replaces it); security groups `veredact-bench`, `veredact-prover`; key pair `veredact-bench` |
-| Not ours, never touch | SSO, test-, Apichon-Ubuntu, siemcrypt-eval; in us-east-2 pqbvcd, starfish, des431, snap-0b10404f5d9db0a37, snap-055db4676f7f6676b |
+| Item | State | Cost while paused |
+|---|---|---|
+| 13 workers `veredact-rep-worker` (m7i.4xlarge, us-east-2) | **stopped**, reusable | disks ~US$2.6/day |
+| veredact-bench (r7i.4xlarge, ap-southeast-1) | **stopped** | disk only |
+| Image `ami-0b477a5fcbfdd36e1` / `snap-02f145bfa3aa32fc3` (commit `ee33357`) | available | ~US$5/month |
+| Provers, builders | none | — |
+| Not ours, never touch | SSO, test-, Apichon-Ubuntu, siemcrypt-eval; in us-east-2 pqbvcd, starfish (incl. the two `starfish-fog-cache` images), des431, snap-0b10404f5d9db0a37, snap-055db4676f7f6676b | — |
+
+To stop all project cost: `deploy/aws/teardown_workers.sh` (terminates the workers and deletes the image; ask first).
 
 ## 8. House rules
 
