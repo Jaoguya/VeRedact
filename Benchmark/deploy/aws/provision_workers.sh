@@ -9,6 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 N=${1:?usage: $0 <N>}
 eval "$(.venv/bin/python deploy/aws/aws_config.py)"
+. deploy/aws/remote_lib.sh   # detached bootstrap + polling: survives the laptop's SSH dropping
 A=(aws --profile "$AWS_PROFILE" --region "$RUN_REGION")
 KEY="$HOME/.ssh/$AWS_KEY_NAME.pem"
 NAME=${WORKER_NAME:-veredact-rep-worker}; WF=${WORKERS_FILE:-deploy/aws/.workers}
@@ -63,16 +64,17 @@ mkdir -p results/logs
 while read -r r IID IP; do
   (
     SSH=(ssh -n -i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$AWS_SSH_USER@$IP")
-    for _ in $(seq 1 60); do "${SSH[@]}" true 2>/dev/null && break; sleep 5; done
-    "${SSH[@]}" "sudo shutdown -h +$RUN_SETUP_CAP_MIN veredact-setup-cap"   # set-up cap; rep_run.sh replaces it
-    scp -q -i "$KEY" -o StrictHostKeyChecking=accept-new deploy/server/bootstrap_server.sh "$AWS_SSH_USER@$IP:/tmp/"
-    "${SSH[@]}" "sudo mkdir -p $REPO_REMOTE_DIR/Benchmark && sudo chown -R $AWS_SSH_USER $REPO_REMOTE_DIR"
-    rsync -az -e "ssh -i $KEY -o StrictHostKeyChecking=accept-new" --exclude .git --exclude .venv --exclude __pycache__ \
+    wait_until 15 "${SSH[@]}" -- true || { echo "worker $r ($IP) NO SSH"; exit 1; }
+    retry "${SSH[@]}" "sudo shutdown -h +$RUN_SETUP_CAP_MIN veredact-setup-cap" > /dev/null   # rep_run.sh replaces it
+    retry scp -q -i "$KEY" -o StrictHostKeyChecking=accept-new deploy/server/bootstrap_server.sh "$AWS_SSH_USER@$IP:/tmp/"
+    retry "${SSH[@]}" "sudo mkdir -p $REPO_REMOTE_DIR/Benchmark && sudo chown -R $AWS_SSH_USER $REPO_REMOTE_DIR"
+    retry rsync -az -e "ssh -i $KEY -o StrictHostKeyChecking=accept-new" --exclude .git --exclude .venv --exclude __pycache__ \
       --exclude target --exclude '/results/*' --exclude .cache --exclude 'deploy/aws/.*' --exclude deploy/besu/.network \
       ./ "$AWS_SSH_USER@$IP:$REPO_REMOTE_DIR/Benchmark/"
-    "${SSH[@]}" "sudo QUICK=$QUICK REPO_URL=$REPO_URL REPO_BRANCH=$REPO_BRANCH REMOTE_DIR=$REPO_REMOTE_DIR bash /tmp/bootstrap_server.sh" \
-      > "results/logs/worker-bootstrap-$r.log" 2>&1 && echo "worker $r ($IP) bootstrapped" || echo "worker $r ($IP) BOOTSTRAP FAILED"
-    "${SSH[@]}" "echo '* * * * * root $REPO_REMOTE_DIR/Benchmark/deploy/server/idle_watchdog.sh' | sudo tee /etc/cron.d/veredact-idle >/dev/null"
+    BOOT_ENV="QUICK=$QUICK REPO_URL=$REPO_URL REPO_BRANCH=$REPO_BRANCH REMOTE_DIR=$REPO_REMOTE_DIR" \
+      detached_bootstrap "results/logs/worker-bootstrap-$r.log" "$RUN_SETUP_CAP_MIN" "${SSH[@]}" \
+      && echo "worker $r ($IP) bootstrapped" || echo "worker $r ($IP) BOOTSTRAP FAILED"
+    retry "${SSH[@]}" "echo '* * * * * root $REPO_REMOTE_DIR/Benchmark/deploy/server/idle_watchdog.sh' | sudo tee /etc/cron.d/veredact-idle >/dev/null"
   ) &
 done < "$WF"
 wait

@@ -48,6 +48,11 @@ Benchmark/deploy/aws/collect_reps.sh 3           # results to veredact-bench: co
 Benchmark/deploy/aws/teardown_workers.sh         # workers, provers, image
 ```
 
+The laptop may sleep during a launch: workers and provers bootstrap detached on the host and the laptop only polls
+with retries (`deploy/aws/remote_lib.sh`), so a sleep pauses the launch and it resumes on wake. Parts other than e1
+start before the provers, and a worker stopped by its idle watchdog while waiting is started again. Keep the laptop
+awake for the fastest launch (`caffeinate -is deploy/aws/launch_reps.sh 3`; with the lid closed it must be plugged in).
+
 A failed part is rerun whole: `ONLY="<worker n>" FORCE=--force Benchmark/deploy/aws/launch_reps.sh 3`.
 Each worker runs `Benchmark/deploy/experiments/rep_run.sh <run> <part>` → `run_experiments.sh` (validates the config,
 starts Besu, runs `scripts/run_eval.py`, stops Besu). The experiment tier refuses any ML-DSA backend other than
