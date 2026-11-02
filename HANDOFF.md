@@ -81,8 +81,8 @@ Intel's, so no prover-hardware bias.
 
 1. Author decides the budget (~US$38–47 more) and says **"start full run"**.
 2. Launch from `fix-launch-guard` (Benchmark/ = image commit `ee33357`), laptop plugged in or awake:
-   `caffeinate -is deploy/aws/launch_reps.sh 3` (the 13 stopped workers in `deploy/aws/.workers` are started again;
-   parts other than e1 start first, then the prover, then e1). Check the e1 log after ~45 min:
+   `caffeinate -is sh -c 'deploy/aws/provision_workers.sh 13 && deploy/aws/launch_reps.sh 3'` (13 new workers from
+   the image; parts other than e1 start first, then the prover, then e1). Check the e1 log after ~45 min:
    `submitted_on_time` at 5,000 req/s; if low, rerun e1 with a second prover (~US$17).
 3. When all workers are off: `collect_reps.sh 3` (coverage, aggregation, tables, figures), `teardown_workers.sh`.
 4. The author writes the results text; merge `fix-launch-guard` into the main line when the author asks.
@@ -93,13 +93,14 @@ Full commands: `Other/docs/aws-runbook.md`.
 
 | Item | State | Cost while paused |
 |---|---|---|
-| 13 workers `veredact-rep-worker` (m7i.4xlarge, us-east-2) | **stopped**, reusable | disks ~US$2.6/day |
+| 13 workers `veredact-rep-worker` | **terminated** (author 2026-11-02; disks deleted) | — |
 | veredact-bench (r7i.4xlarge, ap-southeast-1) | **stopped** | disk only |
 | Image `ami-0b477a5fcbfdd36e1` / `snap-02f145bfa3aa32fc3` (commit `ee33357`) | available | ~US$5/month |
 | Provers, builders | none | — |
 | Not ours, never touch | SSO, test-, Apichon-Ubuntu, siemcrypt-eval; in us-east-2 pqbvcd, starfish (incl. the two `starfish-fog-cache` images), des431, snap-0b10404f5d9db0a37, snap-055db4676f7f6676b | — |
 
-To stop all project cost: `deploy/aws/teardown_workers.sh` (terminates the workers and deletes the image; ask first).
+Remaining project cost while paused: the image (~US$5/month) and veredact-bench's disk. `deploy/aws/teardown_workers.sh`
+without `KEEP_IMAGE=1` also deletes the image (ask first).
 
 ## 8. House rules
 
