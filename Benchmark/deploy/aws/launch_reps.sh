@@ -51,9 +51,10 @@ running_ip() {   # running_ip <worker n>: its IP, started again if its idle watc
   if [[ $state != running ]]; then
     [[ $state == stopping ]] && { retry "${A[@]}" ec2 wait instance-stopped --instance-ids "$IID" || true; }
     retry "${A[@]}" ec2 start-instances --instance-ids "$IID" >/dev/null; retry "${A[@]}" ec2 wait instance-status-ok --instance-ids "$IID"
-    IP=$(retry "${A[@]}" ec2 describe-instances --instance-ids "$IID" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
-    W2=$(mktemp); awk -v w="$w" -v l="$w $IID $IP" '$1 == w {print l; next} {print}' deploy/aws/.workers > "$W2" && mv "$W2" deploy/aws/.workers
   fi
+  # always re-read: a restart elsewhere (collect_reps.sh) gives a new public IP that .workers does not know (2026-11-03)
+  IP=$(retry "${A[@]}" ec2 describe-instances --instance-ids "$IID" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+  W2=$(mktemp); awk -v w="$w" -v l="$w $IID $IP" '$1 == w {print l; next} {print}' deploy/aws/.workers > "$W2" && mv "$W2" deploy/aws/.workers
   echo "$IP"
 }
 start() {   # start <worker n>: its part detached; a failure is reported, the others still start

@@ -1,119 +1,94 @@
-# Handoff — VeRedact-PQ benchmark
+# Handoff — VeRedact-PQ benchmark: full-run results
 
-Branch `fix-launch-guard` (latest; PR #1 and #2 closed), state of 2 November 2026. **The full run is PAUSED by the author.**
+Branch `fix-launch-guard`, state of 4 November 2026. **The full run is complete** (hybrid plan, finished 3 Nov);
+this file tells the next person where the results are and how to check them.
 
-> **Do not run anything on AWS without the author's explicit yes for that specific action** (booting a machine,
-> tests, smoke, reruns, provers, moving or deleting results). One yes covers one action. The full run starts only
-> on the exact words **"start full run"**.
+> **Do not run anything on AWS without the author's explicit yes for that specific action.** One yes covers one
+> action. Never edit the manuscript (`Overleaf/VeRedact-optimize.tex`) unless the author asks.
 
-**In short:** the code follows the final manuscript `Overleaf/VeRedact-optimize.tex` (accepted as-is: the "Peppo
-Implementation Strategy"). **No experiment has run with the current code yet.** The plan is the **hybrid plan** (§4).
-Code tested (109 passed), smoke passed (1 Nov), image ready. The first full-run launch (1 Nov) failed before any
-experiment: the prover set-up ran inside the laptop's SSH session and died when the laptop slept; fixed in `ee33357`
-(detached set-up + polling, `deploy/aws/remote_lib.sh`). Spent ~US$137 so far (US$75 billed to 29 Oct + ~US$62
-estimated), of which ~US$84 wasted; the author's budget was US$50. **Restart only on the author's "start full run".**
+## 1. What was run
 
-## 1. What the project is
-
-VeRedact-PQ is a **redactable blockchain** scheme (a recorded transaction can later be edited or erased under strict,
-auditable rules) built on **post-quantum** cryptography. The paper compares it with earlier schemes (baselines) and
-its own ablation variants; this repository measures all of them on the same machine type and data.
-
-| Name in code | Paper ref. | What it is |
-|---|---|---|
-| `veredact` | this paper | CORA selection + SFMR execution + SAVER audit, post-quantum throughout |
-| `veredact-per-request` / `-fixed-batch` / `-cora-no-sfmr` | Exp. 1 variants | no batching / arrival order, size 64 / CORA but one adaptation per request |
-| `veredact-re-zk` | Exp. 2 variant | every committee member re-verifies each PQZK proof |
-| `veredact-shared-evidence` / `-per-record` | Exp. 3 variants | shared evidence per record / complete evidence per record |
-| `S1` / `S13` / `S27` / `S34` | [1] / [13] / [27] / [34] | Improved DCH / EAQ-VRBC / ETCH / REBS, each running its own paper's algorithm |
-| `S99` | — | LETA, post-quantum batch authentication; Exp. 0 and 2 only (kept, author 2026-11-01) |
-
-Where things live: `Benchmark/` (code, configs, deploy, tests), `Other/docs/` (experiments, AWS runbook, paper
-conformance, one note per baseline), `TASK.md` (open items and log), `AUDIT_LOG.md` (correctness findings).
-Results: `Benchmark/results/` on the machines (not in git); `Result/` and `Overleaf/tables/` are written by the run.
-
-## 2. The experiments
-
-| Exp. | Measures | x-axis | Systems | Runs |
-|---|---|---|---|---|
-| 0 | Cost of each building block (`tab:primitives`) | — | all, incl. S99 | 1 |
-| 1 | Throughput, p95 latency (arrival → finalized), execution sharing | rate 100–5,000 req/s; Zipf skew | veredact + 3 variants, S1, S13, S27, S34 | 1 |
-| 2 | Phase 4 authorization per request and per set | committee 4–32; set 1–256 | veredact, re-zk, S1, S34, S99 | 3 |
-| 3 | Audit generation, size, verification, verified nodes | n_Q 10–10^4; records per batch 1/8/64 | veredact, shared-evidence, per-record, S1, S13 | 3 |
-| 4 | Selective PQZK escalation; tampered audit records detected | escalation 0–100 %; faults 1–10 % | veredact, S1, S13 | 3 |
-| 5 | Checkpoint size and finalization latency | affected batches 1–32; validators 4/7/10 | veredact | 3 |
-
-Scale: 10^5-transaction ledger, n_Q up to 10^4.
-
-## 3. Why there is a prover machine
-
-- The server **verifies** each PQZK proof (~0.7 ms, timed). **Creating** it (~23 ms median) is the requester's job,
-  excluded from server time by the paper (l. 2789).
-- At 5,000 req/s that is ~150 cores of proving; on the measured server it slowed VeRedact-PQ 4×. So requesters prove
-  on a separate host: one c8g.48xlarge (192 Graviton4 cores, ~7,100 proofs/s estimated from 3,559/s measured on 96).
-- Proofs are bound to the request, state and epoch: no precomputing, reuse or fakes. Each prover's first proof must
-  verify on the system (`provers._cross_check`), so an ARM/x86 mismatch stops the point instead of hiding as rejections.
-- A prover bottleneck can only penalise VeRedact-PQ (its latency includes the wait), never help it.
-
-## 4. The hybrid plan (author 2026-10-31, PR #1)
-
-| Item | Choice |
+| Item | Value |
 |---|---|
-| Exp. 2–5 | 3 runs × 10 samples per point (30 in total; S13 at n_Q = 10^4: 3 × 2); median = mean of per-run medians with a t CI (2 df); p95 pooled over the runs (`aggregate_reps.py`) |
-| Exp. 0, 1 | run 1 only (`config.ONCE`); Exp. 1 throughput CI over 6 × 10-s sub-windows, bootstrap p95 CI; 60 s window + 30 s drain |
-| Machines | split run in us-east-2, on demand: one m7i.4xlarge worker per experiment part and run (13: run 1 = e1, e2, e3, e4, e05; runs 2–3 = e2, e3, e4, e05); every system of an experiment on one machine |
-| Prover | 1 × c8g.48xlarge (arm64 Ubuntu, full detached bootstrap ~25–30 min), only for run 1's Exp. 1 |
-| STARK | f128 field (author) |
-| Cost / time | ~US$38–47 incl. S13 re-timing, ~5–6 h wall time (estimate; Exp. 2–5 hours not yet known) |
+| Manuscript | `Overleaf/VeRedact-optimize.tex` (code accepted as-is: "Peppo Implementation Strategy"; gaps in `Other/docs/paper-conformance.md` §1) |
+| Code | commit `ee33357` (`Benchmark/` tree of image `ami-0b477a5fcbfdd36e1`); 109 tests passed |
+| Scale | 10^5-transaction ledger, n_Q up to 10^4 |
+| Exp. 0, 1 | run 1 only (`config.ONCE`); Exp. 1 error bars from 6 × 10-s sub-windows (throughput) and bootstrap (p95) |
+| Exp. 2–5 | 3 runs × 10 samples per point (30 in total; S13 at n_Q = 10^4: 3 × 2); seeds 20260929 + (r−1)·1000 |
+| Machines | each experiment part on one AWS m7i.4xlarge (16 vCPU Xeon 8488C, 64 GiB, us-east-2), on demand; VeRedact-PQ's requesters proved on one c8g.48xlarge (192 Graviton4 cores) |
+| When | 3 Nov 2026, 02:04–06:14 UTC; run 1's Exp. 3 rerun from 13:10 UTC (see §4) |
+| S13 | audit witnesses timed one at a time (author: re-time) |
+| S99 | kept in Exp. 0 and 2 (author) |
 
-Evidence: worst peak memory ever 27.0 GiB (old 10^6 ledger), so 64 GiB is safe; Graviton proof median 22.6 ms =
-Intel's, so no prover-hardware bias.
+## 2. Where the results are
 
-## 5. Decisions and text left to the author
-
-| Item | Choice |
+| What | Where |
 |---|---|
-| S13 witness timing | **decided 2026-11-01: re-timed** — each witness timed alone, one after another (~+33 min per Exp. 3/4 worker) |
-| S99 | **decided 2026-11-01: kept** in Exp. 0 / 2 (cite it in the manuscript) |
-| Manuscript (Overleaf) | repetitions sentence, environment line, prover host sentence, Exp. 1 latency definition, Exp. 5 validators — `Other/docs/paper-conformance.md` §2 |
+| Figures (paper) | `Result/Pdf/exp1…exp5_*.pdf`, `Result/Picture/exp1…exp5_*.png` (this checkout) |
+| Table (paper) | `Overleaf/tables/tab_primitives.tex` |
+| Combined results (what the figures and table use) | `Benchmark/results/<exp>/<method>/experiment-reps/metrics.json` |
+| Per-run results | `Benchmark/results/<exp>/<method>/experiment-repNN/` (`rows.csv`, `metrics.json`, `config_resolved.yaml`, `run_info.json`, `run.log`) |
+| Logs | `Benchmark/results/logs/` (`rep_run_<run>_<part>.out` per worker, `experiment_<exp>_*.log`, `collect_full_20261103c.out`) |
+| Copies | `Benchmark/results/` is gitignored (6.6 GB): on this laptop and on veredact-bench (`/opt/veredact/Benchmark/results/`), both complete |
 
-## 6. Next steps (each AWS step needs the author's yes)
+Old runs are in `Benchmark/results/_superseded_*` and the `pilot/`, `scale/`, `smoke-*` folders: never use them.
 
-1. Author decides the budget (~US$38–47 more) and says **"start full run"**.
-2. Launch from `fix-launch-guard` (Benchmark/ = image commit `ee33357`), laptop plugged in or awake:
-   `caffeinate -is sh -c 'deploy/aws/provision_workers.sh 13 && deploy/aws/launch_reps.sh 3'` (13 new workers from
-   the image; parts other than e1 start first, then the prover, then e1). Check the e1 log after ~45 min:
-   `submitted_on_time` at 5,000 req/s; if low, rerun e1 with a second prover (~US$17).
-3. When all workers are off: `collect_reps.sh 3` (coverage, aggregation, tables, figures), `teardown_workers.sh`.
-4. The author writes the results text; merge `fix-launch-guard` into the main line when the author asks.
+## 3. How to check the results
 
-Full commands: `Other/docs/aws-runbook.md`.
-
-## 7. AWS state (2 Nov, paused)
-
-| Item | State | Cost while paused |
+| Check | How | Result on 3 Nov |
 |---|---|---|
-| 13 workers `veredact-rep-worker` | **terminated** (author 2026-11-02; disks deleted) | — |
-| veredact-bench (r7i.4xlarge, ap-southeast-1) | **stopped** | disk only |
-| Image `ami-0b477a5fcbfdd36e1` / `snap-02f145bfa3aa32fc3` (commit `ee33357`) | available | ~US$5/month |
-| Provers, builders | none | — |
-| Not ours, never touch | SSO, test-, Apichon-Ubuntu, siemcrypt-eval; in us-east-2 pqbvcd, starfish (incl. the two `starfish-fog-cache` images), des431, snap-0b10404f5d9db0a37, snap-055db4676f7f6676b | — |
+| Every (system, x) point has a value, per run | `VRPQ_REP=r .venv/bin/python scripts/check_coverage.py --tier experiment` (r = 1, 2, 3), on the server via `deploy/aws/remote.sh` | 478/478, 350/350, 350/350 — 0 gaps |
+| Runs combined | `scripts/aggregate_reps.py --tier experiment --reps 3` | 28 result sets: Exp. 0/1 copied (run once), Exp. 2–5 three runs |
+| Every part finished | `grep -E 'EXIT' Benchmark/results/logs/rep_run_*_e*.out` | all `RUN*_EXIT=0` (run 1 Exp. 3: after the rerun) |
+| Regenerate figures and table | `VRPQ_RESULTS_TIER=experiment-reps make tables figures TIER=experiment` (forwarded to the server) | — |
+| Same data for every system | `check_coverage.py` compares dataset and history ids per experiment | passed |
+| Provenance of a number | `run_info.json` (git commit, hardware, library versions, runtime) and `config_resolved.yaml` next to it | — |
 
-Remaining project cost while paused: the image (~US$5/month) and veredact-bench's disk. `deploy/aws/teardown_workers.sh`
-without `KEEP_IMAGE=1` also deletes the image (ask first).
+Reading `metrics.json`: keys are `"<axis>=<value>|..."`. In `experiment-reps`, a stats node has `median` (mean of the
+per-run medians), `ci95_halfwidth` (Student's t over the 3 runs, 2 df), `p95` (pooled over the runs,
+`p95_pooled: true`) and `p95_ci95`. Exp. 1 (`"reps": 1`): `throughput_per_s` with `throughput_per_s_ci95`
+(sub-windows), `latency_ms.p95` with `latency_ms.p95_ci95` (bootstrap), `submitted_on_time`, `decided`, censoring flags.
+
+## 4. Things a reader must know
+
+- **Run 1's Exp. 3 was rerun whole** (same seed): the first attempt stopped at 03:05 UTC with "anchoring transaction
+  … not mined within 600 s" while reloading the saved history into Besu (`history_cache.load`); cause not
+  established. The rerun finished with exit 0; Exp. 3 of runs 2–3 never failed.
+- **Prover not a bottleneck:** prover CPU at most ~30 % during Exp. 1 (CloudWatch), so `submitted_on_time` below 1 at
+  high rates comes from the system under test, not the requesters' proving.
+- **Missed block-watcher receipts:** many `receipt found by hash … (missed by the block watcher)` warnings in Exp. 3;
+  each was resolved by the hash lookup (safety net, `anchor.py`); the finished runs left none unresolved.
+- **Exp. 1 is one run:** its error bars are within-run (sub-windows, bootstrap), not over runs.
+- **Smoke numbers** (`smoke-*` folders) are plumbing checks, never results.
+
+## 5. Left for the author
+
+| Item | Where |
+|---|---|
+| Results text in Overleaf | from `Result/` and `experiment-reps` |
+| Manuscript lines: repetitions, environment (m7i.4xlarge, us-east-2), prover host, Exp. 1 latency definition (arrival → finalized), Exp. 5 validators (4/7/10), S99 citation + Table I row, S13 witness timing disclosure | `Other/docs/paper-conformance.md` §2 |
+| Uncommitted: `launch_reps.sh` always re-reads a worker's IP (fix found during the rerun); `TASK.md` lines | commit when asked (it changes `Benchmark/`, so the next launch needs a new image) |
+| Merge `fix-launch-guard` into the main line | when asked |
+
+## 6. AWS state (4 Nov) and cost
+
+| Item | State | Cost while idle |
+|---|---|---|
+| 13 workers `veredact-rep-worker` (us-east-2) | **stopped** (copies only; results are on veredact-bench and here) | disks ~US$2.6/day — terminate when the author says |
+| veredact-bench (r7i.4xlarge, ap-southeast-1) | **stopped**, holds all results | disk only |
+| Image `ami-0b477a5fcbfdd36e1` / `snap-02f145bfa3aa32fc3` | kept | ~US$5/month |
+| Not ours, never touch | SSO, test-, Apichon-Ubuntu, siemcrypt-eval; in us-east-2 pqbvcd, starfish (incl. `starfish-fog-cache` images), des431, snap-0b10404f5d9db0a37, snap-055db4676f7f6676b | — |
+
+Cost: billed US$75 up to 29 Oct; 30 Oct – 3 Nov not yet billed when this was written (estimate ~US$105–115,
+including ~US$35 for the failed launch of 1 Nov). Check Cost Explorer for the real totals.
+
+## 7. Where to read more
+
+`TASK.md` (log), `Other/docs/experiments.md` (rules, systems, metrics), `Other/docs/aws-runbook.md` (commands),
+`Other/docs/paper-manifest.md` (paper item → script → results folder), `Other/docs/baselines/*.md`, `AUDIT_LOG.md`.
 
 ## 8. House rules
 
-- Ask before running anything on AWS; one yes per action; full run only on "start full run".
-- No capped results; never simulate, extrapolate or reuse timings; same machine type for every system of an experiment.
+- Ask before running anything on AWS; one yes per action. No capped, simulated or reused timings.
 - Never edit the manuscript unless the author asks. Smoke numbers are never results. Verify a cause before claiming it.
 - Lean workspace, short comments, one line per task in `TASK.md`. Commit/push only when asked.
-- Every run has a hard time limit; after any test, check that veredact-bench powered off.
-
-## 9. Glossary
-
-- **Prover**: host that creates VeRedact-PQ requesters' zero-knowledge proofs (load generator, not timed).
-- **Verifier**: the server-side pass/reject check of a proof (timed).
-- **Part**: the experiments one worker runs (e1 = Exp. 1, e2, e3, e4, e05 = Exp. 0 + 5).
-- **Capped value**: a value cut off by a limit; never reported.
-- **History**: the redactions audited in Exp. 3–4, built before the timed audits.
