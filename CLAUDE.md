@@ -1,6 +1,6 @@
 # VeRedact-PQ — instructions for agents
 
-Team (GitHub): **jaoguya** (repo owner, AWS approver), **Ppdfd**, **yewza101**, **Rangsimann** (joining). You work
+Team (GitHub): **jaoguya** (repo owner, AWS approver), **Ppdfd**, **yewza101**, **PopRangsimann**. You work
 for one of them, your **owner**; ask for their GitHub username once if you do not know it.
 
 Read before working: `README.md` (latest full-run results, caveats, how to check them), `Other/docs/experiments.md`
@@ -18,7 +18,7 @@ Read before working: `README.md` (latest full-run results, caveats, how to check
   `Benchmark/src/veredact_bench/methods/baselines/` cites the paper section it follows.
 - **One graph per experiment**: each experiment's figure is a single panel; numbers from views left out go into a
   sentence or small table in the text, and the case where VeRedact-PQ does not win stays visible (graph or text).
-- **Manuscript** (`Overleaf/`): change it through a PR, approved by a teammate other than the author of the change.
+- **Manuscript** (`Overleaf/`): change it through a PR; say in the PR which section changes and why.
 
 ## Working an issue
 
@@ -37,7 +37,7 @@ show your owner what you will post and post it after they agree.
 5. **Finish**: open a PR whose body contains `Closes #<n>` and fills the PR template; when CI is green, comment
    `done: PR #<m>` on the issue and remove `in-progress`. Then go back to step 1.
 
-A PR merges into `main` after one approval from a teammate and green CI.
+A PR merges into `main` once CI is green; its author approves and merges it (no teammate review required).
 
 A checklist step counts as done when its deliverable is posted on the issue and the issue's **reviewer** has
 commented `✅ Step N accepted`; the reviewer ticks the box, not the owner.

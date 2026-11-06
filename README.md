@@ -59,7 +59,7 @@ VeRedact/
 ├── README.md  CLAUDE.md  AUDIT_LOG.md    overview + results, team/agent rules, audit findings
 ├── .github/                              issue/PR templates, CI (pytest + ruff), CODEOWNERS, setup-repo.sh
 ├── Overleaf/                             the manuscript
-│   ├── VeRedact-optimize.tex             manuscript (changes via PR, approved by another teammate)
+│   ├── VeRedact-optimize.tex             manuscript (changes via PR)
 │   └── tables/                           generated table: tab_primitives.tex (after the run)
 ├── Result/                               generated figures only (after the run)
 │   ├── Pdf/                              exp1..exp5_*.pdf (vector, for the paper)

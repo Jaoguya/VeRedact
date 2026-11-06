@@ -7,5 +7,5 @@ Closes #
 - [ ] Changes `Benchmark/`? Then the next AWS run needs a rebuilt image
 - [ ] Changes a baseline (`methods/baselines/`)? Paper section cited here: 
 - [ ] Any numbers or figures in this PR come from a full run (release tag: `run-...`), not a smoke run
-- [ ] Changes `Overleaf/`? Reviewed by a teammate other than me
+- [ ] Changes `Overleaf/`? Section and reason stated above
 - [ ] No AWS action taken without jaoguya's yes on the issue

@@ -1,2 +1,2 @@
-# Changes to the AWS launch/teardown scripts need jaoguya's review (AWS approver).
+# Changes to the AWS launch/teardown scripts automatically ask jaoguya (AWS approver) to look; not required to merge.
 /Benchmark/deploy/aws/ @jaoguya
