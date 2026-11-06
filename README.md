@@ -33,7 +33,8 @@ A finished (experiment, method, tier) is skipped on re-run; `make eval ... FORCE
 The experiment tier refuses to run without Besu and the liboqs ML-DSA-65 backend.
 
 **The paper's full run** is split over AWS workers in us-east-2, one machine per experiment and run (hybrid plan:
-Exp. 2–5 in 3 runs, Exp. 0 and 1 once); see `HANDOFF.md` and `Other/docs/aws-runbook.md`:
+Exp. 2–5 in 3 runs, Exp. 0 and 1 once); see [Results](#results-full-run-of-3-nov-2026) and `Other/docs/aws-runbook.md`.
+Every AWS action needs jaoguya's yes as a comment on its issue (`CLAUDE.md`):
 
 ```bash
 Benchmark/deploy/aws/build_image.sh                       # prebuilt worker image of the committed code
@@ -55,9 +56,10 @@ Benchmark/deploy/aws/teardown_workers.sh                  # workers, provers and
 
 ```
 VeRedact/
-├── README.md  HANDOFF.md  TASK.md  AUDIT_LOG.md   overview, plan, status, audit findings
+├── README.md  CLAUDE.md  AUDIT_LOG.md    overview + results, team/agent rules, audit findings
+├── .github/                              issue/PR templates, CI (pytest + ruff), CODEOWNERS, setup-repo.sh
 ├── Overleaf/                             the manuscript
-│   ├── VeRedact-optimize.tex             final manuscript (edited only by the author)
+│   ├── VeRedact-optimize.tex             manuscript (changes via PR, approved by another teammate)
 │   └── tables/                           generated table: tab_primitives.tex (after the run)
 ├── Result/                               generated figures only (after the run)
 │   ├── Pdf/                              exp1..exp5_*.pdf (vector, for the paper)
@@ -74,7 +76,7 @@ VeRedact/
 │   ├── deploy/                           aws/ (laptop side: server, workers, provers, split run), server/
 │   │                                     (bootstrap, watchdogs), besu/ (QBFT network), experiments/ (runners)
 │   └── results/                          raw runs <experiment>/<method>/<tier>/ (gitignored)
-├── Reference/                            papers: PDF, LaTeX/Markdown full text, summary, figures
+├── Reference/                            papers: PDF, Markdown full text, summary, figures
 │   ├── S1_Li2025_ImprovedDCH/  S13_Zhang2025_EAQ-VRBC/  S27_Liu2026_ETCH/  S34_Xue2025_REBS/  S99_Li2026_LETA/
 │   └── zkredact/                         ZK-Redact journal version (writing-style reference)
 └── Other/
@@ -87,4 +89,25 @@ VeRedact/
 On the server the same layout lives under `/opt/veredact` (`Benchmark/` is synced there; `Result/` and
 `Overleaf/tables/` are generated there and copied back).
 
-Status and open decisions: [`TASK.md`](TASK.md).
+## Results: full run of 3 Nov 2026
+
+| Item | Value |
+|:--|:--|
+| Code / image | `Benchmark/` of commit `ee33357`, image `ami-0b477a5fcbfdd36e1` (109 tests passed) |
+| Scale | 10^5-transaction ledger, n_Q up to 10^4 |
+| Repetitions | Exp. 2–5: 3 runs × 10 samples per point (S13 at n_Q = 10^4: 3 × 2), seeds 20260929 + (r−1)·1000; Exp. 0, 1: run 1 only (Exp. 1 error bars from 6 × 10-s sub-windows and bootstrap) |
+| When | 3 Nov 2026, 02:04–06:14 UTC; run 1's Exp. 3 rerun from 13:10 UTC |
+| Coverage | `check_coverage.py --tier experiment`: 478/478, 350/350, 350/350 (runs 1–3), every part `EXIT=0` |
+
+Where: figures in `Result/`, table in `Overleaf/tables/tab_primitives.tex` (both committed); combined numbers
+`Benchmark/results/<exp>/<method>/experiment-reps/metrics.json`, per run `experiment-repNN/` (gitignored, on
+veredact-bench `/opt/veredact/Benchmark/results/`; aggregates go in the GitHub release `run-2026-11-03`). In
+`experiment-reps`, `median` is the mean of the per-run medians, `ci95_halfwidth` Student's t over 3 runs, `p95`
+pooled over runs. Regenerate: `VRPQ_RESULTS_TIER=experiment-reps make tables figures TIER=experiment`.
+
+Caveats a reader must know: run 1's Exp. 3 was rerun whole (same seed) after "anchoring transaction … not mined
+within 600 s" in `history_cache.load`, cause not established; prover CPU ≤ ~30 % in Exp. 1, so
+`submitted_on_time` < 1 comes from the system under test; Exp. 3's "missed by the block watcher" receipts were all
+resolved by hash lookup; Exp. 1 is one run (within-run error bars); smoke numbers are never results.
+
+Status and open work: GitHub issues. Older history: git log (`TASK.md` and `HANDOFF.md` until 6 Nov 2026).

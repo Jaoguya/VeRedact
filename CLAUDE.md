@@ -3,8 +3,8 @@
 Team (GitHub): **jaoguya** (repo owner, AWS approver), **Ppdfd**, **yewza101**, **Rangsimann** (joining). You work
 for one of them, your **owner**; ask for their GitHub username once if you do not know it.
 
-Read before working: `HANDOFF.md` (current results and how to check them), `TASK.md` (log),
-`Other/docs/experiments.md` (experiment rules), `Other/docs/paper-conformance.md` (where code and manuscript differ).
+Read before working: `README.md` (latest full-run results, caveats, how to check them), `Other/docs/experiments.md`
+(experiment rules), `Other/docs/paper-conformance.md` (where code and manuscript differ). Open work: GitHub issues.
 
 ## Guardrails
 
