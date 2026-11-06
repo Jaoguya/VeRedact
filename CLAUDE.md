@@ -16,6 +16,8 @@ Read before working: `README.md` (latest full-run results, caveats, how to check
   check code paths; their numbers are never results.
 - **Fair baselines**: baselines follow their papers. A PR that changes
   `Benchmark/src/veredact_bench/methods/baselines/` cites the paper section it follows.
+- **One graph per experiment**: each experiment's figure is a single panel; numbers from views left out go into a
+  sentence or small table in the text, and the case where VeRedact-PQ does not win stays visible (graph or text).
 - **Manuscript** (`Overleaf/`): change it through a PR, approved by a teammate other than the author of the change.
 
 ## Working an issue
@@ -36,6 +38,25 @@ show your owner what you will post and post it after they agree.
    `done: PR #<m>` on the issue and remove `in-progress`. Then go back to step 1.
 
 A PR merges into `main` after one approval from a teammate and green CI.
+
+A checklist step counts as done when its deliverable is posted on the issue and the issue's **reviewer** has
+commented `✅ Step N accepted`; the reviewer ticks the box, not the owner.
+
+## Step 1 quiz
+
+Before an analysis step ("Step 1 — Why we lose") goes to the reviewer, quiz your owner on it:
+
+1. From the posted verdict table and its evidence, write **6 questions**, one each of: *why* (cause of a win or
+   loss), *kind* (which of the four loss kinds, and why), *number* (an approximate cost or factor and where it comes
+   from), *prediction* (what a change would do to the figure), *evidence* (which file, column or code line shows
+   it), *counter-check* (where VeRedact-PQ still would not win).
+2. Ask one question at a time; your owner answers without the table open. Keep the answers hidden until all six
+   are answered.
+3. Grade each answer correct (1), partly correct (½) or wrong (0), with a one-line reason. Pass: **≥ 3 of 6**.
+4. With your owner's agreement, post the score, every question, your owner's answer, the correct answer and the
+   grade on the issue. On a fail, your owner re-reads and you write 6 new questions.
+
+Any team member may comment `quiz override: <reason>`; that counts as a pass.
 
 ## Results releases
 
