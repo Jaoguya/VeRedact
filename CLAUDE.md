@@ -37,6 +37,25 @@ show your owner what you will post and post it after they agree.
 
 A PR merges into `main` after one approval from a teammate and green CI.
 
+A checklist step counts as done when its deliverable is posted on the issue and the issue's **reviewer** has
+commented `✅ Step N accepted`; the reviewer ticks the box, not the owner.
+
+## Step 1 quiz
+
+Before an analysis step ("Step 1 — Why we lose") goes to the reviewer, quiz your owner on it:
+
+1. From the posted verdict table and its evidence, write **6 questions**, one each of: *why* (cause of a win or
+   loss), *kind* (which of the four loss kinds, and why), *number* (an approximate cost or factor and where it comes
+   from), *prediction* (what a change would do to the figure), *evidence* (which file, column or code line shows
+   it), *counter-check* (where VeRedact-PQ still would not win).
+2. Ask one question at a time; your owner answers without the table open. Keep the answers hidden until all six
+   are answered.
+3. Grade each answer correct (1), partly correct (½) or wrong (0), with a one-line reason. Pass: **≥ 3 of 6**.
+4. With your owner's agreement, post the score, every question, your owner's answer, the correct answer and the
+   grade on the issue. On a fail, your owner re-reads and you write 6 new questions.
+
+Any team member may comment `quiz override: <reason>`; that counts as a pass.
+
 ## Results releases
 
 Each full run gets a GitHub Release tagged `run-YYYY-MM-DD` on the commit that produced it. Attached: the
