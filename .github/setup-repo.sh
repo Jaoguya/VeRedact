@@ -4,7 +4,6 @@ set -euo pipefail
 REPO=Jaoguya/VeRedact
 
 label() { gh label create "$1" --repo "$REPO" --color "$2" --description "$3" --force; }
-label in-progress 0E8A16 "Someone (or their agent) is working on it"
 label blocked     B60205 "Waiting on an answer; see the latest comment"
 label needs-aws   FBCA04 "Needs jaoguya's yes (issue comment) before any AWS action"
 label manuscript  5319E7 "Changes Overleaf/"
