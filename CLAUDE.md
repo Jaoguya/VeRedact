@@ -16,6 +16,8 @@ Read before working: `README.md` (latest full-run results, caveats, how to check
   check code paths; their numbers are never results.
 - **Fair baselines**: baselines follow their papers. A PR that changes
   `Benchmark/src/veredact_bench/methods/baselines/` cites the paper section it follows.
+- **One graph per experiment**: each experiment's figure is a single panel; numbers from views left out go into a
+  sentence or small table in the text, and the case where VeRedact-PQ does not win stays visible (graph or text).
 - **Manuscript** (`Overleaf/`): change it through a PR, approved by a teammate other than the author of the change.
 
 ## Working an issue
