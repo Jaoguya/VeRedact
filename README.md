@@ -59,7 +59,7 @@ VeRedact/
 ├── README.md  CLAUDE.md  AUDIT_LOG.md    overview + results, team/agent rules, audit findings
 ├── .github/                              issue/PR templates, CI (pytest + ruff), CODEOWNERS, setup-repo.sh
 ├── Overleaf/                             the manuscript
-│   ├── VeRedact-optimize.tex             manuscript (changes via PR, approved by another teammate)
+│   ├── VeRedact-optimize.tex             manuscript (changes via PR)
 │   └── tables/                           generated table: tab_primitives.tex (after the run)
 ├── Result/                               generated figures only (after the run)
 │   ├── Pdf/                              exp1..exp5_*.pdf (vector, for the paper)
@@ -110,4 +110,4 @@ within 600 s" in `history_cache.load`, cause not established; prover CPU ≤ ~30
 `submitted_on_time` < 1 comes from the system under test; Exp. 3's "missed by the block watcher" receipts were all
 resolved by hash lookup; Exp. 1 is one run (within-run error bars); smoke numbers are never results.
 
-Status and open work: GitHub issues. Older history: git log (`TASK.md` and `HANDOFF.md` until 6 Nov 2026).
+Status and open work: GitHub issues, on the board https://github.com/users/Ppdfd/projects/1. Older history: git log (`TASK.md` and `HANDOFF.md` until 6 Nov 2026).

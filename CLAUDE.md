@@ -1,10 +1,11 @@
 # VeRedact-PQ — instructions for agents
 
-Team (GitHub): **jaoguya** (repo owner, AWS approver), **Ppdfd**, **yewza101**, **Rangsimann** (joining). You work
+Team (GitHub): **jaoguya** (repo owner, AWS approver), **Ppdfd**, **yewza101**, **PopRangsimann**. You work
 for one of them, your **owner**; ask for their GitHub username once if you do not know it.
 
 Read before working: `README.md` (latest full-run results, caveats, how to check them), `Other/docs/experiments.md`
-(experiment rules), `Other/docs/paper-conformance.md` (where code and manuscript differ). Open work: GitHub issues.
+(experiment rules), `Other/docs/paper-conformance.md` (where code and manuscript differ). Open work: GitHub issues,
+on the board https://github.com/users/Ppdfd/projects/1 (Todo · In progress · Blocked · Done).
 
 ## Guardrails
 
@@ -18,7 +19,7 @@ Read before working: `README.md` (latest full-run results, caveats, how to check
   `Benchmark/src/veredact_bench/methods/baselines/` cites the paper section it follows.
 - **One graph per experiment**: each experiment's figure is a single panel; numbers from views left out go into a
   sentence or small table in the text, and the case where VeRedact-PQ does not win stays visible (graph or text).
-- **Manuscript** (`Overleaf/`): change it through a PR, approved by a teammate other than the author of the change.
+- **Manuscript** (`Overleaf/`): change it through a PR; say in the PR which section changes and why.
 
 ## Working an issue
 
@@ -28,16 +29,16 @@ show your owner what you will post and post it after they agree.
 
 1. **Propose**: list open, unassigned issues (`gh issue list --search "no:assignee -label:blocked"`), pick one
    that fits, and give your owner the issue number and a short plan. Done when your owner says yes.
-2. **Claim**: `gh issue edit <n> --add-assignee <owner> --add-label in-progress`, then comment
-   `picked up: <plan>`. Done when the issue shows the assignee, the label and the comment.
+2. **Claim**: `gh issue edit <n> --add-assignee <owner>`, `bash .github/board.sh <n> "In progress"`, then comment
+   `picked up: <plan>`. Done when the issue shows the assignee and the comment, and its card is in In progress.
 3. **Work** on branch `<n>-<short-slug>` from `main`; run `make test lint` in `Benchmark/` before pushing.
-4. **Blocked**: add the label `blocked` and comment with four parts: *What I did*, *What happened* (error or log in
-   a `<details>` block), *What I tried*, *Question*. @mention who can answer (your owner by default). Remove the
-   label when unblocked.
+4. **Blocked**: add the label `blocked`, `bash .github/board.sh <n> Blocked`, and comment with four parts:
+   *What I did*, *What happened* (error or log in a `<details>` block), *What I tried*, *Question*. @mention who can
+   answer (your owner by default). When unblocked: remove the label, `bash .github/board.sh <n> "In progress"`.
 5. **Finish**: open a PR whose body contains `Closes #<n>` and fills the PR template; when CI is green, comment
-   `done: PR #<m>` on the issue and remove `in-progress`. Then go back to step 1.
+   `done: PR #<m>` on the issue. Closing the issue moves its card to Done. Then go back to step 1.
 
-A PR merges into `main` after one approval from a teammate and green CI.
+A PR merges into `main` once CI is green; its author approves and merges it (no teammate review required).
 
 A checklist step counts as done when its deliverable is posted on the issue and the issue's **reviewer** has
 commented `✅ Step N accepted`; the reviewer ticks the box, not the owner.
