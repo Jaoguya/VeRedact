@@ -5,7 +5,7 @@
 #   make test lint                               tests, ruff gate
 #   make smoke                                   every experiment on the smoke tier
 #   make eval EXP=exp02_authorization_latency TIER=smoke      one experiment on one tier
-#   full paper run: split over AWS workers (deploy/aws/launch_reps.sh 3, then collect_reps.sh 3; HANDOFF.md)
+#   full paper run: split over AWS workers (deploy/aws/launch_reps.sh 3, then collect_reps.sh 3; README.md)
 #   make tables figures TIER=experiment          ../Overleaf/tables/*.tex, ../Result/{Pdf,Picture}/ from results/
 TIER ?= smoke
 EXP  ?= all

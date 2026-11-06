@@ -20,4 +20,4 @@ experiments); `smoke` only tests the pipeline. The full run: `Other/docs/aws-run
 
 Every results folder holds `rows.csv` (per request / sample), `metrics.json` (summary), `config_resolved.yaml`,
 `run_info.json` (git commit, dirty flag, hardware, library versions, runtime) and `run.log`. Which run of
-each experiment is current is recorded in the `TASK.md` log.
+each experiment is current is recorded in the notes of its GitHub release (`run-YYYY-MM-DD`).

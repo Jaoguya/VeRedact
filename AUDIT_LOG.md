@@ -22,7 +22,7 @@ scripts named as evidence (`profile_round.py`, `validate_a3.py`, `validate_prove
 
 ## Phase 2 — VeRedact-optimize.tex update (2026-10-24)
 
-Code rebuilt test-first for the new manuscript (TASK.md §0). Findings on the way:
+Code rebuilt test-first for the new manuscript. Findings on the way:
 
 | ID | Finding | Evidence | Paper says | Action |
 |:--|:--|:--|:--|:--|
