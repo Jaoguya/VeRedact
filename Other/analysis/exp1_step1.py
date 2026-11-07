@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 RES = pathlib.Path(__file__).resolve().parents[2] / "Benchmark/results/exp01_redaction_throughput"
+BATCHES = int(np.ceil(1e5 / 256))  # 10^5 ledger, N = 256 leaves per batch
 SYSTEMS = ["veredact", "veredact-fixed-batch", "veredact-cora-no-sfmr", "veredact-per-request", "S1", "S13", "S27", "S34"]
 
 
@@ -23,23 +24,25 @@ def table_a_summary():
     """A. Per rate, every system (metrics.json): throughput, re-proofs per decided request, p95, censored."""
     out = []
     for s in SYSTEMS:
-        for k, v in json.load(open(RES / s / "experiment-reps/metrics.json"))["points"].items():
+        with open(RES / s / "experiment-reps/metrics.json") as f:
+            points = json.load(f)["points"]
+        for k, v in points.items():
             p = dict(x.split("=") for x in k.split("|"))
             d = v.get("decided") or 0
             out.append(
-                dict(
-                    system=s,
-                    sweep=p["sweep"],
-                    rate=int(p["rate_rps"]),
-                    s=float(p["zipf_s"]),
-                    throughput=round(v.get("throughput_per_s", 0), 1),
-                    reproofs_per_decided=round(v["revalidations"] / d, 2) if d else None,
-                    on_time=round(v.get("submitted_on_time", np.nan), 2),
-                    p95_s=round(v.get("latency_ms", {}).get("p95", np.nan) / 1000, 1),
-                    p95_lower_bound=v.get("latency_p95_lower_bound"),
-                    censored=round(v.get("latency_censored_fraction", np.nan), 2),
-                    adapt_per_1000=round(v.get("pqch_adaptations_per_1000", np.nan)),
-                )
+                {
+                    "system": s,
+                    "sweep": p["sweep"],
+                    "rate": int(p["rate_rps"]),
+                    "s": float(p["zipf_s"]),
+                    "throughput": round(v.get("throughput_per_s", 0), 1),
+                    "reproofs_per_decided": round(v["revalidations"] / d, 2) if d else None,
+                    "on_time": round(v.get("submitted_on_time", np.nan), 2),
+                    "p95_s": round(v.get("latency_ms", {}).get("p95", np.nan) / 1000, 1),
+                    "p95_lower_bound": v.get("latency_p95_lower_bound"),
+                    "censored": round(v.get("latency_censored_fraction", np.nan), 2),
+                    "adapt_per_1000": round(v.get("pqch_adaptations_per_1000", np.nan)),
+                }
             )
     return pd.DataFrame(out)
 
@@ -69,20 +72,20 @@ def table_c_churn():
         span = sub.submit_s.max() - sub.submit_s.min()
         fin = (g.status == "finalized").sum()
         out.append(
-            dict(
-                rate=rate,
-                validations_per_s=round(validations / span),
-                finalized_per_s=round(fin / span),
-                wasted_validations=f"{1 - fin / validations:.0%}",
-                proof_age_median_ms=round(g.proof_age_ms.median()),
-                client_lag_median_ms=round(g.client_lag_ms.median()),
-                not_submitted=int((g.status == "not_submitted").sum()),
-            )
+            {
+                "rate": rate,
+                "validations_per_s": round(validations / span),
+                "finalized_per_s": round(fin / span),
+                "wasted_validations": f"{1 - fin / validations:.0%}",
+                "proof_age_median_ms": round(g.proof_age_ms.median()),
+                "client_lag_median_ms": round(g.client_lag_ms.median()),
+                "not_submitted": int((g.status == "not_submitted").sum()),
+            }
         )
     return pd.DataFrame(out)
 
 
-def table_d_sharing(batches=int(np.ceil(1e5 / 256))):
+def table_d_sharing(batches=BATCHES):
     """D. Expected PQCH adaptations per 1,000 redactions if a round of m requests draws batches ~ Zipf(s)."""
     def expected(m, s):
         w = 1 / np.arange(1, batches + 1) ** s
