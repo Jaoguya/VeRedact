@@ -8,7 +8,7 @@ it, our own stale-proof churn still dominates above ~500 req/s.
 
 | Item | Today | Proposed |
 |---|---|---|
-| Graph | 3 panels: (a) throughput, (b) p95, (c) adaptations vs skew | **one panel: finalized *valid* redactions/s vs offered load**, one line per system |
+| Graph | 3 panels: (a) throughput, (b) p95, (c) adaptations vs skew | **one panel: finalized *valid* redactions/s vs offered load**, VeRedact-PQ + Schemes [1], [13], [27], [34] (ablation variants in a table in the text) |
 | Workload | 100 % valid (`fault_fraction` = 0) | **20 % invalid: 10 % stale + 10 % absent**, 80 % valid; same trace for every scheme |
 | Rates | 100–5,000 req/s (everything above ~500 saturated) | **25–1,000 req/s**, dense around saturation |
 | Throughput | finalized redactions/s | finalized **valid** redactions/s; an executed invalid request counts as *accepted invalid*, not throughput |

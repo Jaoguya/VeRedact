@@ -17,7 +17,7 @@ from veredact_bench.reporting import style
 
 RES = ROOT / "Benchmark/results/exp01_redaction_throughput"
 OUT = ROOT / "suggest_change/exp1/exp1_layout_preview.png"
-SYSTEMS = ["veredact", "veredact-fixed-batch", "veredact-cora-no-sfmr", "veredact-per-request", "S1", "S13", "S27", "S34"]
+SYSTEMS = ["veredact", "S1", "S13", "S27", "S34"]  # ablation variants go to a table in the text, not the graph
 MAX_RATE = 1000  # redesign range: 25-1,000 req/s (3 Nov has 100, 250, 500, 1,000)
 
 
