@@ -26,7 +26,6 @@ T_H = 0.0013 ms (SHA3-256, 64 B).
 | **(a) on the complete cost (Phase 3 + Phase 4/m)** | **lose 3.0× at every m ≥ 8** (1.44 vs 0.48 ms), **6.7× at m = 1** | Fig. 4 plots Phase 4 only. Phase 3 (the VPS: PQZK verify + requester signature + α_i + receipt) is 1.28 ms per request and never amortizes — 89 % of our complete cost at m = 256 | PQ cost (T_ZV = 0.68 ms is 53 % of Phase 3 and 1.4× Scheme [1]'s whole authorization) | table A2; `auth_complete_per_request_ms` in `metrics.json`; `veredact.py:132-196` |
 | (a) Scheme [1] flat at ~0.49 ms | lose (see above) | its authorization is t × (hash-to-prime + accumulator membership + 2 ECDSA verifies) per request: no batch protocol exists in the paper, so m requests cost m × the same thing | baseline does less (no PQ, no policy predicate, no freshness, no batch commitment) | `s01_improved_dch/adapter.py:138-158`; `Other/docs/baselines/S1-improved-dch.md` Exp. 2 row; model t·m·2·T_V^c = 17.0 ms vs 34.0 ms measured at m = 64, n = 7 (table D) |
 | (a) Scheme [34] flat at ~7.36 ms | **win 46×** at m = 256 | one MA-ABE `Info_Trap` decryption per request: T_Pol = 7.31 ms (Exp. 0), the whole curve | — | `Other/docs/baselines/S34-rebs.md` boundaries; Exp. 0 `T_Pol` |
-| (b) Re-ZK vs VeRedact-PQ | **win 14–74×** | Re-ZK re-verifies each PQZK proof in every participating member: the extra is m·t·T_ZV (model 131 → 958 ms, measured extra 154 → 1055 ms over n = 4 → 32) | — | table D, columns `rezk_model` / `rezk_measured_minus_VR` |
 | (b) VeRedact-PQ almost flat in n | **win 2.4–122×** | only `committee_ms` depends on n (0.41 → 2.93 ms, model t(T_S+T_V) = 0.31 → 2.27 ms); the m-proportional part (≈ 9.5 ms at m = 64) does not | — | tables B and C |
 | **Cost model gap** | — | the four Phase-4 timers explain 24 % of Phase 4 at m = 1 and 95 % at m = 256; the remainder (1.26–2.04 ms, flat in m) is the anchoring transaction. Inside the timers, `attest` costs 4.1× its model (0.127 vs 0.031 ms/request) — one ML-DSA verify plus four SHA3 calls, **one of them over the whole STARK proof** (`c.H(ev["proof"])`) | unfair harness (rule 6) + implementation | table B; `veredact.py:231-241` |
 
@@ -51,49 +50,64 @@ Fig. 4 compares our Phase 4 against the baselines' *whole* authorization. Scheme
 out. Stated as the complete cost the figure reverses: we are 3.0× slower than Scheme [1] and 2.8× slower than
 Scheme [39] at every batch size. Step 2 plots the complete cost.
 
+### Dropped from Exp. 2: the Re-ZK variant (author, 7 Nov)
+
+Re-ZK is removed from the figure, the text and `configs/experiments/exp02_authorization_latency.yaml`. What
+the 3 Nov run measured, recorded here once so the removal is a decision and not a gap: Re-ZK's extra over
+VeRedact-PQ at m = 64 is 154 ms (n = 4) → 1,055 ms (n = 32), against the model m·t·T_ZV = 131 → 958 ms, so
+**yes, it grows as m·t·T_ZV** (issue #6 step 1, question 4), the 10 % excess being the Python loop. It is a
+strawman: it is our own protocol with the committee re-doing work the VPS already did, so a 14–74× win over
+it says nothing a reader needs. Dropping it also removes 982 s of the 3,670 s each Exp. 2 run took.
+
 ## Step 2: redesigned Exp. 2
 
 ```
 What changes:     metric (the complete authorization cost that metrics.json already records), axis (committee
-                  size n becomes the one axis, extended to 48 and 64), and one measurement fix (rule 6).
+                  size n becomes the one axis, extended to 48 and 64), the Re-ZK variant is dropped, and one
+                  measurement fix (rule 6).
 The one graph:    x = committee size n in {4, 7, 10, 16, 32, 48, 64}, log; y = authorization per request (ms),
-                  log = Phase 3 + Phase 4/m at the reference round m = 64; five lines: VeRedact-PQ, Re-ZK,
+                  log = Phase 3 + Phase 4/m at the reference round m = 64; four lines: VeRedact-PQ,
                   Scheme [1] and Scheme [34] (dashed, "no batching"), Scheme [39].
                   Layout preview from measured 3 Nov data: suggest_change/exp2/exp2_layout_preview.png
 Expected figure:  VeRedact-PQ nearly flat: 1.34 ms (n=4) -> 1.40 ms (n=32) -> ~1.43 ms (n=64), i.e. today's
                   1.45-1.51 ms minus the anchoring (1.3 ms / 64 = 0.02) and minus fix 4 (0.09); predictions
                   beyond n=32 extrapolate the measured linear-in-t committee term.
                   Scheme [1] rises as t(n): 0.42 (n=4) -> 1.46 (n=32) measured -> ~2.6 ms (n=64), crossing
-                  VeRedact-PQ at n ~ 30; Scheme [34] 5.0 -> 27.4 -> ~52 ms; Re-ZK 3.9 -> 17.0 -> ~32 ms;
-                  Scheme [39] flat at 0.51 ms (no committee, so no n dependence).
+                  VeRedact-PQ at n ~ 30; Scheme [34] 5.0 -> 27.4 -> ~52 ms; Scheme [39] flat at 0.51 ms
+                  (no committee, so no n dependence).
 Why it's fair:    [x] same hardware for all   - one m7i.4xlarge per run, every system (README Hardware)
                   [x] baselines per their papers - [1] and [34] define no batch protocol, so a set of m is m
                       authorizations and their lines stay dashed (S1-improved-dch.md, S34-rebs.md); [39] keeps
                       its own batch protocol; committee members are timed serially for every threshold scheme
-                  [x] no point/seed dropped  - the m axis keeps all six sizes, it moves to a table
+                  [x] no point/seed dropped  - the m axis keeps all six sizes, it moves to a table. Re-ZK is
+                      a variant of our OWN scheme, not a baseline or a point of one; what it measured on
+                      3 Nov is recorded in step 1 above with the reason for dropping it
                   [x] the case where we don't win is still shown - Scheme [39] is below us at every n and
                       Scheme [1] below us until n ~ 32, both inside the panel
-Text changes:     Fig. 4 caption (one panel, complete cost); the Exp. 2 paragraph that cites panels (a)/(b)
-                  becomes one paragraph on the n axis plus the amortization table below; Table I note that
-                  Scheme [39] authenticates faster because it has no committee, no policy predicate and no
-                  freshness check; the measurement-limits list gains "anchoring is ledger time, reported
-                  separately" (rule 6).
-Cost:             code ~1 day (4 small changes, below); rerun Exp. 2 only, 3 runs. Measured 3 Nov: 3,670 s per
-                  run; two extra committee sizes -> ~1.4x -> ~4.3 h of one m7i.4xlarge (us-east-2, USD 0.806/h)
-                  = ~USD 3.5, ~USD 5.2 with the usual 1.5x idle cap. Needs jaoguya's yes on this issue.
+Text changes:     Fig. 4 caption (one panel, complete cost, no Re-ZK); the Exp. 2 paragraph that cites panels
+                  (a)/(b) becomes one paragraph on the n axis plus the amortization table below; every Re-ZK
+                  sentence goes (manuscript Exp. 2, and the Exp. 2 row of Other/docs/experiments.md 3);
+                  Table I note that Scheme [39] authenticates faster because it has no committee, no policy
+                  predicate and no freshness check; the measurement-limits list gains "anchoring is ledger
+                  time, reported separately" (rule 6).
+Cost:             code ~1 day (5 small changes, below); rerun Exp. 2 only, 3 runs. Measured 3 Nov: 3,670 s per
+                  run, of which Re-ZK was 982 s -> 2,688 s without it; two extra committee sizes -> ~1.4x ->
+                  ~3.1 h of one m7i.4xlarge (us-east-2, USD 0.806/h) = ~USD 2.5, ~USD 3.8 with the usual 1.5x
+                  idle cap. Needs jaoguya's yes on this issue.
                   Risk: the SIS-PQCH DKG is untimed setup but ~5 min at n = 32 and superlinear; n = 64 may add
                   20-30 min per run. It is cached per (seed, n, t) in .cache/pqch_dkg/, so it is paid once.
 ```
 
-### The four code changes
+### The code changes
 
 | # | Where | Change | Effect |
 |---|---|---|---|
 | 1 | `reporting/figures.py:205-240` | one panel; plot `auth_complete_per_request_ms` at m = `reference_batch`; the m axis becomes a table | the loss becomes visible |
-| 2 | `configs/experiments/exp02_authorization_latency.yaml` | `committee_sizes: [4, 7, 10, 16, 32, 48, 64]` | shows the crossing with Scheme [1] |
+| 2 | `configs/experiments/exp02_authorization_latency.yaml` | `committee_sizes: [4, 7, 10, 16, 32, 48, 64]`; `systems:` drops `veredact-re-zk` | shows the crossing with Scheme [1]; removes the strawman and 982 s per run |
 | 3 | `veredact.py:290-300` | move `L.anchor.submit("abrrr_authorization", …)` out of `authorize()`: return the Future to `VeRedactScheme.authorize_batch`, which records it as ledger time | removes 1.26–2.04 ms of secp256k1 + ABI work from a crypto timer (rule 6). Helps us; do it anyway |
 | 4 | `veredact.py:231-241` | drop `c.H(ev["proof"])` from the Phase 4 attestation check (see step 3, O2) | −0.09 ms per request |
 | 5 | `s34_rebs/adapter.py`, `s99_leta/adapter.py` | fill in `auth_cost()` (both report all-zero counters today) | rule 7: capabilities and costs beside every number |
+| 6 | `Other/docs/experiments.md` §2 and §3 | drop `re-zk` from the variant list and from the Exp. 2 row | the docs stop describing a variant the experiment no longer runs. `VeRedactPQ.VARIANTS` keeps the implementation, so the variant can be re-enabled by config alone |
 
 ### Numbers moved from the graph to the text
 

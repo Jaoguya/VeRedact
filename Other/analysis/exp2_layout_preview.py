@@ -17,7 +17,7 @@ from veredact_bench.reporting import style  # noqa: E402
 
 RES = ROOT / "Benchmark/results/exp02_authorization_latency"
 OUT = ROOT / "suggest_change/exp2/exp2_layout_preview.png"
-SYSTEMS = ["veredact", "veredact-re-zk", "S1", "S34", "S99"]
+SYSTEMS = ["veredact", "S1", "S34", "S99"]  # Re-ZK dropped from Exp. 2 (author, 7 Nov)
 M0 = 64  # the reference round size (Exp. 1 measured median rounds of 53-161 requests)
 
 

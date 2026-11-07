@@ -12,7 +12,7 @@ import pandas as pd
 
 ROOT = pathlib.Path(__file__).resolve().parents[2] / "Benchmark/results"
 RES = ROOT / "exp02_authorization_latency"
-SYSTEMS = ["veredact", "veredact-re-zk", "S1", "S34", "S99"]
+SYSTEMS = ["veredact", "S1", "S34", "S99"]  # Re-ZK dropped from Exp. 2 (author, 7 Nov): see suggest_change/exp2
 N0 = 7  # configs/methods/veredact.yaml committee_n (panel (a) is drawn at this n)
 M0 = 64  # reference_batch (panel (b) is drawn at this m)
 BREAKDOWN = ["phase4_attest_ms", "phase4_fresh_ms", "phase4_commit_ms", "phase4_committee_ms"]
@@ -126,16 +126,14 @@ def table_c_fixed_vs_marginal():
     return pd.DataFrame(rows)
 
 
-def table_d_per_set(T):
-    """D. Panel (b) at m=64: one authorized set vs n, and Re-ZK against m t T_ZV."""
+def table_d_per_set():
+    """D. Panel (b) at m=64: one authorized set vs n, VeRedact-PQ's committee term against t(T_S+T_V)."""
     out = {}
     for s in SYSTEMS:
         for p, v in points(s):
             if int(float(p["batch_size"])) == M0:
                 out.setdefault(int(float(p["committee_n"])), {})[s] = med(v, "batch_total_ms")
     d = pd.DataFrame(out).T.sort_index()[SYSTEMS]
-    d["rezk_model"] = [M0 * t_of(n) * T["T_ZV"] for n in d.index]
-    d["rezk_measured_minus_VR"] = d["veredact-re-zk"] - d.veredact
     d["S1_model_t_x_2_ECDSA"] = [M0 * t_of(n) * 2 * 0.0266 for n in d.index]  # S1's T_V^c (Exp. 0)
     d.index.name = "n"
     return d.round(2)
@@ -159,5 +157,5 @@ if __name__ == "__main__":
     print("A2. Plotted (Phase 4 / m) vs complete (Phase 3 + Phase 4 / m)\n", both.to_string(), "\n")
     print(f"B. Phase 4 per set at n={N0} vs the Exp. 0 cost model\n", table_b_phase4_model(T).to_string(), "\n")
     print("C. Phase 4 fitted as fixed + marginal x m\n", table_c_fixed_vs_marginal().to_string(index=False), "\n")
-    print(f"D. One set of m={M0} vs n (Fig. 4(b))\n", table_d_per_set(T).to_string(), "\n")
+    print(f"D. One set of m={M0} vs n (Fig. 4(b))\n", table_d_per_set().to_string(), "\n")
     print("E. Round sizes CORA produced in Exp. 1 (run 1)\n", table_e_operating_point().to_string())
