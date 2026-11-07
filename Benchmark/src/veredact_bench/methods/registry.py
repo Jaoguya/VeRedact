@@ -4,6 +4,7 @@ Keys match configs/experiments/*.yaml systems:
   veredact                 VeRedact-PQ (CORA + SFMR + SAVER)
   veredact-<variant>       an internal ablation variant (VeRedactPQ.VARIANTS, e.g. veredact-cora-no-sfmr)
   S1 S13 S27 S34           the four redactable-blockchain baselines (methods/baselines/<scheme>/adapter.py)
+  S13-per-block            S13 audited with its paper's Query phase once per block (Exp. 4: one decision per block)
   S99                      LETA, the post-quantum batch-authentication baseline (Exp. 0 and Exp. 2 only)
 
 committee_n is the Exp. 2 sweep axis. Each system maps it to ITS OWN distribution parameter with
@@ -47,6 +48,8 @@ def make(cfg: dict, key: str, committee_n: int | None = None):
     t = threshold(committee_n) if committee_n else None
     if key == "veredact" or key.startswith("veredact-"):
         return VeRedactScheme(cfg, committee_n, t, variant=key.partition("-")[2] or "full")
+    if key == "S13-per-block":
+        return _baseline_class("S13")(cfg, per_block=True)
     cls = _baseline_class(key)
     if key == "S1":
         return cls(cfg, nodes_n=committee_n, threshold_t=t)

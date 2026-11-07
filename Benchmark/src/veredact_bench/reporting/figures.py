@@ -282,70 +282,35 @@ def fig_exp3(tier, written):
 
 
 def fig_exp4(tier, written):
-    """(a) verification time vs PQZK escalation fraction d_Q/n_Q at the largest n_Q (baselines: routine level,
-    dashed reference); (b) VeRedact-PQ breakdown per escalation fraction; (c) invalid-record rejection (solid)
-    and valid-record acceptance (hatched) per fault class at the largest injected fraction."""
+    """One panel (#8): auditor verification time vs returned records n_Q. VeRedact-PQ routine (d_Q = 0) and deep
+    (every request escalated to PQZK, the largest d_Q/n_Q run); Scheme [1] per record; Scheme [13] with one
+    decision per query (its Audit) and per block (its Query phase, S13-per-block). The breakdown, the
+    intermediate escalation fractions and the fault classes go to the text (tables), not to panels."""
     ms = metrics("exp04_verification_time", tier)
     if not ms:
         return
-    fig, (a, b, c) = _panels(3, height_in=2.2)
-    ok = {key: {k: v for k, v in _points(m).items() if v.get("status") == "ok"} for key, m in ms.items()}
-    n0 = max((k[0] for pts in ok.values() for k in pts), default=None)
-    if n0 is None:
-        return
-    for key, pts in ok.items():
-        esc = sorted((k[1], v) for k, v in pts.items() if k[0] == n0 and k[2] == "none")
-        if len(esc) > 1:
-            style.line(a, key, [d * 100 for d, _ in esc], [v["verify_ms"]["median"] for _, v in esc])
-        elif esc:  # no escalation defined: its routine verification as a reference line
-            _, col, _, _ = style.METHODS.get(key, (key, "#000000", "-", "o"))
-            a.axhline(esc[0][1]["verify_ms"]["median"], color=col, linestyle="--", label=style.label(key))
-    a.set(yscale="log", xlabel="Escalated requests $d_Q/n_Q$ (%)", ylabel=f"Verification at $n_Q$={int(n0)} (ms)")
-    fracs = sorted({k[1] * 100 for pts in ok.values() for k in pts if k[0] == n0 and k[2] == "none"})
-    a.set_xticks(fracs, [f"{d:g}" for d in fracs])  # ticks at the measured fractions (not the reference lines)
-    a.xaxis.set_minor_locator(ticker.NullLocator())
-    a.fixed_xticks = True
-    parts = (
-        ("response + RAI", ("verify_response_ms", "verify_rai_mp_ms")),
-        ("attestations", ("verify_attest_ms",)),
-        ("committee", ("verify_committee_ms",)),
-        ("transition/PQCH", ("verify_state_ms",)),
-        ("checkpoints", ("verify_cp_ms",)),
-        ("PQZK", ("verify_zk_ms",)),
-    )
-    esc = sorted((k[1], v) for k, v in ok.get("veredact", {}).items() if k[0] == n0 and k[2] == "none")
-    if esc:
-        xs = range(len(esc))
-        bottom = [0.0] * len(esc)
-        shades = ("#cfe3f3", "#9cc7e8", "#56B4E9", "#0072B2", "#004b75", "#E69F00")
-        for (lab, cols), col in zip(parts, shades):
-            ys = [sum((v.get(cc) or {}).get("median") or 0.0 for cc in cols) for _, v in esc]
-            b.bar(xs, ys, bottom=bottom, color=col, label=lab, width=0.6)
-            bottom = [p + q for p, q in zip(bottom, ys)]
-        b.set_xticks(list(xs), [f"{d * 100:g}" for d, _ in esc])
-        b.fixed_xticks = True
-        b.set(xlabel="Escalated requests $d_Q/n_Q$ (%)", ylabel="VeRedact-PQ breakdown (ms)")
-        b.legend(frameon=False, ncol=2)
-    kinds = ("modified", "substituted", "stale")
-    keys = [k for k in ok if any(kk[2] in kinds for kk in ok[k])]
-    width = 0.8 / max(1, 2 * len(keys))
-    for i, key in enumerate(keys):
-        _, col, _, _ = style.METHODS.get(key, (key, "#000000", "-", "o"))
-        f0 = max((k[3] for k in ok[key] if k[2] in kinds and k[0] == n0), default=None)
-        det, val = [], []
-        for kind in kinds:
-            v = ok[key].get((n0, 0.0, kind, f0), {})
-            det.append(v.get("detection_rate") or 0.0)
-            val.append(v.get("valid_acceptance_rate") or 0.0)
-        x0 = [j + (2 * i) * width - 0.4 + width / 2 for j in range(len(kinds))]
-        c.bar(x0, det, width=width, color=col, label=f"{style.label(key)} rejected")
-        c.bar([x + width for x in x0], val, width=width, color="white", edgecolor=col, hatch="//")
-    c.set_xticks(range(len(kinds)), kinds)
-    c.fixed_xticks = True
-    c.set(ylim=(0, 1.05), ylabel="Rate (solid: invalid rejected;\nhatched: valid accepted)")
-    for ax, t in ((a, "a"), (b, "b"), (c, "c")):
-        _tag(ax, t)
-    _legend(a)
+    fig, (a,) = _panels(1, height_in=2.4)
+    for key, m in ms.items():
+        pts = {k: v for k, v in _points(m).items() if v.get("status") == "ok" and k[2] == "none"}
+        levels = sorted({k[1] for k in pts})
+        for d in [levels[0], levels[-1]] if len(levels) > 1 else levels:
+            ok = sorted((k[0], v) for k, v in pts.items() if k[1] == d and (v.get("verify_ms") or {}).get("n"))
+            if not ok:
+                continue
+            deep = d > 0
+            suffix = ", deep" if deep else (", whole query" if key == "S13" else "")
+            style.line(
+                a,
+                key,
+                [n for n, _ in ok],
+                [v["verify_ms"]["median"] for _, v in ok],
+                suffix=suffix,
+                yerr=_ci(m, [v for _, v in ok], "verify_ms", "ci95_halfwidth"),
+                linestyle="--" if deep else None,
+            )
+    a.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel="Auditor verification (ms)")
+    a.sci_y = True
+    _legend(a, outside=True)
     _save(fig, "exp4_verification_time", written)
 
 
