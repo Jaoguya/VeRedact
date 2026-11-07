@@ -3,8 +3,10 @@
 Left: today's Fig. 6 (three panels, Result/Picture/exp4_verification_time.png as committed).
 Right: the redesigned single panel. Every solid/dashed line is a measured median from release run-2026-11-03
 (experiment-reps/metrics.json). "Scheme [13], per block" is NOT measured yet: it is drawn hollow and dotted as a
-PREDICTION (lower bound) = expected distinct blocks of the first n_Q redactions (Zipf s = 0.8 over 391 blocks)
-x (T_Tag verify + T_CV^c) from Exp. 0 (non-membership check left out, so the real line can only be higher).
+PREDICTION (lower bound) = distinct blocks of the first n_Q redactions x (T_Tag verify + T_CV^c) from Exp. 0
+(non-membership check left out, so the real line can only be higher). Distinct blocks are read off S13's own
+measured response generation (one Alg. 1 witness per block, ~equal cost): retrieval(n_Q) / (retrieval(10^4) / 391);
+all 391 blocks are hit at n_Q = 10^4 (a Zipf 0.8 estimate gives 9.4 / 69 / 286 / 391).
   python Other/analysis/exp4_preview.py   ->  suggest_change/exp4/exp4_layout_preview.png
 """
 
@@ -14,7 +16,7 @@ import sys
 
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
-import numpy as np
+import pandas as pd
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "Benchmark/src"))
@@ -44,9 +46,14 @@ def s13_per_block_prediction(n_axis):
     prim = {p["instantiation"]: v["median"] for p, v in points("exp00_primitives", "S13")}
     tag = prim["identity-based tag verification, RSA-3072 [13]"]
     per_block = tag + prim["double-trapdoor CH verify, RSA-3072 [13]"]
-    w = 1 / np.arange(1, 392) ** 0.8
-    pz = w / w.sum()
-    blocks = {n: float((1 - (1 - pz) ** n).sum()) for n in n_axis}
+    d = pd.read_csv(
+        RES / "exp04_verification_time/S13/experiment-rep01/rows.csv",
+        usecols=["n_Q", "fault_kind", "retrieval_ms"],
+        low_memory=False,
+    )
+    gen = d[d.fault_kind == "none"].groupby("n_Q").retrieval_ms.median()
+    per_witness = gen[10000] / 391
+    blocks = {n: float(gen[n] / per_witness) for n in n_axis}
     return [(n, blocks[n] * per_block, blocks[n]) for n in n_axis], per_block
 
 
