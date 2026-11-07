@@ -3219,12 +3219,23 @@ Repetitions & 3 runs, 30 samples per point, 95\% CI \\
 \subsubsection*{\textbf{Experiment 1: End-to-End Redaction Performance}}
 
 This experiment evaluates end-to-end redaction performance under
-increasing request rates and transaction-batch locality. The arrival
-rate is varied from \textbf{[100]} to \textbf{[5,000]} requests/s.
+increasing request rates\textcolor{red}{, a workload containing invalid
+requests,} and transaction-batch locality. The arrival
+rate is varied from \textcolor{red}{\textbf{[25]} to \textbf{[1,000]}}
+requests/s.
 End-to-end latency is measured from request submission to finalization
 of the corresponding Phase~5 checkpoint, while throughput is measured
-as finalized redactions per second. VeRedact-PQ is compared with
+as \textcolor{red}{finalized \emph{valid} redactions per second; an
+invalid request that a scheme executes is counted as an accepted invalid
+request, not as throughput}. VeRedact-PQ is compared with
 Refs.~\cite{ref1}, \cite{ref13}, \cite{ref27}, and~\cite{ref34}.
+
+\textcolor{red}{Following the threat model (Section~III-B), 20\% of the
+requests are invalid: 10\% are \emph{stale}, i.e., they refer to a content
+commitment of the target transaction that an earlier redaction has
+already replaced, and 10\% are \emph{absent}, i.e., they target a
+transaction identifier that does not exist in the ledger. The remaining
+80\% are valid, and every scheme receives the same trace.}
 
 To isolate the contributions of CORA and SFMR, we additionally evaluate
 the following internal variants:
@@ -3251,23 +3262,32 @@ analysis.
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\linewidth]{exp1_redaction_throughput.png}
-\caption{End-to-end redaction performance: (a) throughput and
-(b) 95th-percentile latency versus request arrival rate, and
-(c) PQCH adaptations and SFMR frontier cost versus request locality.}
+\caption{\textcolor{red}{End-to-end redaction throughput (finalized valid
+redactions per second) versus request arrival rate, with 20\% invalid
+requests (10\% stale, 10\% absent).}}
 \label{fig:exp1_redaction}
 \end{figure}
 
-Fig.~\ref{fig:exp1_redaction}(a) evaluates throughput as the offered
+Fig.~\ref{fig:exp1_redaction} evaluates throughput as the offered
 load increases. The baselines primarily process authorization and/or
 redaction operations per request, whereas VeRedact-PQ amortizes
 committee authorization across each CORA-selected set and performs
 threshold PQCH adaptation once per affected transaction batch.
 Accordingly, the expected advantage should become most visible near
 saturation, where repeated threshold operations dominate processing
-cost.
+cost. \textcolor{red}{VeRedact-PQ rejects invalid requests in Phase~3,
+before any committee, SFMR, PQCH or ledger work: absent targets at the
+authenticated SA-RLI lookup and stale requests by
+$\mathsf{FreshLeaf}_i$ (Eq.~\eqref{eq:freshleaf}). A scheme without a
+state-bound freshness check executes stale requests; when such a scheme
+is limited by ledger capacity, every stale execution occupies capacity
+that valid requests cannot use. The number of invalid requests accepted
+by each scheme is reported in the text.}
 
-Fig.~\ref{fig:exp1_redaction}(b) evaluates the corresponding latency
-trade-off. Per-Request avoids selection delay and may therefore have
+\textcolor{red}{The 95th-percentile latency is reported in the text for
+every rate at which all requests complete within the measurement window;
+at a saturated rate it would only be a lower bound.} We discuss the
+corresponding latency trade-off. Per-Request avoids selection delay and may therefore have
 lower latency under light load. CORA introduces bounded waiting up to
 $T_{\max}$ to obtain useful execution sharing, but prevents indefinite
 delay by making sufficiently old requests mandatory. Under increasing
@@ -3278,7 +3298,9 @@ isolates the benefit of locality-aware selection, whereas the
 difference between CORA-No-SFMR and full VeRedact-PQ isolates the
 execution savings obtained by SFMR.
 
-Fig.~\ref{fig:exp1_redaction}(c) examines why these savings occur.
+\textcolor{red}{To examine why these savings occur, the number of PQCH
+adaptations and the total SFMR frontier size per 1,000 finalized
+redactions are reported in a table for each skew $s$.}
 Independent processing requires approximately one PQCH adaptation per
 redaction. In VeRedact-PQ, the number instead scales with
 $|\Omega_e|$, while Merkle processing depends on the shared frontier
