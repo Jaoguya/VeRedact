@@ -51,6 +51,8 @@ def _exp01(rows, cfg):
     out = {}
     for k, rs in _group(rows, "sweep", "rate_rps", "zipf_s").items():
         win = [r for r in rs if str(r["in_window"]) == "1" and not r.get("fault")]
+        bad = [r for r in rs if str(r["in_window"]) == "1" and r.get("fault")]  # injected invalid requests (#5)
+        bad_ok = sum(r["status"] == "finalized" for r in bad)
         fin = [r for r in win if r["status"] == "finalized"]
         # Fig. 3(c) counts PQCH adaptations over EVERY finalized redaction of the point (warm-up included): the
         # count does not depend on arrival time, and a scheme saturated at zipf_rate (S13, S34 at the
@@ -78,8 +80,12 @@ def _exp01(rows, cfg):
             ),
             "finalized": len(fin),  # arrived in the window and finalized (any time): kept for traceability
             "completed_in_window": len(completed),
-            "throughput_per_s": M.throughput(len(completed), dur),
+            "throughput_per_s": M.throughput(len(completed), dur),  # valid redactions only
             "throughput_per_s_ci95": M.ci95_halfwidth(sub_tp),
+            # #5 redesign: invalid requests (stale, absent) that arrived in the window, and how many were executed
+            "invalid_offered": len(bad),
+            "invalid_accepted": bad_ok,
+            "invalid_accepted_rate": M.rate(bad_ok, len(bad)) if bad else None,
             # end-to-end (arrival -> finalized) over the window's arrivals; unfinished = lower bound (_e2e_latency_ms)
             "latency_ms": _stats(e2e) | ({"p95_ci95": M.bootstrap_ci95_halfwidth(e2e, 95)} if e2e else {}),
             "latency_censored_fraction": M.rate(censored, len(e2e)),

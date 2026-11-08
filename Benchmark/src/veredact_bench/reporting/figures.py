@@ -5,8 +5,7 @@ Names match the manuscript's includegraphics (exp1_redaction_throughput, ...); O
 Each figure draws one line per system: VeRedact-PQ, its internal ablation variants (in VeRedact-PQ's colour),
 Schemes [1], [13], [27], [34] and LETA where they run. Fig. 5 at VeRedact-PQ's default sharing level
 (veredact.reference_batch records per authorization batch). Panels follow the captions:
-  Fig. 3  (a) throughput, (b) p95 end-to-end latency (s) vs arrival rate, (c) PQCH adaptations (solid) and
-          SFMR frontier nodes (dashed, VeRedact-PQ systems) per 1,000 redactions vs Zipf skew
+  Fig. 3  one panel (#5): finalized valid redactions/s vs arrival rate, 20 % invalid (stale, absent) requests
   Fig. 4  Phase 4 authorization (VeRedact-optimize.tex): (a) amortized per request vs selected-set size m,
           (b) one set of m0 vs committee size; schemes without a batch protocol drawn dashed
   Fig. 5  (a) response generation, (b) response size, (c) routine verification vs returned records
@@ -149,48 +148,28 @@ def _saturated(ax, key, xs):
 
 
 def fig_exp1(tier, written):
+    """One panel (#5 redesign): finalized VALID redactions/s vs offered load, one line per system, on the 20 %
+    invalid workload. p95 latency, accepted invalid requests and the skew sweep (PQCH adaptations, frontier per
+    1,000) are in metrics.json and go to the text, not to panels."""
     ms = metrics("exp01_redaction_throughput", tier)
     if not ms:
         return
     want = set(load(tier, "exp01_redaction_throughput")["experiment"]["rates"])  # rows of dropped rates: not drawn
-    fig, (a, b, cpanel) = _panels(3, height_in=2.3)
-    cf = cpanel.twinx()  # frontier nodes per 1,000 (VeRedact-PQ systems only)
+    fig, (a,) = _panels(1, height_in=2.6)
     for key, m in ms.items():
         rate = sorted((k[1], v) for k, v in _points(m).items() if k[0] == "rate" and k[1] in want)
-        skew = sorted((k[2], v) for k, v in _points(m).items() if k[0] == "skew")
-        ad = [(s, v["pqch_adaptations_per_1000"]) for s, v in skew if v.get("pqch_adaptations_per_1000")]
-        if ad:
-            style.line(cpanel, key, [s for s, _ in ad], [y for _, y in ad])
-        fr = [(s, v.get("frontier_nodes_per_1000")) for s, v in skew if v.get("frontier_nodes_per_1000")]
-        if fr and key.startswith("veredact"):
-            style.line(cf, key, [s for s, _ in fr], [y for _, y in fr], suffix=" (frontier)", linestyle="--")
         ok = [(x, v) for x, v in rate if v["completed_in_window"]]
         if ok:
             vs = [v for _, v in ok]
             ys = [v["throughput_per_s"] for v in vs]
             style.line(a, key, [x for x, _ in ok], ys, yerr=_ci(m, vs, "throughput_per_s_ci95"))
         _saturated(a, key, [x for x, v in rate if not v["completed_in_window"]])
-        # end-to-end p95 in seconds, only where it is a full measurement: a point with more than 5 % of its
-        # requests unfinished at the cutoff is a lower bound and is not drawn (author rule: no capped values)
-        lat = [(r, v) for r, v in rate if v["latency_ms"].get("n") and not v.get("latency_p95_lower_bound")]
-        if lat:
-            xs, ys = [r for r, _ in lat], [v["latency_ms"]["p95"] / 1000 for _, v in lat]
-            style.line(b, key, xs, ys, yerr=_ci(m, [v for _, v in lat], "latency_ms", "p95_ci95", scale=1e-3))
-    rates = sorted(want)
-    a.set(xscale="log", yscale="log", xlabel="Arrival rate (req/s)", ylabel="Throughput (redactions/s)")
-    b.set(xscale="log", yscale="log", xlabel="Arrival rate (req/s)", ylabel="p95 end-to-end latency (s)")
-    for ax in (a, b):  # ticks at the configured rates
-        ax.set_xticks(rates)
-        ax.xaxis.set_minor_locator(ticker.NullLocator())
-        ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
-        ax.fixed_xticks = True
-        ax.sci_y = True  # 10^x labels: one decade per tick, schemes stay apart
-    cpanel.set(xlabel="Zipf skew $s$", ylabel="PQCH adaptations / 1,000")
-    cf.set_ylabel("Frontier nodes / 1,000")
-    cf.grid(False)
-    _tag(a, "a")
-    _tag(b, "b")
-    _tag(cpanel, "c")
+    a.set(xscale="log", yscale="log", xlabel="Arrival rate (req/s)", ylabel="Valid redactions\nfinalized per second")
+    a.set_xticks(sorted(want))  # ticks at the configured rates
+    a.xaxis.set_minor_locator(ticker.NullLocator())
+    a.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
+    a.fixed_xticks = True
+    a.sci_y = True  # 10^x labels: one decade per tick, schemes stay apart
     if any(ln.get_marker() == "x" for ln in a.lines):  # explain the x only when one is drawn
         a.set_title(r"$\times$ = nothing finalized during the window", loc="right", fontsize=style.FONT_PT - 1)
     _legend(a, keys=ms, outside=True)

@@ -18,6 +18,28 @@ def cfg():
     return load("smoke")
 
 
+def test_dataset_fault_kinds_restrict_the_injected_faults(cfg):
+    """#5 redesign: Exp. 1 injects only stale and absent requests. fault_kinds restricts the classes; leaving it
+    out keeps the previous dataset (and its dataset_id) unchanged."""
+    ds = build_dataset(cfg, n_requests=400, fault_fraction=0.2, fault_kinds=("stale", "absent"))
+    faults = [r.fault for r in ds.trace if r.fault]
+    assert set(faults) == {"stale", "absent"} and 0.1 < len(faults) / 400 < 0.3
+    default = build_dataset(cfg, n_requests=400)
+    assert default.dataset_id == build_dataset(cfg, n_requests=400, fault_kinds=None).dataset_id
+    assert ds.dataset_id != build_dataset(cfg, n_requests=400, fault_fraction=0.2).dataset_id
+    with pytest.raises(ValueError):
+        build_dataset(cfg, n_requests=4, fault_fraction=0.2, fault_kinds=("nonsense",))
+
+
+def test_exp1_config_follows_the_redesign():
+    """#5 redesign: Exp. 1 compares VeRedact-PQ with the baselines only (no ablation variants), on 20 % invalid
+    requests (stale + absent), at rates up to 1,000 req/s."""
+    x = load("experiment", "exp01_redaction_throughput")["experiment"]
+    assert not [k for k in x["systems"] if k.startswith("veredact-")]
+    assert x["fault_fraction"] == 0.2 and sorted(x["fault_kinds"]) == ["absent", "stale"]
+    assert max(x["rates"]) == 1000 and min(x["rates"]) == 25
+
+
 def test_merkle_proofs_and_bimc():
     leaves = [os.urandom(32) for _ in range(37)]
     t = MerkleTree(leaves)

@@ -44,6 +44,31 @@ def test_veredact_rejects_every_fault_class(cfg, ds):
     s.teardown()
 
 
+def test_veredact_stale_request_fails_freshleaf_not_a_flag(cfg, ds):
+    """#5 redesign (Exp. 1 invalid workload): a stale request is proved honestly, but against a content commitment
+    an earlier redaction replaced. Phase 3 rejects it in FreshLeaf (its own leaf no longer matches), exactly as a
+    real stale request, and the harness does not send it back for re-proving (an injected fault)."""
+    from veredact_bench.evaluation.common import revalidate
+    from veredact_bench.methods.scheme import RedactionOutcome
+
+    s = open_system(cfg, "veredact", ds)
+    r = faulty(ds, "stale", 5)
+    a = authorize(s, r, prepare(s, r))
+    assert not a.ok and a.reason == "freshness:stale state"
+    assert not revalidate(r, RedactionOutcome(r.seq, False, reason=a.reason))
+    assert decide(s, ds.trace[5])  # the same target without the fault is valid
+    s.teardown()
+
+
+@pytest.mark.parametrize("key", ["S1", "S13", "S27", "S34"])
+def test_baseline_executes_a_stale_request(cfg, ds, key):
+    """#5: no baseline binds a request to the content commitment it expects to replace, so a stale request is
+    authorized like a valid one. Exp. 1 counts it as an accepted invalid request, never as throughput."""
+    s = open_system(cfg, key, ds)
+    assert decide(s, faulty(ds, "stale", 6))
+    s.teardown()
+
+
 @pytest.mark.parametrize("key", ["S1", "S13", "S27", "S34"])
 def test_baseline_rejects_absent_target_and_claims_match(cfg, ds, key):
     s = open_system(cfg, key, ds)

@@ -97,6 +97,12 @@ class VeRedactPQ:
         if tx is not None:
             bt = L.batches[tx.b]
             R.v_b, R.h_st = bt.v, self.state_digest(tx)
+            if tamper == "stale":
+                # fault "stale" (#5): an honest requester that read the target before an earlier redaction
+                # replaced its content commitment. It proves against that superseded D_i, so FreshLeaf rejects it
+                # in Phase 3 like any stale request (own leaf changed), not through a flag.
+                D_old = c.H(b"superseded-content", tx.D)
+                R.h_st = c.H(c.H(tx.TID, tx.I, D_old, tx.pos), L.checkpoints[tx.b].snap)
             R.x = self._statement(R, tx, R.h_st)
             # fault "zk": the requester lacks a valid credential -> a proof over a non-registered witness
             forged = int.from_bytes(os.urandom(15), "big") if tamper == "zk" else None
@@ -178,8 +184,6 @@ class VeRedactPQ:
         pol = L.policies[tx.PID]
         if c.H(pol.PID, pol.body, pol.v, pol.e_P) != pol.C_P or R.op not in pol.ops or R.tamper == "policy":
             return Rejection("public policy", "policy")
-        if R.tamper == "stale":
-            return Rejection("stale state", "policy")
         v_snap = self.fresh_leaf(tx, R.h_st)
         if v_snap is None:  # the target leaf itself changed, or the snapshot is older than k: revalidate
             return Rejection("stale state", "freshness")

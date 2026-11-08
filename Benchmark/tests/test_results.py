@@ -138,6 +138,51 @@ def test_exp1_throughput_counts_redactions_finalized_during_the_window():
     assert abs(pt["throughput_per_s"] - 2 / 60) < 1e-9
 
 
+def test_exp1_counts_accepted_invalid_requests_never_as_throughput():
+    """#5 redesign: throughput counts valid finalized redactions only; an invalid request (stale or absent) that a
+    scheme executes is an accepted invalid request, reported per point."""
+    from veredact_bench.evaluation.summaries import _exp01
+
+    def row(seq, fault, status):
+        return dict(
+            sweep="rate",
+            rate_rps=100,
+            zipf_s=0.8,
+            seq=seq,
+            in_window=1,
+            fault=fault,
+            status=status,
+            batch_id=seq,
+            batch_adaptations=1,
+            submit_s=20.0,
+            latency_ms=1_000 if status == "finalized" else "",
+            arrival_s=20.0,
+        )
+
+    rows = [row(1, "", "finalized"), row(2, "stale", "finalized"), row(3, "absent", "rejected")]
+    (pt,) = _exp01(rows, {"experiment": {"duration_s": 60, "warmup_s": 10}}).values()
+    assert pt["completed_in_window"] == 1 and abs(pt["throughput_per_s"] - 1 / 60) < 1e-9
+    assert pt["invalid_offered"] == 2 and pt["invalid_accepted"] == 1 and pt["invalid_accepted_rate"] == 0.5
+
+
+def test_exp1_figure_is_one_panel_of_valid_throughput(monkeypatch):
+    """#5 redesign: Fig. 3 is one panel (finalized valid redactions/s vs offered load), one line per system."""
+    from veredact_bench.reporting import figures, style
+
+    def pt(tp):
+        return {"completed_in_window": 10, "throughput_per_s": tp, "latency_ms": {"n": 1, "p95": 1.0}}
+
+    pts = {f"sweep=rate|rate_rps={r}|zipf_s=0.8": pt(r / 2) for r in (25, 100)}
+    fake = {k: {"points": pts} for k in ("veredact", "S27")}
+    monkeypatch.setattr(figures, "_all_metrics", lambda exp, tier: fake)
+    monkeypatch.setattr(figures, "load", lambda tier, exp: {"experiment": {"rates": [25, 100]}})
+    drawn = {}
+    monkeypatch.setattr(figures, "_save", lambda fig, name, w: drawn.update({name: [len(a.lines) for a in fig.axes]}))
+    style.apply()
+    figures.fig_exp1("smoke", [])
+    assert drawn["exp1_redaction_throughput"] == [2]
+
+
 def test_exp1_single_run_cis_from_subwindows_and_bootstrap():
     """Exp. 1 runs once: throughput CI over 6 sub-windows (steady 1/s -> 0), p95 CI by bootstrap (> 0, seeded)."""
     from veredact_bench import metrics as M
