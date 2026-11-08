@@ -40,7 +40,7 @@ METHODS = {  # key -> (label, colour, line style, marker)
     "S13-per-block": ("Scheme [13], per block", _GREEN, "--", "D"),  # its Query phase once per block (Exp. 4)
     "S27": ("Scheme [27]", _VERMILION, "-", "^"),
     "S34": ("Scheme [34]", _PURPLE, "-", "D"),
-    "S99": ("Scheme [39]", _SKY, "-", "v"),  # LETA, ref [39] of the blue manuscript version
+    "S99": ("Scheme [30]", _SKY, "-", "v"),  # LETA: bibitem ref39, printed [30] (takes the slot of the duplicate ref30)
 }
 
 
