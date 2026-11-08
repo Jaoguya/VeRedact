@@ -256,6 +256,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
                     batch_frontier=s.p.last_exec["frontier"] if veredact else "",  # F_e (SFMR frontier)
                     redact_crypto_ms=res.crypto_ms,
                     redact_ledger_ms=res.ledger_ms,
+                    redact_net_ms=res.net_ms,  # committee message delay waited (fairness fix)
                     status="pending" if o.ok else "failed",
                     reason=o.reason or st.get("reason", ""),
                 )
@@ -366,6 +367,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             queue_ms=(st["exec_start"] - st["auth_done"]) * 1000 if "exec_start" in st else "",
             redact_crypto_ms=st.get("redact_crypto_ms", ""),
             redact_ledger_ms=st.get("redact_ledger_ms", ""),
+            redact_net_ms=st.get("redact_net_ms", ""),
             finality_ledger_ms=st.get("finality_ledger_ms", ""),
             latency_ms=(st["final"] - st["submit"]) * 1000 if "final" in st else "",
             cutoff_s=cutoff,

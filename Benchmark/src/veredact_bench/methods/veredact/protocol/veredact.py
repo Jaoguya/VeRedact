@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from ...committee import CommitteeClock
 from ..ds.merkle import MerkleTree, verify_multiproof, verify_proof
 from .cora import Candidate, cora_select
 from .ledger import Ledger
@@ -73,6 +74,7 @@ class VeRedactPQ:
         self._win_t0, self._win_no = 0.0, 0
         self._win_lock = threading.Lock()
         self.windows: dict[int, tuple[bytes, bytes]] = {}  # w -> (R_w^V, sigma_w^V), as the VPS published them
+        self.committee = CommitteeClock.from_cfg(cfg)  # t members on their own machines (fairness fix)
         self.vcs: set = set()  # auditor's Verified-Context Store: chi(v) of successfully verified shared nodes
 
     # ============================================================ requester side
@@ -368,12 +370,13 @@ class VeRedactPQ:
         msg = C_B  # each approving member signs C_e^B
         t3 = time.perf_counter()
         bd["commit_ms"] = (t3 - t2) * 1000
-        approvals = []
-        for k in range(L.t):  # Step 4: t distinct PQ signatures (+ verification)
-            sig = c.sign(L.committee[k].sk, msg)
-            if c.verify(L.committee[k].pk, msg, sig):
-                approvals.append((k, sig))
-        bd["committee_ms"] = (time.perf_counter() - t3) * 1000
+
+        # Step 4: t distinct PQ signatures, one message round: each member signs C_e^B on its own machine
+        sigs = self.committee.round([lambda k=k: (k, c.sign(L.committee[k].sk, msg)) for k in range(L.t)])
+        t4 = time.perf_counter()
+        # the collector then verifies the t approvals itself, one after another (serial, at one place)
+        approvals = [(k, sig) for k, sig in sigs if c.verify(L.committee[k].pk, msg, sig)]
+        bd["committee_ms"] = self.committee.last_slowest_ms() + (time.perf_counter() - t4) * 1000
         if len(approvals) < L.t:
             return None
         auth = BatchAuth(
@@ -483,7 +486,8 @@ class VeRedactPQ:
                 jobs.append((b, grp, old_root, old_r, bt.tree.root, theta))
             R_old = np.stack([j[3] for j in jobs], axis=1)
             P, Z = c.ch_begin_adapt_many(L.pk_ch, [j[2] for j in jobs], R_old, [j[4] for j in jobs])
-            deltas = [c.ch_part_adapt_many(L.td[k + 1], Z) for k in range(L.t)]
+            # t PQCH adaptation shares, one message round; each member computes its share on its own machine
+            deltas = self.committee.round([lambda k=k: c.ch_part_adapt_many(L.td[k + 1], Z) for k in range(L.t)])
             R_new = c.ch_combine_many(P, Z, deltas)
             ok = c.ch_verify_many(L.pk_ch, [L.batches[j[0]].ch for j in jobs], [j[4] for j in jobs], R_new)
             for col, (b, grp, old_root, old_r, new_root, theta) in enumerate(jobs):

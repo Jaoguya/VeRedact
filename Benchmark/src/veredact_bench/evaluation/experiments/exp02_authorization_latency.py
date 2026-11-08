@@ -59,9 +59,10 @@ def run(cfg, out):
                     for r in reqs:
                         a = authorize(s, r, prepare(s, r))
                         auths.append(a)
-                    ph4, bd = "", dict.fromkeys(BREAKDOWN, "")
+                    ph4, bd, net4 = "", dict.fromkeys(BREAKDOWN, ""), ""
                     if hasattr(s, "authorize_batch"):  # a batch protocol of its own: VeRedact-PQ Phase 4, S99
                         _, ph4 = s.authorize_batch(auths)
+                        net4 = getattr(s, "last_auth_net_ms", 0.0)
                     if is_veredact(s):
                         bd = {k: s.p.last_breakdown[k] for k in BREAKDOWN}
                     # Fig. 4(b) per batch: the batch protocol (VeRedact-PQ Phase 4, S99); else m authorizations
@@ -83,6 +84,10 @@ def run(cfg, out):
                             # phase3_ms. S99 likewise (aggregation + Eq. 13) / b. Any other baseline's authorization
                             # is its own per-request protocol (Table IV).
                             auth_per_request_ms=ph4 / b if ph4 != "" else a.crypto_ms,
+                            # committee message delay waited (fairness fix), network time kept apart from crypto
+                            phase3_net_ms=a.net_ms,
+                            phase4_batch_net_ms=net4,
+                            auth_net_per_request_ms=net4 / b if net4 != "" else a.net_ms,
                         )
             out.log.info(f"  {key:28s} n={n:<3} batch axis {batch_axis} x {reps} samples")
             s.teardown()

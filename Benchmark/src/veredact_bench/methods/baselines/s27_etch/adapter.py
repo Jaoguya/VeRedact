@@ -14,6 +14,7 @@ import time
 
 from veredact_bench.evaluation.anchor import gather, make_anchor
 from veredact_bench.methods.baselines.s27_etch.construction import Initiator, keygen, redact_tx, verify_tx
+from veredact_bench.methods.committee import CommitteeClock
 from veredact_bench.methods.scheme import (
     AuthCost,
     Authorization,
@@ -56,6 +57,7 @@ class ETCHScheme(Scheme):
             for tx in dataset.transactions
         }
         self.anchor = make_anchor(self.cfg)
+        self.committee = CommitteeClock.from_cfg(self.cfg)  # t redactors on their own machines (fairness fix)
         self.signers = list(self.keys.parts)[: self.t]
 
     def authorize(self, req: RedactionRequest) -> Authorization:
@@ -66,16 +68,19 @@ class ETCHScheme(Scheme):
         return Authorization(req, True, (time.perf_counter() - t0) * 1000)
 
     def redact(self, batch: list) -> RedactionResult:
-        crypto_ms, outcomes, adapt, futs = 0.0, [], 0, []
+        crypto_ms, outcomes, adapt, futs, net_ms = 0.0, [], 0, [], 0.0
         for a in batch:  # the paper redacts one transaction at a time
             if not a.ok:
                 outcomes.append(RedactionOutcome(a.request.seq, False, reason=a.reason))
                 continue
             t0 = time.perf_counter()
             tx, owner = self.txs[a.request.tid]
-            new_tx = redact_tx(self.keys, self.signers, tx, a.request.new_payload)
+            # ETCH.Adapt's two Commitment-Aggregator rounds (Liu et al. Sec. VI), t redactors per round
+            new_tx = redact_tx(self.keys, self.signers, tx, a.request.new_payload, run=self.committee.round)
             ok = verify_tx(self.keys.Y, self.initiators[owner].sk.public_key, new_tx)
-            crypto_ms += (time.perf_counter() - t0) * 1000
+            credit_s, net = self.committee.take()  # slowest redactor only; the message rounds are not crypto
+            crypto_ms += (time.perf_counter() - t0 - credit_s) * 1000
+            net_ms += net
             adapt += 1
             if ok:
                 self.txs[a.request.tid] = (new_tx, owner)
@@ -91,7 +96,13 @@ class ETCHScheme(Scheme):
                 )
             outcomes.append(RedactionOutcome(a.request.seq, ok, reason="" if ok else "adapt verify"))
         return RedactionResult(
-            outcomes, crypto_ms, 0.0, adapt, finality=gather(futs) if futs else None, finality_op="baseline_redaction"
+            outcomes,
+            crypto_ms,
+            0.0,
+            adapt,
+            finality=gather(futs) if futs else None,
+            finality_op="baseline_redaction",
+            net_ms=net_ms,
         )
 
     def teardown(self) -> None:

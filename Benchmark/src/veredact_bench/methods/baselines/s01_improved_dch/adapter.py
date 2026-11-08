@@ -24,6 +24,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from veredact_bench.evaluation.anchor import chain_digest, gather, make_anchor
 from veredact_bench.methods.baselines.s01_improved_dch.construction import ImprovedDCH, dkg
+from veredact_bench.methods.committee import CommitteeClock
 from veredact_bench.methods.scheme import (
     AuditQuery,
     AuditResult,
@@ -107,6 +108,7 @@ class ImprovedDCHScheme(Scheme):
         # acc = g^(prod of redacted-header primes); every full node also holds the accumulated set itself
         self.acc, self.members, self.member_set = self.g, [], set()
         self.anchor = make_anchor(self.cfg)
+        self.committee = CommitteeClock.from_cfg(self.cfg)  # t full nodes on their own machines (fairness fix)
         self.redacted = []  # (seq, block)
         self.rec_id = {}  # block -> id of its redaction record on the chain
 
@@ -149,17 +151,26 @@ class ImprovedDCHScheme(Scheme):
         # clients (consistency check, Sec. III-C4; audit A6). Building one per request cost O(history)
         # (|b| ~ |u|): ~3 s per request at 3,500 redactions (audit A8).
         x = _hprime(blk["msg"])
-        for _ in range(self.t):  # P and each approving full node
+
+        def node_check():  # P and each approving full node, each on its own machine (one message round)
             if x in self.member_set:  # Jia: one redaction per block -> rejected
-                return Authorization(req, False, (time.perf_counter() - t0) * 1000, reason="block already redacted")
+                return "block already redacted"
             pk = owner.public_key
             if not (pk.verify(self.sig[req.tid], blk["payloads"][pos]) and pk.verify(new_sig, req.new_payload)):
-                return Authorization(req, False, (time.perf_counter() - t0) * 1000, reason="tx signature")
-        return Authorization(req, True, (time.perf_counter() - t0) * 1000, handle=(b, pos))
+                return "tx signature"
+            return ""
+
+        verdicts = self.committee.round([node_check] * self.t)
+        credit_s, net = self.committee.take()  # slowest node only; the message round is not crypto
+        ms = (time.perf_counter() - t0 - credit_s) * 1000
+        reason = next((v for v in verdicts if v), "")
+        if reason:
+            return Authorization(req, False, ms, reason=reason, net_ms=net)
+        return Authorization(req, True, ms, handle=(b, pos), net_ms=net)
 
     # ------------------------------------------------------------------ redact: steps 3-5
     def redact(self, batch: list) -> RedactionResult:
-        crypto_ms, outcomes, futs = 0.0, [], []
+        crypto_ms, outcomes, futs, net_ms = 0.0, [], [], 0.0
         for a in batch:
             if not a.ok:
                 outcomes.append(RedactionOutcome(a.request.seq, False, reason=a.reason))
@@ -173,12 +184,15 @@ class ImprovedDCHScheme(Scheme):
             payloads = list(blk["payloads"])
             payloads[pos] = a.request.new_payload
             msg_new = blk["prev"] + _mroot(payloads)
-            r_new = self.dch.collision(blk["msg"], msg_new, blk["r"], blk["h"], self.parties)
+            # threshold Collision: the t parties' partials in one message round (Li et al. Sec. V-B)
+            r_new = self.dch.collision(blk["msg"], msg_new, blk["r"], blk["h"], self.parties, run=self.committee.round)
             ok = self.dch.verify(msg_new, r_new, blk["h"])
             x = _hprime(msg_new)
             if ok:  # accumulator update ACC.Insert (only a valid redaction enters acc)
                 self.acc = int(gmpy2.powmod(self.acc, x, self.N))
-            crypto_ms += (time.perf_counter() - t0) * 1000
+            credit_s, net = self.committee.take()  # slowest party only; the message round is not crypto
+            crypto_ms += (time.perf_counter() - t0 - credit_s) * 1000
+            net_ms += net
             if ok:
                 blk.update(payloads=payloads, msg=msg_new, r=r_new, redacted=True)
                 self.members.append(x)
@@ -205,6 +219,7 @@ class ImprovedDCHScheme(Scheme):
             len(futs),
             finality=gather(futs) if futs else None,
             finality_op="baseline_redaction_acc",
+            net_ms=net_ms,
         )
 
     # ------------------------------------------------------------------ audit: consistency check

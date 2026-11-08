@@ -179,6 +179,8 @@ def _exp02(rows, cfg):
             "phase3_ms": _stats(r["phase3_ms"] for r in rs),
             "phase4_batch_ms": _stats(r["phase4_batch_ms"] for r in rs),
             "batch_total_ms": _stats(r.get("batch_total_ms") for r in rs),
+            # committee message delay per request (fairness fix): network time, kept apart from the crypto above
+            "auth_net_per_request_ms": _stats(r.get("auth_net_per_request_ms") for r in rs),
             "accepted": sum(int(r["auth_ok"]) for r in rs),
             "requests": len(rs),
         }

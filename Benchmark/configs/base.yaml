@@ -55,6 +55,13 @@ environment:
   vcpus: 16                     # = 8 physical cores x 2 hyperthreads
   region: us-east-2
 
+committee:
+  # [PROPOSED] fairness fix (#5 step 2, #13), the same for every threshold scheme (methods/committee.py):
+  # members are separate machines (a committee step's crypto time counts the slowest member) and each
+  # committee message round really waits message_delay_ms, as between the Besu validators
+  parallel_members: true
+  message_delay_ms: 10         # = ledger.netem_delay_ms
+
 ledger:
   # [METHOD] besu = Hyperledger Besu QBFT (manuscript). in_process = in-memory ledger for smoke runs only;
   # its ledger time is NOT consensus cost and validation refuses it in the experiment tier.

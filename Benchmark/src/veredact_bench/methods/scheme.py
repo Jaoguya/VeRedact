@@ -88,6 +88,7 @@ class Authorization:
     ledger_ms: float = 0.0
     reason: str = ""
     handle: object = None  # scheme-internal material passed on to redact()
+    net_ms: float = 0.0  # committee message delay waited (methods/committee.py); network time, never crypto
 
 
 @dataclass
@@ -104,6 +105,7 @@ class RedactionResult:
     crypto_ms: float  # CH adaptation + Merkle/commitment work (off-chain, in-process)
     ledger_ms: float  # anchoring / finalisation (Besu when ledger.backend = besu)
     ch_adaptations: int  # chameleon-hash adaptations performed
+    net_ms: float = 0.0  # committee message delay waited (methods/committee.py); network time, never crypto
     onchain_tx: list = field(default_factory=list)  # [(operation, gas_used)] from receipts
     finality: object = None  # Future -> (ledger_ms, gas) when anchoring is still in flight
     finality_op: str = "redaction_finalization"  # on-chain operation the finality Future stands for
