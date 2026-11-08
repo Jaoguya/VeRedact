@@ -312,3 +312,17 @@ def test_shared_evidence_still_rechecks_pqch_for_every_record(cfg, ds):
     accepted, _ = audit(s, recs)
     assert all(accepted.values())
     assert s.crypto.counts["T_CH"] - before == len(recs)
+
+
+def test_checkpoint_signature_binds_r_through_its_digest(audited):
+    """sigma_b signs H(r_b), not r_b itself, so an audit does not re-hash 64 KiB per checkpoint node.
+    A checkpoint whose r_b was replaced no longer verifies, because its digest no longer matches."""
+    s = audited
+    s.p.vcs.clear()
+    recs = [copy.deepcopy(r) for r in s.p.records[:6]]
+    cp = recs[2].pbrp["cp"]
+    assert cp.r_digest == s.crypto.H(cp.r.tobytes())
+    recs[2].pbrp = dict(recs[2].pbrp, cp=dataclasses.replace(cp, r_digest=b"\x00" * 32))
+    accepted, _ = audit(s, recs)
+    assert accepted[recs[2].RID] is False
+    assert all(ok for rid, ok in accepted.items() if rid != recs[2].RID)

@@ -736,7 +736,7 @@ class VeRedactPQ:
         """The checkpoint authority's PQ signature on the finalized A_b' and its MR_b' as anchored on the PBN."""
         L, c = self.L, self.c
         cp, p = rr.pbrp["cp"], rr.pbrp
-        msg = c.H(cp.b, cp.CH, cp.MR, cp.r.tobytes(), cp.R_RLI, cp.v_RLI, cp.e, cp.v_b, cp.ts)
+        msg = c.H(cp.b, cp.CH, cp.MR, cp.r_digest, cp.R_RLI, cp.v_RLI, cp.e, cp.v_b, cp.ts)
         return cp.MR == p["MR_new"] == mr_chain and cp.v_b == rr.v_b_new and c.verify(L.cp.pk, msg, cp.sigma)
 
 

@@ -36,6 +36,10 @@ class Checkpoint:  # A_b
     v_b: int
     ts: int
     sigma: bytes
+    # sigma_b signs H(r_b) rather than r_b itself, computed once here. r_b is M = 2nk int64 values
+    # (64 KiB), so re-hashing it inside every checkpoint verification cost ~0.25 ms per node; the
+    # PQCH equation is what binds r_b to CH_b and MR_b, the signature only has to bind the same value.
+    r_digest: bytes = b""
 
 
 @dataclass

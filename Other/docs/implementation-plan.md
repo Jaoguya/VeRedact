@@ -40,6 +40,7 @@ No protocol change, no manuscript change, no reviewer gate. Each is one PR.
 | **S3a** | Key the **authorization** node's χ(v) on `(BID)` instead of a hash of C_B, R_VR and the t committee signatures | `veredact.py` (`verify_audit`, `chi_auth`) | `auth` is read from the verifier's own store by BID, so BID alone determines the evidence `_verify_auth_node` recomputes. Nothing from the response enters the key | Exp. 3/4: `committee` 555 → ~23 ms |
 | **S4** | Use the existing `PQCHSis.verify_many` for the round's transitions instead of `ch_verify` per transition | `veredact.py` (`_verify_transition_node` → collect-then-verify) | `verify_many` is already in `crypto/pqch_sis.py` and is the verification twin of the round-vectorised adaptation already documented in `experiments.md` §4 | Exp. 3/4: `state` 11.0 s → ~2.0–2.7 s (the 4× is an estimate — see §5) |
 | ~~S5~~ | ~~Fill in `auth_cost()` in the S34 and S99 adapters~~ | — | **withdrawn, see below** | — |
+| **S7** | Sign `H(r_b′)` in A_b′ instead of `r_b′` itself, hashed once when the checkpoint is built | `protocol/types.py`, `ledger.py` (`_checkpoint`), `veredact.py` (`_verify_checkpoint_node`) | the signature binds the same value through one more hash; the PQCH equation is what binds r_b′ to CH_b and MR_b′, exactly as before. The contract's `Checkpoint` struct already declares `rDigest`, so this aligns the Python side with it | Exp. 3/4: `cp` 2,269 → ~300 ms (r_b′ is 2nk int64 = 64 KiB, re-hashed per checkpoint node today) |
 | **S6** | Record `gas_used` for both Exp. 5 transactions | `evaluation/experiments/exp05_blockchain_overhead.py`, `evaluation/summaries.py` | every Future already resolves to `(ledger_ms, gas_used)`; Exp. 5 threw the gas away with `_` | decides whether the chain is transaction- or byte/gas-bound, which Exp. 5's whole comparison turns on |
 
 **S5 withdrawn (correction to #6's step 1).** The verdict table on #6 says S34 and S99 "report all-zero
@@ -69,7 +70,7 @@ Each needs a red-marked manuscript copy in `suggest_change/<lane>/VeRedact-optim
 | **P4** | **RoundCheckpoint** — one σ_e over a Merkle root of the round's checkpoints plus an inclusion path per batch, instead of σ_b′ per batch | #9 | Phase 5 Steps 5–6, Phase 6 Step 5, Theorems 3 and 5, same contract call | Exp. 5: transaction 6.2× smaller, 304 B per redaction |
 | **P5** | **Credential token** — `ValidCred ∧ PrivatePolicy` proved once per (requester, policy, Δ); each request carries an ML-DSA signature over x_i under the token's key | #6 O4 | Phase 1 Step 6, new Phase 2 issuance, Phase 3 Step 4, Theorems 1–2, Phase 6 escalation | Exp. 2: 1.27 → 0.63 ms. **Costs linkability within Δ and revocation latency ≤ Δ** |
 | **P6** | **Paper-conformance gap #1** — check PQCH for the old *and* the new state (2·T_CH per transition), as the manuscript specifies | #8 | `_verify_transition_node` | **Adds ~8.1 s** at n_Q = 10^4. See the warning in §3 |
-| **P7** | Store `r_b′` as int32 (int16 cannot hold every valid r: verification bounds ‖r‖ ≤ β = 70,473) | #8 | `crypto/pqch_sis.py`, `_checkpoint` | halves the bytes hashed per checkpoint signature |
+| ~~P7~~ | ~~Store `r_b′` as int32~~ → **done as S7** (sign `H(r_b′)`), see §1 | #8 | — | — |
 | **S3b** | Key the **transition** and **checkpoint** nodes' χ(v) cheaply too | #7 O2, #8 | audit response format, `verify_audit` | Exp. 3/4: a further −5.8 s at n_Q = 10^4 |
 
 **Why S3b is not in §1.** The transition and checkpoint evidence arrives *inside the response*, one copy per
@@ -98,8 +99,8 @@ what Exp. 3 and Exp. 4 measure. Anyone touching `verify_audit` must rebase onto 
 → P6**, and report the three as one line in the paper, never P6 alone. Landing P6 first would make Exp. 3 and
 Exp. 4 look like a regression against the 3 Nov release.
 
-**P7 interacts with P3/P4.** The checkpoint signature's message hashes `r_b′`; if P3 anchors `H(A_b′)` instead,
-the width of `r_b′` changes what is hashed on both sides. Do P7 before or with P3/P4, not after.
+**S7 lands before P3/P4.** The checkpoint signature's message changes shape, and P3 anchors `H(A_b′)` over
+that same message, so S7 goes first (it already has).
 
 **Rounds couple all five experiments.** P1 makes rounds larger, which raises records-per-transition (today
 1.32). That lowers Exp. 3's z_Q and Exp. 5's affected batches per redaction. So the Exp. 3 and Exp. 5
@@ -108,10 +109,9 @@ predictions are **lower bounds** if P1 lands, and Exp. 3's sharing claim stays w
 ### Order to implement
 
 ```
-1. S1  S2  S6              independent, any order, no rebases
+1. S1  S2  S6  S7          independent, any order, no rebases
 2. S4                      batched PQCH verify      (must precede P6)
 3. S3a                     authorization chi key
-4. P7                      r_b' width               (before P3/P4)
 5. P1                      FreshLeaf                (everything below rebases onto it)
 6. P2                      BatchAttest              (#6 + #7)
 7. P3 + P4 + S3b together  H(A_b'), RoundCheckpoint and nodes-by-id: one contract change, one rebuild

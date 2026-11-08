@@ -158,7 +158,8 @@ class Ledger:
     def _checkpoint(self, b: int, R_RLI: bytes) -> Checkpoint:
         bt = self.batches[b]
         ts = int(time.time())
-        msg = self.c.H(b, bt.ch, bt.tree.root, bt.r.tobytes(), R_RLI, self.rli.snapshot, self.e, bt.v, ts)
+        r_digest = self.c.H(bt.r.tobytes())  # H(r_b): hashed once here, never again per audited record
+        msg = self.c.H(b, bt.ch, bt.tree.root, r_digest, R_RLI, self.rli.snapshot, self.e, bt.v, ts)
         return Checkpoint(
             b,
             bt.ch,
@@ -170,4 +171,5 @@ class Ledger:
             bt.v,
             ts,
             self.c.sign(self.cp.sk, msg),
+            r_digest,
         )
