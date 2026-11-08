@@ -37,12 +37,12 @@ No protocol change, no manuscript change, no reviewer gate. Each is one PR.
 |---|---|---|---|---|
 | **S1** | Move `anchor.submit("abrrr_authorization", …)` out of the Phase 4 crypto timer; return the Future to `VeRedactScheme.authorize_batch` and record it as ledger time | `methods/veredact/protocol/veredact.py` (`authorize`), `veredact_scheme.py` (`authorize_batch`) | rule 6 says crypto and ledger time are never summed; today `_sign` runs in the caller's thread inside the timer | Exp. 2: −1.26 to −2.04 ms per authorized set (58 % of the m = 1 point). Helps us; it is still a bug |
 | **S2** | Drop `h_proof = c.H(ev["proof"])` from the Phase 4 attestation check | `veredact.py` (Phase 4 `authorize`) | C_VR already binds h_i^PQ inside α_i, verified one line earlier; Phase 6 re-derives it on every escalated record | Exp. 2: −0.09 ms per request |
-| **S3** | Key the verified-context store on authenticated digests — `(BID)`, `(b, v_b, v_b′, h_i^PBRP)`, `(b, v_b′, CP_e^A)` — and hash the full evidence once, on insertion | `veredact.py` (`verify_audit`, the three `chi_*`) | the manuscript's χ(v) is over the node's identity; the code hashes its serialisation per record, which is why the cache costs more than it saves | Exp. 3/4: −6.3 s at n_Q = 10^4 |
+| **S3a** | Key the **authorization** node's χ(v) on `(BID)` instead of a hash of C_B, R_VR and the t committee signatures | `veredact.py` (`verify_audit`, `chi_auth`) | `auth` is read from the verifier's own store by BID, so BID alone determines the evidence `_verify_auth_node` recomputes. Nothing from the response enters the key | Exp. 3/4: `committee` 555 → ~23 ms |
 | **S4** | Use the existing `PQCHSis.verify_many` for the round's transitions instead of `ch_verify` per transition | `veredact.py` (`_verify_transition_node` → collect-then-verify) | `verify_many` is already in `crypto/pqch_sis.py` and is the verification twin of the round-vectorised adaptation already documented in `experiments.md` §4 | Exp. 3/4: `state` 11.0 s → ~2.0–2.7 s (the 4× is an estimate — see §5) |
 | **S5** | Fill in `auth_cost()` in the S34 and S99 adapters | `methods/baselines/s34_rebs/adapter.py`, `s99_leta/adapter.py` | both report all-zero counters, so rule 7 is only half met | reporting only |
 | **S6** | Record `gas_used` and the per-system anchoring transaction size in Exp. 5's rows | `evaluation/experiments/exp05_blockchain_overhead.py` | the anchor already resolves both and keeps them in `_Metered.receipts`; Exp. 5 discards them | decides whether the chain is transaction- or byte-bound, which Exp. 5's whole comparison turns on |
 
-**Test for each:** S1 — a Phase 4 timing test that asserts no ledger call inside the timer. S2/S3 — existing
+**Test for each:** S1 — a Phase 4 timing test that asserts no ledger call inside the timer. S2/S3a — existing
 fidelity tests must still reject what they rejected (a tampered evidence blob, a stale checkpoint). S4 — one
 bad transition rejects only its own records (`verify_many` returns per-column booleans). S6 — a smoke row has
 non-empty `gas` and `tx_bytes`.
@@ -60,6 +60,15 @@ Each needs a red-marked manuscript copy in `suggest_change/<lane>/VeRedact-optim
 | **P5** | **Credential token** — `ValidCred ∧ PrivatePolicy` proved once per (requester, policy, Δ); each request carries an ML-DSA signature over x_i under the token's key | #6 O4 | Phase 1 Step 6, new Phase 2 issuance, Phase 3 Step 4, Theorems 1–2, Phase 6 escalation | Exp. 2: 1.27 → 0.63 ms. **Costs linkability within Δ and revocation latency ≤ Δ** |
 | **P6** | **Paper-conformance gap #1** — check PQCH for the old *and* the new state (2·T_CH per transition), as the manuscript specifies | #8 | `_verify_transition_node` | **Adds ~8.1 s** at n_Q = 10^4. See the warning in §3 |
 | **P7** | Store `r_b′` as int32 (int16 cannot hold every valid r: verification bounds ‖r‖ ≤ β = 70,473) | #8 | `crypto/pqch_sis.py`, `_checkpoint` | halves the bytes hashed per checkpoint signature |
+| **S3b** | Key the **transition** and **checkpoint** nodes' χ(v) cheaply too | #7 O2, #8 | audit response format, `verify_audit` | Exp. 3/4: a further −5.8 s at n_Q = 10^4 |
+
+**Why S3b is not in §1.** The transition and checkpoint evidence arrives *inside the response*, one copy per
+record, so the only thing that safely identifies a node is a digest of that evidence — which is the expensive
+hash we want to remove. `h_i^PBRP` does not help: it binds Θ_b, Ξ_b, MR_b, MR_b′, v_b and v_b′ but **not r_b′**,
+so two records with equal h_i^PBRP and different r_b′ would share one verdict and a forged r_b′ would be
+accepted. The fix is the one the manuscript already describes and #8 named: the response references shared DAG
+nodes **by id** and carries each node once, after which χ(v) is the node id. That is a response-format change,
+so it rides with P3.
 
 ## 3. Overlaps and ordering — the part that bites
 
@@ -69,13 +78,13 @@ what the contract stores. Land them as **one** PR with **one** image rebuild, no
 **P2 serves two lanes.** #6 asked for it to cut Phase 3 signing, #7 asked for it to cut the response. Same
 change — implement once, reference both issues.
 
-**S3 serves two lanes.** The per-record χ hashing was found independently on #7 and #8.
+**S3a/S3b serve two lanes.** The per-record χ hashing was found independently on #7 and #8.
 
 **P1 reaches into #7 and #8.** FreshLeaf adds `v_snap` to PBRP and a snapshot check to Phase 6, both inside
 what Exp. 3 and Exp. 4 measure. Anyone touching `verify_audit` must rebase onto it.
 
-**⚠️ P6 works against S4 and S3.** Fixing the conformance gap *doubles* the PQCH work the auditor does, adding
-~8.1 s at n_Q = 10^4 — more than S3 and S4 save together unless S4's batching lands first. Sequence: **S4 → S3
+**⚠️ P6 works against S4 and S3a/S3b.** Fixing the conformance gap *doubles* the PQCH work the auditor does, adding
+~8.1 s at n_Q = 10^4 — more than S3a, S3b and S4 save together unless the batching lands first. Sequence: **S4 → S3a → S3b
 → P6**, and report the three as one line in the paper, never P6 alone. Landing P6 first would make Exp. 3 and
 Exp. 4 look like a regression against the 3 Nov release.
 
@@ -91,12 +100,12 @@ predictions are **lower bounds** if P1 lands, and Exp. 3's sharing claim stays w
 ```
 1. S1  S2  S5  S6          independent, any order, no rebases
 2. S4                      batched PQCH verify      (must precede P6)
-3. S3                      chi key                  (must precede P6)
+3. S3a                     authorization chi key
 4. P7                      r_b' width               (before P3/P4)
 5. P1                      FreshLeaf                (everything below rebases onto it)
 6. P2                      BatchAttest              (#6 + #7)
-7. P3 + P4 together        H(A_b') + RoundCheckpoint, one contract change, one image rebuild
-8. P6                      conformance gap, reported with S3/S4
+7. P3 + P4 + S3b together  H(A_b'), RoundCheckpoint and nodes-by-id: one contract change, one rebuild
+8. P6                      conformance gap, reported together with S3a, S3b and S4
 9. P5                      credential token         (only if the team accepts the privacy trade)
 10. Experiment redesigns   §4 below
 11. Manuscript merge       one PR

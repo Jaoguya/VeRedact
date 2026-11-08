@@ -273,3 +273,42 @@ def test_phase4_rejects_a_request_whose_attested_commitment_does_not_reconstruct
     bad.handle.h_proof = b"\0" * len(bad.handle.h_proof)
     auth = s.p.authorize([good.handle, bad.handle])
     assert [v.RID for v in auth.members] == [good.handle.RID]
+
+
+# ---------------------------------------------------------------- batched PQCH verification
+def test_pqch_is_checked_once_per_distinct_transition(audited):
+    """SAVER checks each distinct transition once, and _pqch_batch does all of them in one matrix product:
+    the T_CH ops of an audit equal its verified transition nodes."""
+    s = audited
+    s.p.vcs.clear()
+    before = s.crypto.counts["T_CH"]
+    accepted, nodes = audit(s, s.p.records[:16])
+    assert all(accepted.values())
+    assert s.crypto.counts["T_CH"] - before == nodes["trans"]
+
+
+def test_batched_pqch_rejects_only_the_tampered_transition(audited):
+    """Batching must not let one bad column decide for the others: verify_many returns a verdict per column."""
+    s = audited
+    s.p.vcs.clear()
+    recs = [copy.deepcopy(r) for r in s.p.records[:8]]
+    bad = recs[3]
+    bad.pbrp["r_new"] = bad.pbrp["r_new"] + 1  # a different r_b' no longer satisfies PQCH.Hash(MR_b', r_b') = CH_b
+    accepted, _ = audit(s, recs)
+    assert accepted[bad.RID] is False
+    assert all(ok for rid, ok in accepted.items() if rid != bad.RID)
+
+
+def test_shared_evidence_still_rechecks_pqch_for_every_record(cfg, ds):
+    """The ablation keeps its meaning: Shared-Evidence re-verifies a shared node per dependent record, so it
+    pays one T_CH per record where SAVER pays one per distinct transition."""
+    from veredact_bench.evaluation.common import build_history
+
+    s = open_system(cfg, "veredact-shared-evidence", ds)
+    build_history(s, ds.trace[:24], 8)
+    s.index_records()
+    recs = s.p.records[:16]
+    before = s.crypto.counts["T_CH"]
+    accepted, _ = audit(s, recs)
+    assert all(accepted.values())
+    assert s.crypto.counts["T_CH"] - before == len(recs)
