@@ -116,7 +116,9 @@ class VeRedactScheme(Scheme):
     def authorize_batch(self, auths: list):
         t0 = time.perf_counter()
         batch_auth = self.p.authorize([a.handle for a in auths if a.ok])
-        return batch_auth, (time.perf_counter() - t0) * 1000
+        ph4_ms = (time.perf_counter() - t0) * 1000
+        self.p.flush_anchors()  # ledger work, outside the Phase 4 crypto timer (rule 6)
+        return batch_auth, ph4_ms
 
     # ------------------------------------------------------------------ Phase 5
     def redact(self, batch: list, batch_auth=None) -> RedactionResult:
@@ -126,6 +128,7 @@ class VeRedactScheme(Scheme):
         before = self.crypto.counts["T_CB"]
         records = self.p.execute(batch_auth) if batch_auth else []
         crypto_ms = (time.perf_counter() - t0) * 1000
+        self.p.flush_anchors()  # ledger work, outside the Phase 4/5 crypto timer (rule 6)
         done = {rr.RID for rr in records}
         outcomes = []
         for a in batch:

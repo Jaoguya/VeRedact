@@ -238,3 +238,38 @@ def test_per_request_and_fixed_batch_take_arrival_order(cfg, ds):
     assert fixed.select_round(queue, now=200.0, arrival_rate=1000.0) == [f"v{i}" for i in range(64)]
     assert not fixed.round_ready(63, oldest_wait=10.0, arrival_rate=1.0)  # waits for its static size
     assert fixed.round_ready(64, oldest_wait=0.0, arrival_rate=1.0)
+
+
+# ---------------------------------------------------------------- rule 6: anchoring is ledger time
+def test_anchoring_transaction_is_built_outside_the_phase4_timer(cfg, ds):
+    """Phase 4's crypto timer must not contain the anchoring transaction's build and signing: p.authorize
+    only records the call, and the scheme submits it after the timer stops (Other/docs/experiments.md rule 6)."""
+    s = open_system(cfg, "veredact", ds)
+    auths = [validated(s, request_for(ds, s, b)) for b in (0, 1, 2)]
+    before = len(s.p.pending_anchor)
+    assert s.p.authorize([a.handle for a in auths]) is not None
+    assert len(s.p.pending_anchor) == before  # nothing submitted inside the timed call
+    s.p.flush_anchors()
+    assert len(s.p.pending_anchor) == before + 1  # exactly the abrrr_authorization transaction
+
+
+def test_execution_defers_its_finalization_transaction(cfg, ds):
+    """Phase 5 likewise: execute() records redaction_finalization, redact() submits it after crypto_ms."""
+    s = open_system(cfg, "veredact", ds)
+    auths = [validated(s, request_for(ds, s, b)) for b in (0, 1)]
+    batch_auth, _ = s.authorize_batch(auths)
+    before = len(s.p.pending_anchor)
+    records = s.p.execute(batch_auth)
+    assert records and len(s.p.pending_anchor) == before
+    fut = s.p.flush_anchors()
+    assert fut is s.p.last_finalization and len(s.p.pending_anchor) == before + 1
+
+
+def test_phase4_rejects_a_request_whose_attested_commitment_does_not_reconstruct(cfg, ds):
+    """C_VR is rebuilt from the request's fields and the attested h_i^PQ, so a tampered h_i^PQ is caught
+    even though Phase 4 no longer re-hashes the whole PQZK proof."""
+    s = open_system(cfg, "veredact", ds)
+    good, bad = (validated(s, request_for(ds, s, b)) for b in (0, 1))
+    bad.handle.h_proof = b"\0" * len(bad.handle.h_proof)
+    auth = s.p.authorize([good.handle, bad.handle])
+    assert [v.RID for v in auth.members] == [good.handle.RID]

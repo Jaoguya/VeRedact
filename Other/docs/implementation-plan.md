@@ -1,0 +1,182 @@
+# Implementation plan — applying the Exp. 1–5 redesigns
+
+Issue #13. This is the single list #13 step 1 asks for: every change proposed on #5–#9, deduplicated, ordered,
+with the overlaps resolved. Read this first if you are picking the work up; each lane's reasoning stays in its
+own `suggest_change/exp<N>/README.md`, and the evidence behind it in `Other/analysis/exp<N>_step1.py`.
+
+Written 8 Nov 2026 against `main` = `2e2283e` (tag `run-2026-11-03` + 3 commits, none of which touch
+`Benchmark/`). Numbers quoted here come from release `run-2026-11-03`.
+
+## 0. Status gate — read before writing code
+
+| Issue | Lane | Owner | Reviewer | Step 1 | Step 2 | Step 3 |
+|---|---|---|---|---|---|---|
+| #5 | Exp. 1 throughput | Ppdfd | yewza101 | posted, quiz 3/6 passed, **awaiting ✅** | posted | posted (FreshLeaf) |
+| #6 | Exp. 2 authorization | Ppdfd | yewza101 | posted | posted | posted |
+| #7 | Exp. 3 audit | yewza101 | Ppdfd | posted | posted | posted |
+| #8 | Exp. 4 verification | yewza101 | Ppdfd | posted, quiz overridden | posted | — |
+| #9 | Exp. 5 blockchain | Ppdfd | yewza101 | posted | posted | posted |
+
+**No step has been accepted by a reviewer yet** and #13 is blocked by all five. Everything in §1 below is safe
+to land anyway — it fixes measurement bugs, uses code that already exists, or removes a rule violation, and
+none of it changes the protocol or the manuscript. Everything in §2 and §3 waits for the ✅ on its lane.
+
+Unpack the release into `Benchmark/results/` before running any analysis script:
+
+```bash
+gh release download run-2026-11-03 --repo Jaoguya/VeRedact --dir /tmp/rel
+cd /tmp/rel && for f in experiment-reps per-run rows; do unzip -oq $f.zip -d .; done
+cp -r /tmp/rel/exp0*/. /tmp/rel/exp*/. "$REPO/Benchmark/results/"   # gitignored
+```
+
+## 1. Safe now — measurement and implementation fixes
+
+No protocol change, no manuscript change, no reviewer gate. Each is one PR.
+
+| # | Change | Files | Why it is safe | Effect |
+|---|---|---|---|---|
+| **S1** | Move `anchor.submit("abrrr_authorization", …)` out of the Phase 4 crypto timer; return the Future to `VeRedactScheme.authorize_batch` and record it as ledger time | `methods/veredact/protocol/veredact.py` (`authorize`), `veredact_scheme.py` (`authorize_batch`) | rule 6 says crypto and ledger time are never summed; today `_sign` runs in the caller's thread inside the timer | Exp. 2: −1.26 to −2.04 ms per authorized set (58 % of the m = 1 point). Helps us; it is still a bug |
+| **S2** | Drop `h_proof = c.H(ev["proof"])` from the Phase 4 attestation check | `veredact.py` (Phase 4 `authorize`) | C_VR already binds h_i^PQ inside α_i, verified one line earlier; Phase 6 re-derives it on every escalated record | Exp. 2: −0.09 ms per request |
+| **S3** | Key the verified-context store on authenticated digests — `(BID)`, `(b, v_b, v_b′, h_i^PBRP)`, `(b, v_b′, CP_e^A)` — and hash the full evidence once, on insertion | `veredact.py` (`verify_audit`, the three `chi_*`) | the manuscript's χ(v) is over the node's identity; the code hashes its serialisation per record, which is why the cache costs more than it saves | Exp. 3/4: −6.3 s at n_Q = 10^4 |
+| **S4** | Use the existing `PQCHSis.verify_many` for the round's transitions instead of `ch_verify` per transition | `veredact.py` (`_verify_transition_node` → collect-then-verify) | `verify_many` is already in `crypto/pqch_sis.py` and is the verification twin of the round-vectorised adaptation already documented in `experiments.md` §4 | Exp. 3/4: `state` 11.0 s → ~2.0–2.7 s (the 4× is an estimate — see §5) |
+| **S5** | Fill in `auth_cost()` in the S34 and S99 adapters | `methods/baselines/s34_rebs/adapter.py`, `s99_leta/adapter.py` | both report all-zero counters, so rule 7 is only half met | reporting only |
+| **S6** | Record `gas_used` and the per-system anchoring transaction size in Exp. 5's rows | `evaluation/experiments/exp05_blockchain_overhead.py` | the anchor already resolves both and keeps them in `_Metered.receipts`; Exp. 5 discards them | decides whether the chain is transaction- or byte-bound, which Exp. 5's whole comparison turns on |
+
+**Test for each:** S1 — a Phase 4 timing test that asserts no ledger call inside the timer. S2/S3 — existing
+fidelity tests must still reject what they rejected (a tampered evidence blob, a stale checkpoint). S4 — one
+bad transition rejects only its own records (`verify_many` returns per-column booleans). S6 — a smoke row has
+non-empty `gas` and `tx_bytes`.
+
+## 2. Protocol changes — one ✅ each before coding
+
+Each needs a red-marked manuscript copy in `suggest_change/<lane>/VeRedact-optimize2.tex` (see §4).
+
+| # | Change | Lane | Touches | Predicted effect |
+|---|---|---|---|---|
+| **P1** | **FreshLeaf** — `h_st = H(h_leaf ‖ h_snap)`; a request stays fresh while its own leaf is unchanged and its snapshot is an anchored checkpoint within k versions | #5 | Phases 3/4/5, PBRP gains `v_snap`, Phase 6 request check, config `snapshot_window_k` | Exp. 1: throughput stops collapsing above 250 req/s |
+| **P2** | **BatchAttest** — the VPS signs one Merkle root per admission window W instead of α_i and rc_i per request | #6 O3 ≡ #7 O4 | Phase 3 Step 5, Phase 4 Step 2, Theorem 1, Lemma 1, Theorem 5 | Exp. 2: −0.15 ms per request · Exp. 3: −30.4 MB of response |
+| **P3** | **Anchor `H(A_b′)`** so the audit response need not carry σ_b′ | #7 O3 | `_checkpoint`, `verify_audit`, `VeRedactRegistry.sol` `anchorCheckpoint` | Exp. 3: −25.1 MB, `cp` 226 → ~50 ms |
+| **P4** | **RoundCheckpoint** — one σ_e over a Merkle root of the round's checkpoints plus an inclusion path per batch, instead of σ_b′ per batch | #9 | Phase 5 Steps 5–6, Phase 6 Step 5, Theorems 3 and 5, same contract call | Exp. 5: transaction 6.2× smaller, 304 B per redaction |
+| **P5** | **Credential token** — `ValidCred ∧ PrivatePolicy` proved once per (requester, policy, Δ); each request carries an ML-DSA signature over x_i under the token's key | #6 O4 | Phase 1 Step 6, new Phase 2 issuance, Phase 3 Step 4, Theorems 1–2, Phase 6 escalation | Exp. 2: 1.27 → 0.63 ms. **Costs linkability within Δ and revocation latency ≤ Δ** |
+| **P6** | **Paper-conformance gap #1** — check PQCH for the old *and* the new state (2·T_CH per transition), as the manuscript specifies | #8 | `_verify_transition_node` | **Adds ~8.1 s** at n_Q = 10^4. See the warning in §3 |
+| **P7** | Store `r_b′` as int32 (int16 cannot hold every valid r: verification bounds ‖r‖ ≤ β = 70,473) | #8 | `crypto/pqch_sis.py`, `_checkpoint` | halves the bytes hashed per checkpoint signature |
+
+## 3. Overlaps and ordering — the part that bites
+
+**P3 and P4 are the same code path.** Both rewrite what `_checkpoint` / `execute` put in the checkpoint and
+what the contract stores. Land them as **one** PR with **one** image rebuild, not two.
+
+**P2 serves two lanes.** #6 asked for it to cut Phase 3 signing, #7 asked for it to cut the response. Same
+change — implement once, reference both issues.
+
+**S3 serves two lanes.** The per-record χ hashing was found independently on #7 and #8.
+
+**P1 reaches into #7 and #8.** FreshLeaf adds `v_snap` to PBRP and a snapshot check to Phase 6, both inside
+what Exp. 3 and Exp. 4 measure. Anyone touching `verify_audit` must rebase onto it.
+
+**⚠️ P6 works against S4 and S3.** Fixing the conformance gap *doubles* the PQCH work the auditor does, adding
+~8.1 s at n_Q = 10^4 — more than S3 and S4 save together unless S4's batching lands first. Sequence: **S4 → S3
+→ P6**, and report the three as one line in the paper, never P6 alone. Landing P6 first would make Exp. 3 and
+Exp. 4 look like a regression against the 3 Nov release.
+
+**P7 interacts with P3/P4.** The checkpoint signature's message hashes `r_b′`; if P3 anchors `H(A_b′)` instead,
+the width of `r_b′` changes what is hashed on both sides. Do P7 before or with P3/P4, not after.
+
+**Rounds couple all five experiments.** P1 makes rounds larger, which raises records-per-transition (today
+1.32). That lowers Exp. 3's z_Q and Exp. 5's affected batches per redaction. So the Exp. 3 and Exp. 5
+predictions are **lower bounds** if P1 lands, and Exp. 3's sharing claim stays weak if it does not.
+
+### Order to implement
+
+```
+1. S1  S2  S5  S6          independent, any order, no rebases
+2. S4                      batched PQCH verify      (must precede P6)
+3. S3                      chi key                  (must precede P6)
+4. P7                      r_b' width               (before P3/P4)
+5. P1                      FreshLeaf                (everything below rebases onto it)
+6. P2                      BatchAttest              (#6 + #7)
+7. P3 + P4 together        H(A_b') + RoundCheckpoint, one contract change, one image rebuild
+8. P6                      conformance gap, reported with S3/S4
+9. P5                      credential token         (only if the team accepts the privacy trade)
+10. Experiment redesigns   §4 below
+11. Manuscript merge       one PR
+12. Rerun                  AWS, one jaoguya yes per action
+```
+
+## 4. Experiment redesigns (after the ✅ on each lane's step 2)
+
+| Exp. | One panel | Config / code |
+|---|---|---|
+| 1 | finalized **valid** redactions/s vs offered load, 25–1,000 req/s | `fault_fraction` 0.20, new `fault_kinds: [stale, absent]` in `data/dataset.py`; metrics `valid_throughput_per_s`, `invalid_accepted` in `evaluation/summaries.py`; variants move to a table |
+| 2 | complete authorization per request vs committee size n ∈ {4,7,10,16,32,48,64} at m = 64 | plot `auth_complete_per_request_ms`; `systems:` drops `veredact-re-zk`; `Other/docs/experiments.md` §2–3 drop it too |
+| 3 | end-to-end audit cost (generation + verification) vs n_Q | `reporting/figures.py` `fig_exp3`; the other two views become a text table |
+| 4 | auditor verification vs n_Q with S13-per-block at equal granularity | already coded on `8-exp4-analysis` (adapter, registry, config, figure, 3 tests) |
+| 5 | PBN anchoring transactions per finalized redaction vs offered load | `systems:` gains the four baselines; a rate loop; `affected_batches` → {1, 8, 32, 64, 128}; new row columns (see S6) |
+
+## 5. Manuscript
+
+**Do not edit `Overleaf/VeRedact-optimize.tex` yet.** Agreed on #5: each lane keeps a full copy at
+`suggest_change/exp<N>/VeRedact-optimize2.tex` with every change wrapped in `\textcolor{red}{…}`, and they are
+merged into `Overleaf/` **once, in one PR, at the end** (#13 step 4). Only `exp1` has such a copy today.
+
+Sections each change touches:
+
+| Change | Manuscript |
+|---|---|
+| P1 FreshLeaf | notation table; Phase 3 Step 4; Phase 4 Step 2; Phase 5 Steps 1 and 6; Phase 6 Step 4; Theorem 1; Lemma 1; Theorem 4 (rewritten); Theorem 5 |
+| P2 BatchAttest | Phase 3 Step 5; Phase 4 Step 2; Theorem 1; Lemma 1; Theorem 5 |
+| P3 H(A_b′) | Phase 5 Step 6; Phase 6 Step 5; Theorem 5 |
+| P4 RoundCheckpoint | Phase 5 Steps 5–6; Phase 6 Step 5; Theorem 3; Theorem 5 |
+| P5 credential token | notation table; Phase 1 Step 6; new Phase 2 issuance; Phase 3 Step 4; Theorems 1 and 2; Phase 6 escalation |
+| P6 conformance gap | the Phase 6 transition check already says 2·T_CH — the **code** changes, not the text |
+| Exp. 1–5 redesigns | each experiment's paragraph and figure caption; Table I note on Scheme [39]; the measurement-limits list gains "anchoring is ledger time, reported separately" |
+
+## 6. Freeze the predictions before rerunning
+
+#13 step 2. The numbers are already written down per lane; collect them here before any AWS action, and after
+the rerun investigate every difference rather than tuning it away.
+
+| Exp. | Metric | 3 Nov | predicted after |
+|---|---|---:|---:|
+| 2 | complete authorization per request, n = 7, m = 64 | 1.457 ms | 1.27 ms (S1+S2+P2), **0.63 ms** with P5 |
+| 2 | committee size where Scheme [1] crosses us | n ≈ 30 | n ≈ 10–13 with P5 |
+| 3 | auditor verification, n_Q = 10^4 | 14,561 ms | ~2,350 ms (S3+S4+P2+P3), **+8,100 ms if P6 lands** |
+| 3 | response size, n_Q = 10^4 | 67.1 MB | ~11.6 MB |
+| 5 | finalization transaction at \|Ω_e\| = 32 | 119,120 B | **19,086 B** |
+| 5 | on-chain bytes per redaction | 1,860 B | **304 B** |
+| 1 | throughput above 250 req/s | falls to ~110/s | rises then plateaus (P1) |
+
+Confidence: highest for the Exp. 5 figures (the ABI model already reproduces every measured point exactly);
+lowest for S4's 4× batching factor, which alone moves Exp. 3's total between ~1.9 s and ~5 s.
+
+**Cheapest way to remove that uncertainty before spending any AWS budget:** time `verify_many` against a loop
+of `ch_verify` over 7,571 transitions in one smoke run on the server. One script, a few minutes, and it decides
+whether Exp. 3's headline is ~2 s or ~5 s.
+
+## 7. AWS
+
+Per-experiment rerun estimates from the 3 Nov logs (m7i.4xlarge, us-east-2, USD 0.806/h; ×1.5 idle cap):
+
+| Rerun | Per run | 3 runs | Cost |
+|---|---:|---:|---:|
+| Exp. 2 (Re-ZK dropped, two extra committee sizes) | ~1.05 h | ~3.1 h | ~USD 2.5 (3.8 capped) |
+| Exp. 3 (Scheme [13] results reused) | ~0.97 h | ~2.9 h | ~USD 2.3 (3.5 capped) |
+| Exp. 3 (Scheme [13] re-run too) | ~2.4 h | ~7.2 h | ~USD 5.8 (8.7 capped) |
+| Exp. 5 (baselines added) | ~0.4 h | ~1.2 h | ~USD 1.0 (1.5 capped) |
+
+Exp. 1 and Exp. 4 estimates belong to #5 and #8. Every AWS action needs @jaoguya's yes as a comment naming that
+action, on its issue (`CLAUDE.md` § Guardrails). A contract change (P3/P4) means `build_image.sh` first.
+
+## 8. Verifying the work
+
+```bash
+cd Benchmark && make test lint          # on the server, via deploy/aws/remote.sh
+python Other/analysis/exp2_step1.py     # tables behind #6's verdict (needs results/ unpacked)
+python Other/analysis/exp3_step1.py     # #7
+python Other/analysis/exp5_step1.py     # #9
+python Other/analysis/exp4_step1.py     # #8 (on branch 8-exp4-analysis)
+python Other/analysis/exp1_step1.py     # #5 (on branch 5-exp1-analysis)
+```
+
+The `exp<N>_layout_preview.py` scripts redraw each proposed panel from measured data; they are previews of the
+layout, never a paper figure.

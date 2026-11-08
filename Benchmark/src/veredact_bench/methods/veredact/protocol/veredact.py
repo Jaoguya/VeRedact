@@ -54,6 +54,10 @@ class VeRedactPQ:
         self.L, self.c = ledger, ledger.c
         self.pending_anchor = []  # futures of ledger operations (ledger_ms is measured from these)
         self.last_finalization = None
+        # rule 6 (crypto time and ledger time are never summed): building and signing an anchoring
+        # transaction is ledger work. Phases 4 and 5 record the call here and the caller submits it with
+        # flush_anchors() once its crypto timer has stopped.
+        self._deferred: list[tuple[str, dict, bool]] = []  # (op, fields, is_finalization)
         self.B_min, self.B_max, self.T_max_ms = v["B_min"], v["B_max"], v["T_max_ms"]
         self.evidence: dict[bytes, dict] = {}  # off-ledger evidence store: RID -> full evidence
         self.auths: dict[bytes, BatchAuth] = {}
@@ -237,13 +241,12 @@ class VeRedactPQ:
         for vr in batch:  # Step 2: attestation + freshness
             t0 = time.perf_counter()
             ok = c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)
-            if ok:  # the supporting evidence must reconstruct C_VR (requester, policy, PQZK-proof hash)
-                ev = self.evidence[vr.RID]
-                h_proof = c.H(ev["proof"])
-                ok = h_proof == vr.h_proof and vr.C_VR == c.H(
-                    vr.RID, self._hR(vr.req), vr.h_st, L.policies[vr.PID].C_P, h_proof, vr.e
-                )
+            if ok:  # C_VR must reconstruct from the request's own fields and the attested h_i^PQ.
+                # h_i^PQ is not re-derived from the stored proof here: alpha_i, verified on the line above,
+                # already binds it, and Phase 6 re-derives it from the evidence on every escalated record.
+                ok = vr.C_VR == c.H(vr.RID, self._hR(vr.req), vr.h_st, L.policies[vr.PID].C_P, vr.h_proof, vr.e)
             if ok and self.variant == "re-zk":  # every participating member re-verifies the PQZK proof
+                ev = self.evidence[vr.RID]
                 pol = L.policies[vr.PID]
                 for _ in range(L.t):
                     ok = ok and c.zk_verify(vr.req.ID_r, ev["x"], ev["proof"], pol.threshold, vr.req.ts_r // 1000)
@@ -290,14 +293,25 @@ class VeRedactPQ:
             gamma,
         )
         self.auths[BID] = auth
-        self.pending_anchor.append(
-            L.anchor.submit(
+        self._deferred.append(
+            (
                 "abrrr_authorization",
-                bid=BID.ljust(32, b"\0"),
-                digest=c.H(BID, C_B, tree.root, *[s for _, s in approvals]),
+                {"bid": BID.ljust(32, b"\0"), "digest": c.H(BID, C_B, tree.root, *[s for _, s in approvals])},
+                False,
             )
         )
         return auth
+
+    def flush_anchors(self):
+        """Submit the anchoring transactions Phases 4 and 5 deferred. Ledger work (transaction build + ECDSA
+        signing, ~1.3 ms), so the caller runs it after its crypto timer has stopped (rule 6)."""
+        for op, fields, is_final in self._deferred:
+            fut = self.L.anchor.submit(op, **fields)
+            self.pending_anchor.append(fut)
+            if is_final:
+                self.last_finalization = fut
+        self._deferred.clear()
+        return self.last_finalization
 
     def plan_commitment(self, members) -> bytes:
         """Gamma_e = H_V(CORA-PLAN || enc({(b_i, pos_i)})) over the canonically ordered authorized requests."""
@@ -397,15 +411,20 @@ class VeRedactPQ:
             L.checkpoints[b] = L._checkpoint(b, R)
         # one anchored checkpoint per root transition (|Omega_e| with BIMC), finalized atomically
         touched = [p[0] for p in prepared]
-        self.last_finalization = L.anchor.submit(
-            "redaction_finalization",
-            bid=auth.BID.ljust(32, b"\0"),
-            batches=touched,
-            mrs=[L.checkpoints[b].MR for b in touched],  # MR_b' of each transition, as the auditor reads it
-            vbs=[L.checkpoints[b].v_b for b in touched],
-            sigs=[L.checkpoints[b].sigma for b in touched],
+        self._deferred.append(
+            (
+                "redaction_finalization",
+                {
+                    "bid": auth.BID.ljust(32, b"\0"),
+                    "batches": touched,
+                    # MR_b' of each transition, as the auditor reads it
+                    "mrs": [L.checkpoints[b].MR for b in touched],
+                    "vbs": [L.checkpoints[b].v_b for b in touched],
+                    "sigs": [L.checkpoints[b].sigma for b in touched],
+                },
+                True,
+            )
         )
-        self.pending_anchor.append(self.last_finalization)
         out = []
         xis = {}  # Xi_b = H_V(EXEC-EVIDENCE || Theta_b || CH_b || v_b' || R_RLI' || v_RLI'): one per batch transition
         for p in prepared:
