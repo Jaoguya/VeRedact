@@ -3345,23 +3345,6 @@ already replaced, and 10\% are \emph{absent}, i.e., they target a
 transaction identifier that does not exist in the ledger. The remaining
 80\% are valid, and every scheme receives the same trace.}
 
-To isolate the contributions of CORA and SFMR, we additionally evaluate
-the following internal variants:
-\begin{enumerate}
-\item \textbf{Per-Request}: each validated request is authorized and
-executed independently, without CORA or SFMR;
-\item \textbf{Fixed-Batch}: validated requests are grouped in arrival
-order using a fixed batch size of \textbf{[64]}, without CORA's
-cost/overlap-aware selection; and
-\item \textbf{CORA-No-SFMR}: CORA selects requests as in VeRedact-PQ,
-but each authorized redaction performs an independent Merkle update
-and PQCH adaptation.
-\end{enumerate}
-The full \textbf{VeRedact-PQ} configuration combines CORA selection
-with SFMR shared-frontier execution. \textcolor{red}{Fig.~\ref{fig:exp1_redaction}
-compares the full configuration with the baselines; the throughput of the
-internal variants at each arrival rate is reported in a table.}
-
 To examine locality, the Zipf skew is varied as
 $s\in\{0,0.4,0.8,1.2\}$ at a fixed arrival rate. We record the number
 of affected transaction batches $|\Omega_e|$, PQCH adaptations, and
@@ -3396,17 +3379,12 @@ by each scheme is reported in the text.}
 
 \textcolor{red}{The 95th-percentile latency is reported in the text for
 every rate at which all requests complete within the measurement window;
-at a saturated rate it would only be a lower bound.} We discuss the
-corresponding latency trade-off. Per-Request avoids selection delay and may therefore have
-lower latency under light load. CORA introduces bounded waiting up to
-$T_{\max}$ to obtain useful execution sharing, but prevents indefinite
-delay by making sufficiently old requests mandatory. Under increasing
-load, more compatible requests become available within the waiting
-window, allowing CORA to improve amortization without requiring a
-fixed batch to fill. The difference between Fixed-Batch and CORA
-isolates the benefit of locality-aware selection, whereas the
-difference between CORA-No-SFMR and full VeRedact-PQ isolates the
-execution savings obtained by SFMR.
+at a saturated rate it would only be a lower bound.} CORA introduces
+bounded waiting up to $T_{\max}$ to obtain useful execution sharing, but
+prevents indefinite delay by making sufficiently old requests mandatory.
+Under increasing load, more compatible requests become available within
+the waiting window, allowing CORA to improve amortization without
+requiring a fixed batch to fill.
 
 \textcolor{red}{To examine why these savings occur, the number of PQCH
 adaptations and the total SFMR frontier size per 1,000 finalized
