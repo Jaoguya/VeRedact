@@ -155,6 +155,14 @@ def _complete_per_request(r) -> float:
     return _num(r["phase3_ms"]) + (ph4 / int(r["batch_size"]) if ph4 is not None else 0.0)
 
 
+def _with_net_per_request(r):
+    """Fig. 4 (#6, option 1 of the fairness fix): complete authorization per request + its committee message
+    delay (network time; methods/committee.py). None for rows written before the delay was recorded, so an old
+    run is never drawn as if its committee rounds cost nothing."""
+    net = _num(r.get("auth_net_per_request_ms"))
+    return None if net is None else _complete_per_request(r) + net
+
+
 def _complete_per_batch(rs) -> list[float]:
     """Complete authorization of each batch of m requests: m per-request steps + the batch step (once)."""
     by = defaultdict(list)
@@ -179,6 +187,9 @@ def _exp02(rows, cfg):
             "phase3_ms": _stats(r["phase3_ms"] for r in rs),
             "phase4_batch_ms": _stats(r["phase4_batch_ms"] for r in rs),
             "batch_total_ms": _stats(r.get("batch_total_ms") for r in rs),
+            # committee message delay per request (fairness fix): network time, kept apart from the crypto above
+            "auth_net_per_request_ms": _stats(r.get("auth_net_per_request_ms") for r in rs),
+            "auth_with_net_per_request_ms": _stats(_with_net_per_request(r) for r in rs),  # the Fig. 4 line
             "accepted": sum(int(r["auth_ok"]) for r in rs),
             "requests": len(rs),
         }

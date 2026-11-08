@@ -74,6 +74,8 @@ class VeRedactScheme(Scheme):
         self.ledger = Ledger(self.cfg, self.crypto, self.anchor, self.n, self.t)
         self.ledger.commit_transactions(dataset.transactions)
         self.p = VeRedactPQ(self.ledger, self.cfg, self.variant)
+        self.committee = self.p.committee
+        self.last_auth_net_ms = 0.0  # committee message delay of the last authorize_batch
         self.crypto.reset()
 
     def prepare(self, req: RedactionRequest):
@@ -119,7 +121,8 @@ class VeRedactScheme(Scheme):
     def authorize_batch(self, auths: list):
         t0 = time.perf_counter()
         batch_auth = self.p.authorize([a.handle for a in auths if a.ok])
-        ph4_ms = (time.perf_counter() - t0) * 1000
+        credit_s, self.last_auth_net_ms = self.committee.take()  # slowest member only; delay is not crypto
+        ph4_ms = (time.perf_counter() - t0 - credit_s) * 1000
         self.p.flush_anchors()  # ledger work, outside the Phase 4 crypto timer (rule 6)
         return batch_auth, ph4_ms
 
@@ -130,7 +133,8 @@ class VeRedactScheme(Scheme):
             batch_auth = self.p.authorize([a.handle for a in batch if a.ok])
         before = self.crypto.counts["T_CB"]
         records = self.p.execute(batch_auth) if batch_auth else []
-        crypto_ms = (time.perf_counter() - t0) * 1000
+        credit_s, net_ms = self.committee.take()  # slowest committee member only; message delay is not crypto
+        crypto_ms = (time.perf_counter() - t0 - credit_s) * 1000
         self.p.flush_anchors()  # ledger work, outside the Phase 4/5 crypto timer (rule 6)
         done = {rr.RID for rr in records}
         outcomes = []
@@ -150,6 +154,7 @@ class VeRedactScheme(Scheme):
             0.0,
             self.crypto.counts["T_CB"] - before,
             finality=self.p.last_finalization if records else None,
+            net_ms=net_ms,
         )
 
     # ------------------------------------------------------------------ Phase 6

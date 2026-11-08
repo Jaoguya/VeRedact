@@ -382,6 +382,31 @@ def test_exp2_complete_authorization_counts_both_steps():
     assert v["auth_complete_per_request_ms"]["median"] == 4.0 and v["auth_complete_per_batch_ms"]["median"] == 8.0
     (b,) = _exp02([row(0, 1.0, ""), row(0, 3.0, "")], {}).values()  # no batch protocol: the m authorizations
     assert b["auth_complete_per_request_ms"]["median"] == 2.0 and b["auth_complete_per_batch_ms"]["median"] == 4.0
+    assert v["auth_with_net_per_request_ms"] == {"n": 0}  # rows without the network column: no Fig. 4 value
+
+
+def test_exp2_figure_value_adds_the_committee_network_time():
+    """Fig. 4 line = complete authorization per request + its committee message delay (fairness fix, option 1);
+    VeRedact-PQ pays one round per set of m, Scheme [1] one per request."""
+    from veredact_bench.evaluation.summaries import _exp02
+
+    rows = [
+        dict(
+            committee_n=4,
+            batch_size=2,
+            sample=0,
+            phase3_ms=p3,
+            phase4_batch_ms=4.0,
+            auth_ok=1,
+            auth_per_request_ms=1.0,
+            batch_total_ms=1.0,
+            auth_net_per_request_ms=5.0,  # one 10 ms round shared by m = 2
+        )
+        for p3 in (1.0, 3.0)
+    ]
+    (v,) = _exp02(rows, {}).values()
+    assert v["auth_complete_per_request_ms"]["median"] == 4.0  # crypto, for the text
+    assert v["auth_with_net_per_request_ms"]["median"] == 9.0  # the plotted value
 
 
 def test_exp2_figure_is_one_panel_of_complete_cost_vs_committee_size(monkeypatch):
@@ -391,7 +416,7 @@ def test_exp2_figure_is_one_panel_of_complete_cost_vs_committee_size(monkeypatch
 
     def pt(y, batched):
         return {
-            "auth_complete_per_request_ms": {"n": 3, "median": y},
+            "auth_with_net_per_request_ms": {"n": 3, "median": y},
             "phase4_batch_ms": {"n": 3 if batched else 0},
         }
 

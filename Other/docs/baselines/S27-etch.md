@@ -23,7 +23,7 @@ adapter: `adapter.py` (`ETCHScheme`, key `S27`) · own evaluation: `reproduce.py
 | Item | Paper | Here | Bias |
 |:--|:--|:--|:--|
 | curve / hash | secp256k1 / SHA-256 | same (paper's own Sec. VII-B instantiation) | none |
-| network | CA rounds over a network | in-process; `reproduce.py` Fig. 6 adds `adapt_rounds × RTT` for the paper's own figure only | for S27 in Exp. 1 (no RTT inside one host) |
+| network | CA rounds over a network | in-process, with the harness's committee model for every threshold scheme (`methods/committee.py`, #13): each of Adapt's 2 CA rounds really waits `committee.message_delay_ms` (10 ms, = the Besu netem delay), and a round's crypto time counts the slowest redactor. `reproduce.py` Fig. 6 still adds `adapt_rounds × RTT` for the paper's own figure | neither (same rule as VeRedact-PQ and S1); before #13 the rounds were free, in S27's favour |
 | ledger writes | one per redaction | one per redaction, **pipelined** (finality tracked, not awaited), exactly like VeRedact-PQ's anchoring | neutral — removes a harness-imposed one-block-per-redaction cap |
 
 ## Not implemented

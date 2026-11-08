@@ -127,7 +127,7 @@ predictions are **lower bounds** if P1 lands, and Exp. 3's sharing claim stays w
 | Exp. | One panel | Config / code |
 |---|---|---|
 | 1 | finalized **valid** redactions/s vs offered load, 25–1,000 req/s | `fault_fraction` 0.20, new `fault_kinds: [stale, absent]` in `data/dataset.py`; metrics `valid_throughput_per_s`, `invalid_accepted` in `evaluation/summaries.py`; variants move to a table |
-| 2 | complete authorization per request vs committee size n ∈ {4,7,10,16,32,48,64} at m = 64 | plot `auth_complete_per_request_ms`; `systems:` drops `veredact-re-zk`; `Other/docs/experiments.md` §2–3 drop it too |
+| 2 | complete authorization per request vs committee size n ∈ {4,7,10,16,32,48,64} at m = 64 | plot `auth_with_net_per_request_ms` (crypto + committee network time, fairness fix option 1, 2026-11-08; crypto alone `auth_complete_per_request_ms` for the text); `systems:` drops `veredact-re-zk`; `Other/docs/experiments.md` §2–3 drop it too |
 | 3 | end-to-end audit cost (generation + verification) vs n_Q | `reporting/figures.py` `fig_exp3`; the other two views become a text table |
 | 4 | auditor verification vs n_Q with S13-per-block at equal granularity | already coded on `8-exp4-analysis` (adapter, registry, config, figure, 3 tests) |
 | 5 | PBN anchoring transactions per finalized redaction vs offered load | `systems:` gains the four baselines; a rate loop; `affected_batches` → {1, 8, 32, 64, 128}; new row columns (see S6) |
@@ -157,13 +157,15 @@ the rerun investigate every difference rather than tuning it away.
 
 | Exp. | Metric | 3 Nov | predicted after |
 |---|---|---:|---:|
-| 2 | complete authorization per request, n = 7, m = 64 | 1.457 ms | 1.27 ms (S1+S2+P2), **0.63 ms** with P5 |
-| 2 | committee size where Scheme [1] crosses us | n ≈ 30 | n ≈ 10–13 with P5 |
+| 2 | complete authorization per request (crypto), n = 7, m = 64 | 1.457 ms | 1.27 ms (S1+S2+P2), **0.63 ms** with P5; the committee term drops to the slowest member + serial approval checks (fairness fix) |
+| 2 | Fig. 4 line: crypto + committee network time, n = 7, m = 64 | — (not recorded) | VeRedact-PQ ≈ crypto + 10/64 ≈ 0.16 ms; Scheme [1] ≈ its crypto + 10 ms: **below Scheme [1] at every n by ≈ the 10 ms delay** (set by `message_delay_ms`; we win only while one round costs more than our crypto gap, ≈ 0.9 ms on 3 Nov) |
+| 2 | committee size where Scheme [1] crosses us, crypto alone | n ≈ 30 | **superseded** (fairness fix): Scheme [1]'s t node checks now cost one member, so its crypto no longer grows with t; likely no crossing on crypto alone (text table) |
 | 3 | auditor verification, n_Q = 10^4 | 14,561 ms | ~2,350 ms (S3+S4+P2+P3), **+8,100 ms if P6 lands** |
 | 3 | response size, n_Q = 10^4 | 67.1 MB | ~11.6 MB |
 | 5 | finalization transaction at \|Ω_e\| = 32 | 119,120 B | **19,086 B** |
 | 5 | on-chain bytes per redaction | 1,860 B | **304 B** |
-| 1 | throughput above 250 req/s | falls to ~110/s | rises then plateaus (P1) |
+| 1 | VeRedact-PQ throughput above 250 req/s | falls to ~110/s | rises then plateaus (P1) |
+| 1 | Scheme [27] / [1] valid throughput at saturation | ~137–148 /s / ~60 /s | [27] ≈ 126/s (chain-bound, executes stale); [1] ≈ 54/s per #5, **may rise** now that its node checks run in parallel and its committee rounds are pipelined (`baseline_inflight`) |
 
 Confidence: highest for the Exp. 5 figures (the ABI model already reproduces every measured point exactly);
 lowest for S4's 4× batching factor, which alone moves Exp. 3's total between ~1.9 s and ~5 s.
@@ -221,7 +223,8 @@ layout, never a paper figure.
 | P2 | **BatchAttest** — one VPS signature per admission window (`veredact.vps_window` W = 256, `vps_window_ms` = 500); alpha_i = window root + path (`Attestation`), also the receipt; Phase 4 closes a still-open window of a selected request; SAVER verifies each window signature once per query (`nodes_win`), Shared-Evidence / Per-Record per record; response size counts one root + signature per window | `ceefbd0` |
 | P3 + P4 | **Anchored checkpoint digest + RoundCheckpoint** — every A_b carries h_b^CP (`Ledger.checkpoint_digest`), stored on the chain beside MR_b (`cpDigest`, event `CheckpointAnchored(b, vb, mr, cpDigest)`); Phase 5 checkpoints have no signature of their own, the checkpoint authority signs the round's Merkle root once (`Ledger.round_checkpoint`, `finalizeRedaction(bid, bs, cps, roundRoot, roundSig)`); the audit recomputes h_b^CP and compares it with the chain, no checkpoint signature in the response; Phase 2 checkpoints keep their own signature (`initialSigs`). **Contract changed: rebuild the image before any run.** A test compiles the contract with solc 0.8.24 | `4b012af` |
 | S3b | **Shared nodes by id** — the response carries each transition node once and a record references it (`_node_ref`); the auditor computes a node's identity (hashing the 64 KiB r_b') once per distinct node in SAVER and Shared-Evidence, per record in Per-Record (which duplicates the evidence); a record with any other evidence is its own node | `bbfe072` |
-| P6 | **PQCH for the old and the new state** (paper-conformance gap #1 closed): PBRP carries r_b; `_pqch_batch` checks two columns per transition in one batched product; T_CH = 2 per distinct transition (SAVER) or per record (variants). Lands after S4 + S3a + S3b as planned | this branch |
+| P6 | **PQCH for the old and the new state** (paper-conformance gap #1 closed): PBRP carries r_b; `_pqch_batch` checks two columns per transition in one batched product; T_CH = 2 per distinct transition (SAVER) or per record (variants). Lands after S4 + S3a + S3b as planned | `28c0e98` |
+| Fairness | **Committee members in parallel + real message delay**, for every threshold scheme alike (`methods/committee.py`, config `committee`): each member's work timed on its own, a step's crypto time counts the slowest member; each committee message round really waits 10 ms (= `ledger.netem_delay_ms`), reported as network time (`net_ms`, Exp. 1 `redact_net_ms`), never as crypto. Rounds: VeRedact-PQ 2 per authorization round (approvals, PQCH shares); S1 2 per redaction (node checks, collision partials; Li et al. Sec. III-B3, V-B); S27 2 per redaction (Adapt's CA rounds; Liu et al. Sec. VI). S34 and S13 have no committee step | branch `13-committee-fairness` |
 
 **Not run:** `make test`. It is forwarded to the AWS server by `deploy/aws/remote.sh`, which needs jaoguya's
 yes. Only `ruff check` and `ruff format --check` were run locally, with the arguments CI uses. The 15 tests

@@ -196,7 +196,9 @@ def fig_exp2(tier, written):
         else max(sizes, default=1.0)
     )
     fig, (a,) = _panels(1, height_in=2.6)
-    f = "auth_complete_per_request_ms"
+    # #6 + fairness fix (option 1, author 2026-11-08): crypto + committee network time; crypto alone stays in
+    # metrics.json (auth_complete_per_request_ms) for the text
+    f = "auth_with_net_per_request_ms"
     for key, m in ms.items():
         pts = _points(m)
         series = sorted((k[0], v) for k, v in pts.items() if k[1] == m0 and v.get(f, {}).get("n"))
@@ -210,7 +212,7 @@ def fig_exp2(tier, written):
         xscale="log",
         yscale="log",
         xlabel="Committee size $n$ ($t=\\lfloor 2n/3\\rfloor+1$)",
-        ylabel=f"Authorization per request\n(ms, $m$={int(m0)})",
+        ylabel=f"Authorization per request\n(crypto + network, ms, $m$={int(m0)})",
     )
     a.sci_y = True
     _legend(a, outside=True)

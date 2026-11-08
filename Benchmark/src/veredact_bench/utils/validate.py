@@ -124,6 +124,8 @@ def validate(tier: str) -> tuple[list[str], list[str]]:
         E(f"exp3/exp4 n_Q exceeds {ceiling}: S1 (one redaction per block) cannot hold that many redactions")
     if not 0 < x["exp1"]["saturation_tolerance"] < 1 or x["exp1"]["client_threads"] < 1:
         E("exp1.saturation_tolerance must be in (0, 1) and exp1.client_threads >= 1")
+    if x["exp1"]["baseline_inflight"] < 1:
+        E("exp1.baseline_inflight must be >= 1")
     if final and c["ledger"]["validators"] not in x["exp5"]["validators"]:
         E("exp5.validators must include ledger.validators (the default network)")
     s34 = c["baselines"]["S34"]

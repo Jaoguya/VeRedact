@@ -145,16 +145,19 @@ def verify(Y: PublicKey, m: bytes, v: ETCHValue) -> bool:
     return v.h == add(v.r, mul(Y, Hs(m, v.r)), gmul(v.w))
 
 
-def adapt(keys: ETCHKeys, signers: list[int], v: ETCHValue, m_new: bytes) -> ETCHValue:
-    """Two-round Adapt via the Commitment Aggregator; requires |signers| >= t."""
+def adapt(keys: ETCHKeys, signers: list[int], v: ETCHValue, m_new: bytes, run=None) -> ETCHValue:
+    """Two-round Adapt via the Commitment Aggregator; requires |signers| >= t. run: executes one round's
+    per-redactor computations (each redactor on its own machine); default: one after another."""
     if len(signers) < keys.t:
         raise ValueError("fewer than t redactors")
+    run = run or (lambda fs: [f() for f in fs])
     k = {i: rand() for i in signers}
-    K = add(*(gmul(k[i]) for i in signers))  # round 1: K_i -> CA -> K
+    K = add(*run([lambda i=i: gmul(k[i]) for i in signers]))  # round 1: K_i -> CA -> K
     r_new = add(v.h, neg(K))  # r' = h / K
     e_new = Hs(m_new, r_new)
     lam = lagrange(signers)
-    w_new = sum((k[i] - e_new * lam[i] * keys.parts[i].s) for i in signers) % N  # round 2: w_i -> CA
+    ws = run([lambda i=i: (k[i] - e_new * lam[i] * keys.parts[i].s) % N for i in signers])  # round 2: w_i -> CA
+    w_new = sum(ws) % N
     return ETCHValue(v.h, r_new, w_new)
 
 
@@ -184,8 +187,8 @@ def verify_tx(Y: PublicKey, pk: PublicKey, tx: Tx) -> bool:
     return verify(Y, tx.body, tx.etch) and pk.verify(tx.sig, tx.etch.h.format())
 
 
-def redact_tx(keys: ETCHKeys, signers: list[int], tx: Tx, body_new: bytes) -> Tx:
-    return Tx(body_new, adapt(keys, signers, tx.etch, body_new), tx.sig)  # signature unchanged
+def redact_tx(keys: ETCHKeys, signers: list[int], tx: Tx, body_new: bytes, run=None) -> Tx:
+    return Tx(body_new, adapt(keys, signers, tx.etch, body_new, run), tx.sig)  # signature unchanged
 
 
 # ================================================================== sizes (Table V)

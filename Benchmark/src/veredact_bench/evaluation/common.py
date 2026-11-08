@@ -26,6 +26,13 @@ class RWLock:
     def write(self):
         return _Guard(self._acquire_w, self._release_w)
 
+    def released(self, kind: str):
+        """Let go of this thread's read ("r") or write ("w") hold and take it back on exit: the thread is
+        waiting on a committee message round, not reading or changing state."""
+        if kind == "r":
+            return _Guard(self._release_r, self._acquire_r)
+        return _Guard(self._release_w, self._acquire_w)
+
     def _acquire_r(self):
         with self._c:
             while self._writing or self._writers_waiting:

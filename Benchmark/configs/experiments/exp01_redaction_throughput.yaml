@@ -28,4 +28,8 @@ experiment:
                                 #   the achieved rate is recorded and a client-bound point is reported as such
   saturation_tolerance: 0.10    # [PROPOSED] a point is NOTED saturated when decided/offered or on-time < 1 - tol;
                                 #   every rate runs for every system (author rule 2026-10-05: no capped lines)
+  baseline_inflight: 16         # [METHOD] fairness fix: redactions a baseline with a committee (Schemes [1], [27])
+                                #   keeps in flight while its committee messages travel (10 ms per round); CPU
+                                #   stays serialised, so only network waits overlap. 16 > the 20 ms of Scheme
+                                #   [27]'s two rounds / its ~2 ms of CPU per redaction: never the limit
   drain_s: 30                   # [PROPOSED] wait for in-flight requests after the window; the rest are recorded
