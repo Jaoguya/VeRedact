@@ -40,6 +40,11 @@ class CommitteeClock:
         self._local, self._lock = threading.local(), threading.Lock()
         self._clock, self._sleep = time.perf_counter, time.sleep
 
+    def sleep_with(self, sleep) -> None:
+        """How a round waits out its message delay. Exp. 1 passes a sleep that lets go of the harness lock
+        while the thread waits on the network (evaluation/experiments/exp01_redaction_throughput.py)."""
+        self._sleep = sleep
+
     @classmethod
     def from_cfg(cls, cfg: dict) -> "CommitteeClock":
         c = cfg.get("committee", {})

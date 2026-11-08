@@ -9,6 +9,12 @@ Pipeline (identical for every system; only the Scheme behind it changes):
   workers   [veredact.vps_workers] threads call authorize() (Phase 3 / the baseline's authorization).
   executor  one thread forms batches — VeRedact: B_e* from ABRRR, flushed at
             B_e* or T_max; baselines: 1 (their papers redact per request) — and calls redact().
+            Committee message rounds (methods/committee.py) are real waits. A thread waiting on one lets go
+            of the harness lock, since it reads or changes no state then. Baselines with a committee
+            (Schemes [1], [27]) keep up to experiment.baseline_inflight redactions in flight, as a
+            coordinator does while messages travel; CPU stays serialised by the write lock and two in-flight
+            redactions never share a target. VeRedact-PQ keeps the write lock through its two rounds (round
+            e+1 builds on round e): conservative against VeRedact-PQ.
   finality  VeRedact returns a ledger Future; its receipt time is the request's completion. Baselines
             block on the receipt inside redact().
 Rows keep latency_ms = finalized - submitted (system side, per attempt chain). The reported latency
@@ -96,6 +102,23 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     batch_no = [0]  # executor-side batch counter (rows of one batch share batch_id / batch_adaptations)
     stop = threading.Event()
     now = lambda: time.perf_counter() - t0  # t0: set below, once the requesters' provers are ready
+    held = threading.local()  # which harness lock this thread holds: "r" (worker), "w" (executor), None
+    committee = getattr(s, "committee", None)
+    veredact_s = is_veredact(s)
+    pipelined = committee is not None and not veredact_s  # Schemes [1], [27]: redactions in flight
+
+    def committee_sleep(sec):
+        """A committee round's message delay: the thread waits on the network, so it lets go of the lock
+        (readers always; the writer only when redactions are pipelined, see the module docstring)."""
+        kind = getattr(held, "kind", None)
+        if kind == "r" or (kind == "w" and pipelined):
+            with lock.released(kind):
+                time.sleep(sec)
+        else:
+            time.sleep(sec)
+
+    if committee is not None:
+        committee.sleep_with(committee_sleep)
 
     # audit A3: requester proving (VeRedact-PQ only: the baselines' requesters do no proving) runs in forked
     # processes on their own physical cores, so it competes neither for the system's cores nor for its GIL
@@ -203,7 +226,11 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
                 return
             r, p = item
             with lock.read():
-                a = authorize(s, r, p)
+                held.kind = "r"
+                try:
+                    a = authorize(s, r, p)
+                finally:
+                    held.kind = None
             stamp[r.seq].update(auth_done=now(), auth_ms=a.crypto_ms, auth_ok=a.ok, reason=a.reason)
             if a.ok:
                 validated.put(a)
@@ -212,8 +239,73 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             else:
                 stamp[r.seq].update(status="rejected")
 
+    def finish(batch, res, t_exec, t_done):
+        """Record one redact() call's outcomes (under the write lock)."""
+        veredact = veredact_s
+        batch_no[0] += 1
+        for a, o in zip(batch, res.outcomes):
+            st = stamp[a.request.seq]
+            st.update(
+                exec_start=t_exec,
+                exec_done=t_done,
+                batch_size=len(batch),
+                batch_id=batch_no[0],
+                batch_adaptations=res.ch_adaptations,
+                batch_batches=s.p.last_exec["batches"] if veredact else res.ch_adaptations,  # |Omega_e|
+                batch_frontier=s.p.last_exec["frontier"] if veredact else "",  # F_e (SFMR frontier)
+                redact_crypto_ms=res.crypto_ms,
+                redact_ledger_ms=res.ledger_ms,
+                redact_net_ms=res.net_ms,  # committee message delay waited (fairness fix)
+                status="pending" if o.ok else "failed",
+                reason=o.reason or st.get("reason", ""),
+            )
+            if not o.ok and revalidate(a.request, o):
+                send_back(a.request)
+            if o.ok and res.finality is None:
+                st.update(final=t_done, status="finalized")
+        if res.finality is not None:
+            oks = [a.request.seq for a, o in zip(batch, res.outcomes) if o.ok]
+
+            def done(f, oks=oks):
+                t = now()
+                ms, _ = f.result()
+                for q in oks:
+                    stamp[q].update(final=t, finality_ledger_ms=ms, status="finalized")
+
+            res.finality.add_done_callback(done)
+
+    def run_redact(batch):
+        t_exec = now()
+        with lock.write():
+            held.kind = "w"
+            try:
+                res = s.redact(batch)
+            finally:
+                held.kind = None
+            finish(batch, res, t_exec, now())
+
+    block_of = getattr(s, "block_of", {})
+
+    def unit(a):  # a redaction's target: Scheme [1] redacts a block, the others a transaction
+        tid = a.request.tid
+        return block_of[tid][0] if tid in block_of else tid
+
+    busy, busy_lock = set(), threading.Lock()  # targets with a redaction in flight (pipelined baselines)
+    slots = threading.Semaphore(x["baseline_inflight"])
+    jobs, job_errors = [], []
+
+    def job(batch, u):
+        try:
+            run_redact(batch)
+        except BaseException as e:  # re-raised after the point: a crash must never read as an unfinished request
+            job_errors.append(e)
+        finally:
+            with busy_lock:
+                busy.discard(u)
+            slots.release()
+
     def executor():
-        veredact = is_veredact(s)
+        veredact = veredact_s
         buf, enq, arrivals = [], [], []  # enq[i] = when buf[i] entered the pending queue Q_e
         # stop = drain window over: requests still queued stay 'unfinished' (a saturated point), and the
         # executor exits so no transaction of this point reaches the ledger after the next point starts
@@ -237,43 +329,26 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
                 take = [id(a.handle) in chosen for a in buf]
                 batch = [a for a, k in zip(buf, take) if k]
                 buf, enq = [a for a, k in zip(buf, take) if not k], [t for t, k in zip(enq, take) if not k]
+            elif pipelined:  # per request, up to baseline_inflight in flight, never two on one target
+                with busy_lock:
+                    i = next((i for i, a in enumerate(buf) if unit(a) not in busy), None)
+                if i is None or not slots.acquire(timeout=0.005):
+                    continue
+                a = buf.pop(i)
+                enq.pop(i)
+                u = unit(a)
+                with busy_lock:
+                    busy.add(u)
+                th = threading.Thread(target=job, args=([a], u), daemon=True, name="baseline-redact")
+                jobs.append(th)
+                th.start()
+                jobs[:] = [j for j in jobs if j.is_alive()]
+                continue
             else:  # the baselines redact per request (their papers define no batch protocol)
                 batch, buf, enq = buf[:1], buf[1:], enq[1:]
-            t_exec = now()
-            with lock.write():
-                res = s.redact(batch)
-            t_done = now()
-            batch_no[0] += 1
-            for a, o in zip(batch, res.outcomes):
-                st = stamp[a.request.seq]
-                st.update(
-                    exec_start=t_exec,
-                    exec_done=t_done,
-                    batch_size=len(batch),
-                    batch_id=batch_no[0],
-                    batch_adaptations=res.ch_adaptations,
-                    batch_batches=s.p.last_exec["batches"] if veredact else res.ch_adaptations,  # |Omega_e|
-                    batch_frontier=s.p.last_exec["frontier"] if veredact else "",  # F_e (SFMR frontier)
-                    redact_crypto_ms=res.crypto_ms,
-                    redact_ledger_ms=res.ledger_ms,
-                    redact_net_ms=res.net_ms,  # committee message delay waited (fairness fix)
-                    status="pending" if o.ok else "failed",
-                    reason=o.reason or st.get("reason", ""),
-                )
-                if not o.ok and revalidate(a.request, o):
-                    send_back(a.request)
-                if o.ok and res.finality is None:
-                    st.update(final=t_done, status="finalized")
-            if res.finality is not None:
-                oks = [a.request.seq for a, o in zip(batch, res.outcomes) if o.ok]
-
-                def done(f, oks=oks):
-                    t = now()
-                    ms, _ = f.result()
-                    for q in oks:
-                        stamp[q].update(final=t, finality_ledger_ms=ms, status="finalized")
-
-                res.finality.add_done_callback(done)
+            run_redact(batch)
+        for th in jobs:  # the redactions in flight finish, as the one in progress does without pipelining
+            th.join()
 
     clients = [threading.Thread(target=client, args=(i,), daemon=True) for i in range(x["client_threads"])]
     workers = [threading.Thread(target=worker, daemon=True) for _ in range(cfg["veredact"]["vps_workers"])]
@@ -298,6 +373,8 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     # thousands of queued requests, and workers still authorizing them would load the next point's cores/GIL
     for th in clients + workers + workers_r:
         th.join()
+    if job_errors:  # a pipelined baseline redaction crashed: fail the point, never count it as unfinished
+        raise job_errors[0]
     if pool is not None:
         pool.terminate()
         pool.join()
@@ -346,6 +423,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             rate_rps=rate,
             zipf_s=zipf_s,
             seq=r.seq,
+            tid=r.tid,  # the redaction's target (pipelined baselines: never two in flight on one)
             fault=r.fault,
             arrival_s=r.arrival_s,
             submit_s=st.get("submit", ""),
@@ -365,6 +443,8 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             batch_batches=st.get("batch_batches", ""),
             batch_frontier=st.get("batch_frontier", ""),
             queue_ms=(st["exec_start"] - st["auth_done"]) * 1000 if "exec_start" in st else "",
+            exec_start_s=st.get("exec_start", ""),  # this attempt's redact(): start / end (point clock)
+            exec_done_s=st.get("exec_done", ""),
             redact_crypto_ms=st.get("redact_crypto_ms", ""),
             redact_ledger_ms=st.get("redact_ledger_ms", ""),
             redact_net_ms=st.get("redact_net_ms", ""),

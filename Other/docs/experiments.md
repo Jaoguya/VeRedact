@@ -101,6 +101,15 @@ evaluation: `make paper-runs` → `Benchmark/results/reproduction/<S id>/*.csv`.
   holding the transaction is observed (one block watcher, `ledger.receipt_poll_ms`). None of the baseline
   papers requires one transaction per block, so serialising them would be a strawman. Besu's pool admits
   thousands of in-flight transactions from the one sender (`Benchmark/configs/aws.toml [besu].tx_pool*`).
+- **Committee members and message rounds (fairness fix, #13).** The t members of VeRedact-PQ and Schemes [1],
+  [27] run in one process but are timed as separate machines: a committee step's crypto time is its slowest
+  member, the collector's own checks stay serial, and each message round waits a real
+  `committee.message_delay_ms` (= `ledger.netem_delay_ms`), reported as network time (`*_net_ms`), never as
+  crypto (`methods/committee.py`). A thread waiting on a round lets go of the Exp. 1 harness lock. In Exp. 1
+  Schemes [1] and [27] keep up to `baseline_inflight` (16) redactions in flight while their messages travel,
+  never two on one target, CPU still serialised; one at a time, the waits alone capped both at ~45/s (smoke
+  check), a strawman. VeRedact-PQ keeps the lock through its two rounds per round of m (round e+1 builds on
+  round e), which is conservative against it.
 - **Setup reuse.** Data-owner keys and their ML-DSA signatures over the seeded commitments D_i are made
   once per process and reused by every setup (Exp. 1 re-runs setup per point); the PBN verifies each
   signature when it is first made. Setup is untimed, so no measured number changes.
