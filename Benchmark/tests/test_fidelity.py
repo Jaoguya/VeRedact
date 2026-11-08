@@ -137,6 +137,36 @@ def test_audits_detect_tampering_with_their_own_granularity(cfg, ds):
         s.teardown()
 
 
+def test_veredact_real_substituted_and_stale_evidence_are_rejected_per_record(cfg):
+    """#8 step 2 change 3: 'substituted' carries another record's genuine evidence, 'stale' replays a genuine
+    earlier transition and checkpoint of the same batch (anchored, correctly signed). Only the context binding
+    (h_i^PBRP in the RAI entry, chi(v)) can catch them; each is rejected, every other record still accepted."""
+    big = build_dataset(cfg, n_requests=160, zipf_s=1.2)  # skewed: batches are redacted more than once
+    s = open_system(cfg, "veredact", big)
+    build_history(s, big.trace, 8)
+    s.index_records()
+    recs = s.p.records
+    later = next(
+        i for i, r in enumerate(recs[:40]) if any(o.pbrp["b"] == r.pbrp["b"] and o.v_b_new < r.v_b_new for o in recs)
+    )
+    n = max(later + 1, 4)
+    assert all(s.audit(AuditQuery(n)).accepted.values())
+    for kind, i in (("substituted", 1), ("stale", later)):
+        r = s._tamper(recs[i], kind, None)
+        if kind == "stale":  # a real, older checkpoint of the same batch, not an edited number
+            old = r.pbrp["cp"]
+            assert r.pbrp["b"] == recs[i].pbrp["b"] and r.v_b_new < recs[i].v_b_new
+            assert any(o.pbrp["cp"] is old for o in recs if o is not recs[i])
+        else:  # a genuine evidence object of a different record
+            assert r.pbrp["RID"] != recs[i].RID and any(
+                o.pbrp is not recs[i].pbrp and o.pbrp["RID"] == r.pbrp["RID"] for o in recs
+            )
+        acc = s.audit(AuditQuery(n, tamper={i: kind})).accepted
+        assert not acc[i], kind
+        assert all(ok for j, ok in acc.items() if j != i), kind
+    s.teardown()
+
+
 def test_s13_per_block_variant_is_registered_on_s13s_history(cfg, ds):
     """S13-per-block (#8) is S13 with the paper's Query phase per block: made by the registry and, in Exp. 3/4,
     run on S13's own history (HISTORY_OF), never on a history of its own."""

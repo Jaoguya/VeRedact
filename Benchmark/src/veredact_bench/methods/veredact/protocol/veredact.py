@@ -649,7 +649,10 @@ class VeRedactPQ:
             t1 = time.perf_counter()
             nodes["req"] += 1  # request node: q * C_req, always verified
             ok &= c.HV("AUTH-LEAF", vr.RID, vr.C_VR, vr.alpha) == p["eta"]
-            ok &= verify_proof(auth.R_VR, p["eta"], auth.members.index(vr), p["MP_B"])
+            # a request that is not a member of the authorization batch it claims (e.g. evidence substituted from
+            # another batch, #8 change 3) is rejected, never an exception that aborts the whole audit
+            pos_B = auth.members.index(vr) if vr in auth.members else None
+            ok &= pos_B is not None and verify_proof(auth.R_VR, p["eta"], pos_B, p["MP_B"])
             c.counts["T_H"] += len(p["MP_B"]) + 1
             ok &= c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)  # routine: the VPS decision alpha_i
             t2 = time.perf_counter()

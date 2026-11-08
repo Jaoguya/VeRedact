@@ -187,12 +187,29 @@ class VeRedactScheme(Scheme):
         from ..crypto.hashing import H
 
         r = copy.copy(rr)
-        if kind == "modified":
+        r.pbrp = dict(rr.pbrp)
+        if kind == "modified":  # a committed field altered
             r.D_new = H("forged", r.D_new)
         elif kind == "substituted":
-            r.h_pbrp = H("substituted", r.h_pbrp)
+            # #8 change 3: GENUINE evidence of another redaction (preferably another authorization batch) inserted
+            # under this record; only its context binding (h_i^PBRP in the RAI entry, chi(v)) can catch it
+            others = [o for o in self.p.records if o.RID != rr.RID]
+            other = next((o for o in others if o.BID != rr.BID), others[0] if others else None)
+            if other is None:
+                raise ValueError("substituted evidence needs a second record in the history")
+            r.pbrp = dict(other.pbrp, tau_A=rr.pbrp["tau_A"])  # still resolves to this record's RAI entry
         elif kind == "stale":
-            r.v_b_new -= 1
+            # #8 change 3: a GENUINE earlier transition and checkpoint of the same batch replayed (anchored on the
+            # chain and correctly signed); the batch's most recent earlier version
+            b = rr.pbrp["b"]
+            older = [o for o in self.p.records if o.pbrp["b"] == b and o.v_b_new < rr.v_b_new]
+            if older:
+                old = max(older, key=lambda o: o.v_b_new)
+                for k in ("v_b", "v_b_new", "MR", "MR_new", "r_new", "theta", "xi", "positions", "cp"):
+                    r.pbrp[k] = old.pbrp[k]
+                r.v_b, r.v_b_new = old.v_b, old.v_b_new
+            else:  # the batch has no earlier transition in this history: an older version number is claimed
+                r.v_b_new -= 1
         return r
 
     def set_variant(self, variant: str) -> None:
