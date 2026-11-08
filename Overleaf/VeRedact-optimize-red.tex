@@ -3182,7 +3182,14 @@ VeRedact-PQ was implemented in approximately \textbf{[TBD]} lines of
 Ubuntu \textbf{[TBD]}. PBN nodes, committee members, the VPS, and
 auditors were deployed in Docker containers. Inter-node latency was
 configured to \textbf{[TBD]}\,ms using Linux \texttt{tc netem} to
-emulate a multi-organization deployment.
+emulate a multi-organization deployment.\textcolor{e1}{ The $t$ members
+of every threshold committee (VeRedact-PQ and Schemes~\cite{ref1}
+and~\cite{ref27}) act as separate parties: a committee step costs its
+slowest member, the collector's own verification is sequential, and
+every committee message round incurs the same inter-node delay, which is
+reported as network time separately from computation. Schemes without a
+batch protocol keep several redactions in flight while their committee
+messages travel.}
 
 PQSIG was instantiated with ML-DSA-65 (FIPS~204) using the Open
 Quantum Safe \texttt{liboqs} library. $H$, $H_1$, $H_2$, $H_A$, and
@@ -3388,7 +3395,7 @@ requests on fewer batches.}
 This experiment evaluates \textcolor{e2}{the complete authorization cost
 of a request: Phase~3 validation plus the Phase~4 authorization of its
 set divided by $m$, since the baselines have no separate validation stage
-that could be left out.} The committee size is varied as
+that could be left out, including the committee's message rounds.} The committee size is varied as
 \textcolor{e2}{$n\in\{4,7,10,16,32,48,64\}$}, with the experimental
 threshold configured as $t=\lfloor2n/3\rfloor+1$\textcolor{e2}{ and
 $m=\textbf{[64]}$; the round size $m\in\{1,8,32,64,128,256\}$ is varied
@@ -3403,31 +3410,38 @@ no comparable standalone authorization stage.
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\linewidth]{exp2_authorization_latency.png}
-\caption{\textcolor{e2}{Complete authorization cost per request versus
-committee size $n$ ($m=\textbf{[64]}$, $t=\lfloor2n/3\rfloor+1$).}}
+\caption{\textcolor{e2}{Complete authorization cost per request,
+including committee network time, versus committee size $n$
+($m=\textbf{[64]}$, $t=\lfloor2n/3\rfloor+1$).}}
 \label{fig:exp2_auth}
 \end{figure}
 
 \textcolor{e2}{In VeRedact-PQ, only the committee term $t(T_S+T_V)$ of
-$C_{\mathrm{auth}}$ (Eq.~\eqref{eq:cauth}) grows with $n$, and it is paid
-once per CORA-selected set. Schemes~\cite{ref1} and~\cite{ref34} define
-no batch protocol and repeat their per-request work, which grows with
-$t$, for every request; Scheme~\cite{ref39} is independent of $n$.}
+$C_{\mathrm{auth}}$ (Eq.~\eqref{eq:cauth}) grows with $n$, and it is paid,
+together with one committee message round, once per CORA-selected set.
+Schemes~\cite{ref1} and~\cite{ref34} define no batch protocol and repeat
+their per-request work for every request; Scheme~\cite{ref1} also waits
+for one committee message round per request, and Scheme~\cite{ref34}'s
+work grows with its policy size. Scheme~\cite{ref39} is independent of
+$n$.}
 
 \textcolor{e2}{Phase~3 of VeRedact-PQ includes one PQZK verification
 per request, which enforces the private policy, does not amortize, and
 is performed by neither Scheme~\cite{ref1} nor Scheme~\cite{ref39}.
-VeRedact-PQ therefore falls below Scheme~\cite{ref1} only from
-$n\approx\textbf{[TBD]}$, and Scheme~\cite{ref39} remains below it at
-every $n$; the difference is the cost of the private-policy predicate,
+On computation alone, VeRedact-PQ therefore remains \textbf{[TBD]}\,ms
+above Scheme~\cite{ref1} (Table~\ref{tab:exp2_m}); it falls below
+Scheme~\cite{ref1} only because one committee message round costs more
+than this difference, which holds at the configured \textbf{[TBD]}\,ms
+inter-node delay but not on a network with sub-millisecond round trips.
+Scheme~\cite{ref39} remains below VeRedact-PQ at every $n$; the difference is the cost of the private-policy predicate,
 the committee, and the freshness check (Table~\ref{tab:comparison}). In
 Experiment~1, CORA formed rounds of \textbf{[TBD]} requests, i.e.,
 between the $m=32$ and $m=256$ rows of Table~\ref{tab:exp2_m}.}
 
 \begin{table}[t]\color{e2}
 \centering
-\caption{Complete Authorization Cost per Request (ms) versus Round
-Size $m$ at $n=7$}
+\caption{Complete Authorization Cost per Request (ms, Computation
+Only) versus Round Size $m$ at $n=7$}
 \label{tab:exp2_m}
 \scriptsize
 \renewcommand{\arraystretch}{1.08}
