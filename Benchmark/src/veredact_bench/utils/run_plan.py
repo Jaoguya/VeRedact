@@ -6,11 +6,12 @@ config.ONCE (0 and 1) run in run 1 only, so later runs have no e1 worker.
 
     python -m veredact_bench.utils.run_plan experiments <part> [run]   -> experiment ids, space-separated
     python -m veredact_bench.utils.run_plan workers <runs>       -> one "<run(s)> <part>" line per worker
+    python -m veredact_bench.utils.run_plan systems <tier>       -> "<experiment>/<system>" of every configured system
 """
 
 import sys
 
-from veredact_bench.utils.config import ONCE
+from veredact_bench.utils.config import ONCE, experiments, load
 
 PARTS = {
     "e1": ["exp01_redaction_throughput"],
@@ -34,6 +35,11 @@ def workers(runs: int) -> list[tuple[str, str]]:
     return [(str(r), p) for r in range(1, runs + 1) for p in PARTS if experiments_of(p, r)]
 
 
+def configured(tier: str) -> list[str]:
+    """ "<experiment>/<system>" of every system an experiment runs on this tier: what a release may contain."""
+    return [f"{e}/{s}" for e in experiments() for s in load(tier, e)["experiment"]["systems"]]
+
+
 if __name__ == "__main__":
     what, arg = sys.argv[1:3]
     if what == "experiments":
@@ -41,5 +47,7 @@ if __name__ == "__main__":
         print(" ".join(experiments_of(arg, int(run) if run.isdigit() else None)))
     elif what == "workers":
         print("\n".join(f"{r} {p}" for r, p in workers(int(arg))))
+    elif what == "systems":
+        print("\n".join(configured(arg)))
     else:
-        sys.exit(f"unknown command {what!r}: experiments <part> [run] | workers <runs>")
+        sys.exit(f"unknown command {what!r}: experiments <part> [run] | workers <runs> | systems <tier>")

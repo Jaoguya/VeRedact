@@ -25,14 +25,18 @@ from veredact_bench.reporting import style
 from veredact_bench.reporting.load import metrics as _all_metrics
 from veredact_bench.reporting.load import num
 from veredact_bench.utils.config import RESULT_DIR, load
+from veredact_bench.utils.config import load as _config
 
 OUT = RESULT_DIR
 
 
 def metrics(experiment: str, tier: str) -> dict:
-    """metrics.json of the paper's schemes only (style.PAPER_METHODS), in that order."""
+    """metrics.json of the systems this experiment runs NOW (its config's `systems`), in style.PAPER_METHODS
+    order. A results folder of a system the experiment no longer runs (e.g. the 3 Nov Exp. 1 variants or Re-ZK,
+    still on veredact-bench) is never drawn beside a new run's lines."""
     ms = _all_metrics(experiment, tier)
-    return {k: ms[k] for k in style.PAPER_METHODS if k in ms}
+    run = set(_config(tier, experiment)["experiment"]["systems"])
+    return {k: ms[k] for k in style.PAPER_METHODS if k in ms and k in run}
 
 
 def _points(m: dict) -> dict:
