@@ -2963,6 +2963,7 @@ $t$ committee approvals are shared across the selected set:
 C_{\mathrm{auth}}
 =
 \textcolor{red}{w_e}T_V+t(T_S+T_V)+O(m\textcolor{red}{\log W})T_H.
+\label{eq:cauth}
 \end{equation}
 Thus, the threshold component amortizes to
 $t(T_S+T_V)/m$ per request\textcolor{red}{, and the VPS attestations to
@@ -3333,31 +3334,22 @@ rate is varied from \textcolor{red}{\textbf{[25]} to \textbf{[1,000]}}
 requests/s.
 End-to-end latency is measured from request submission to finalization
 of the corresponding Phase~5 checkpoint, while throughput is measured
-as \textcolor{red}{finalized \emph{valid} redactions per second; an
-invalid request that a scheme executes is counted as an accepted invalid
-request, not as throughput}. VeRedact-PQ is compared with
+as \textcolor{red}{finalized \emph{valid} redactions per second}.
+VeRedact-PQ is compared with
 Refs.~\cite{ref1}, \cite{ref13}, \cite{ref27}, and~\cite{ref34}.
-
-\textcolor{red}{Following the threat model (Section~III-B), 20\% of the
-requests are invalid: 10\% are \emph{stale}, i.e., they refer to a content
-commitment of the target transaction that an earlier redaction has
-already replaced, and 10\% are \emph{absent}, i.e., they target a
-transaction identifier that does not exist in the ledger. The remaining
-80\% are valid, and every scheme receives the same trace.}
-
-To examine locality, the Zipf skew is varied as
-$s\in\{0,0.4,0.8,1.2\}$ at a fixed arrival rate. We record the number
-of affected transaction batches $|\Omega_e|$, PQCH adaptations, and
-total SFMR frontier size $F_e$ per 1,000 finalized redactions. These
-metrics directly quantify the execution sharing predicted by the cost
-analysis.
+\textcolor{red}{Following the threat model, 20\% of the requests are
+invalid: 10\% are \emph{stale} (they refer to a content commitment that
+an earlier redaction has replaced) and 10\% are \emph{absent} (their
+transaction does not exist). Every scheme receives the same trace, and
+an executed invalid request counts as an accepted invalid request, not
+as throughput.}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\linewidth]{exp1_redaction_throughput.png}
-\caption{\textcolor{red}{End-to-end redaction throughput (finalized valid
-redactions per second) versus request arrival rate, with 20\% invalid
-requests (10\% stale, 10\% absent).}}
+\caption{\textcolor{red}{Finalized valid redactions per second versus
+request arrival rate, with 20\% invalid requests (10\% stale, 10\%
+absent).}}
 \label{fig:exp1_redaction}
 \end{figure}
 
@@ -3366,118 +3358,65 @@ load increases. The baselines primarily process authorization and/or
 redaction operations per request, whereas VeRedact-PQ amortizes
 committee authorization across each CORA-selected set and performs
 threshold PQCH adaptation once per affected transaction batch.
-Accordingly, the expected advantage should become most visible near
-saturation, where repeated threshold operations dominate processing
-cost. \textcolor{red}{VeRedact-PQ rejects invalid requests in Phase~3,
-before any committee, SFMR, PQCH or ledger work: absent targets at the
-authenticated SA-RLI lookup and stale requests by
-$\mathsf{FreshLeaf}_i$ (Eq.~\eqref{eq:freshleaf}). A scheme without a
-state-bound freshness check executes stale requests; when such a scheme
-is limited by ledger capacity, every stale execution occupies capacity
-that valid requests cannot use. The number of invalid requests accepted
-by each scheme is reported in the text.}
+\textcolor{red}{It also rejects invalid requests in Phase~3, before any
+committee, PQCH, or ledger work, at the authenticated SA-RLI lookup or
+by $\mathsf{FreshLeaf}_i$ (Eq.~\eqref{eq:freshleaf}); a scheme without a
+state-bound freshness check executes stale requests and spends ledger
+capacity on them.} CORA introduces bounded waiting up to $T_{\max}$ to
+obtain useful execution sharing, but prevents indefinite delay by making
+sufficiently old requests mandatory.
 
-\textcolor{red}{The 95th-percentile latency is reported in the text for
-every rate at which all requests complete within the measurement window;
-at a saturated rate it would only be a lower bound.} CORA introduces
-bounded waiting up to $T_{\max}$ to obtain useful execution sharing, but
-prevents indefinite delay by making sufficiently old requests mandatory.
-Under increasing load, more compatible requests become available within
-the waiting window, allowing CORA to improve amortization without
-requiring a fixed batch to fill.
-
-\textcolor{red}{To examine why these savings occur, the number of PQCH
-adaptations and the total SFMR frontier size per 1,000 finalized
-redactions are reported in a table for each skew $s$.}
+\textcolor{red}{The text reports the 95th-percentile latency at every
+unsaturated rate, the invalid requests accepted by each scheme, and, for
+Zipf skew $s\in\{0,0.4,0.8,1.2\}$ at a fixed rate, the PQCH adaptations
+and total SFMR frontier size $F_e$ per 1,000 finalized redactions.}
 Independent processing requires approximately one PQCH adaptation per
 redaction. In VeRedact-PQ, the number instead scales with
-$|\Omega_e|$, while Merkle processing depends on the shared frontier
-size $F_e$. As $s$ increases, requests are increasingly concentrated
-within common transaction batches, allowing CORA to select requests
-with greater batch and path overlap and SFMR to exploit that overlap.
-The benefit should therefore diminish toward $s=0$ and increase with
-request locality. Together, these measurements distinguish CORA's
-ability to \emph{discover} execution sharing from SFMR's ability to
-\emph{realize} it.
+$|\Omega_e|$, \textcolor{red}{which decreases as $s$ concentrates
+requests on fewer batches.}
 
     % ---------------------------------------------------------------------
 
 \subsubsection*{\textbf{Experiment 2: Multi-Party Authorization Performance}}
 
-This experiment evaluates \textcolor{red}{the complete authorization
-cost of a request} and the benefit of separating state-bound PQZK
-validation from committee approval. The committee size is varied as
+This experiment evaluates \textcolor{red}{the complete authorization cost
+of a request: Phase~3 validation plus the Phase~4 authorization of its
+set divided by $m$, since the baselines have no separate validation stage
+that could be left out.} The committee size is varied as
 \textcolor{red}{$n\in\{4,7,10,16,32,48,64\}$}, with the experimental
-threshold configured as $t=\lfloor2n/3\rfloor+1$\textcolor{red}{, at the
-reference round size $m=\textbf{[64]}$. The number of requests in a
-CORA-selected set is varied separately as $m\in\{1,8,32,64,128,256\}$ at
-$n=7$.} \textcolor{red}{The reported cost per request is the complete
-authorization cost, i.e., Phase~3 validation plus the Phase~4
-authorization of its set divided by $m$, because the baselines have no
-separate validation stage that could be left out.} Phase~4
-authorization latency is measured from completion of CORA selection and
-state revalidation to the availability of $Auth_e^B$.
-
-The measured cost is decomposed into \textcolor{red}{Phase~3 validation
-(PQZK verification, requester-signature verification, and the VPS window
-signature),} VPS-attestation verification, state-freshness checking,
-authorization-root and CORA-plan construction, and committee
-signing/verification. VeRedact-PQ is compared with
+threshold configured as $t=\lfloor2n/3\rfloor+1$\textcolor{red}{ and
+$m=\textbf{[64]}$; the round size $m\in\{1,8,32,64,128,256\}$ is varied
+at $n=7$ (Table~\ref{tab:exp2_m}).} VeRedact-PQ is compared with
 Schemes~\cite{ref1} and~\cite{ref34}, which provide distributed or
 policy-based authorization, respectively\textcolor{red}{, and with
-Scheme~\cite{ref39}, which authenticates a batch of requests with a
-lattice-based aggregate signature but performs no committee approval,
-policy evaluation, or freshness check}. Schemes~\cite{ref13}
-and~\cite{ref27} are excluded because they define no comparable
-standalone authorization stage.
+Scheme~\cite{ref39}, which authenticates batches with a lattice-based
+aggregate signature but has no committee, policy, or freshness check}.
+Schemes~\cite{ref13} and~\cite{ref27} are excluded because they define
+no comparable standalone authorization stage.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\linewidth]{exp2_authorization_latency.png}
-\caption{\textcolor{red}{Complete authorization cost per request
-(Phase~3 validation plus Phase~4 authorization divided by $m$) versus
-committee size $n$, at $m=\textbf{[64]}$ and $t=\lfloor2n/3\rfloor+1$.}}
+\caption{\textcolor{red}{Complete authorization cost per request versus
+committee size $n$ ($m=\textbf{[64]}$, $t=\lfloor2n/3\rfloor+1$).}}
 \label{fig:exp2_auth}
 \end{figure}
 
-\textcolor{red}{Fig.~\ref{fig:exp2_auth}} evaluates the committee-size
-trade-off. In VeRedact-PQ, the VPS attestations are verified once per
-distinct admission window, while the $t$ committee approvals are shared
-across the selected set. Accordingly, the dominant authorization cost
-follows
-\begin{equation}
-C_{\mathrm{auth}}
-=
-\textcolor{red}{w_e}T_V+t(T_S+T_V)+O(m\textcolor{red}{\log W})T_H,
-\end{equation}
-and its amortized threshold component decreases as
-$t(T_S+T_V)/m$. For VeRedact-PQ, increasing $n$ also increases the
-configured threshold $t$, raising committee signing and verification
-cost, but this cost is incurred once per CORA-selected set and amortized
-across its $m$ requests. Scheme~\cite{ref1} similarly reflects its
-distributed approval threshold\textcolor{red}{, but repeats its
-per-request check for each of the $t$ approving nodes, and
-Scheme~\cite{ref34} performs one MA-ABE decryption per request whose
-cost grows with $t$; neither defines a batch protocol, so a set of $m$
-requests costs $m$ independent authorizations. Scheme~\cite{ref39} has
-no committee and is therefore independent of $n$.}
+\textcolor{red}{In VeRedact-PQ, only the committee term $t(T_S+T_V)$ of
+$C_{\mathrm{auth}}$ (Eq.~\eqref{eq:cauth}) grows with $n$, and it is paid
+once per CORA-selected set. Schemes~\cite{ref1} and~\cite{ref34} define
+no batch protocol and repeat their per-request work, which grows with
+$t$, for every request; Scheme~\cite{ref39} is independent of $n$.}
 
-\textcolor{red}{The Phase~3 cost of VeRedact-PQ includes one state-bound
-PQZK verification per request, which enforces the private policy and
-does not amortize across the set; neither Scheme~\cite{ref1} nor
-Scheme~\cite{ref39} performs it. At small committees this per-request
-cost exceeds their entire authorization: VeRedact-PQ falls below
-Scheme~\cite{ref1} only from $n\approx\textbf{[TBD]}$, and
-Scheme~\cite{ref39} remains below VeRedact-PQ at every $n$. The
-difference is the cost of the private-policy predicate, the committee,
-and the freshness check that Scheme~\cite{ref39} does not provide
-(Table~\ref{tab:comparison}).}
-
-\textcolor{red}{Table~\ref{tab:exp2_m} reports the complete cost per
-request for each round size $m$ at $n=7$. CORA formed rounds of
-\textbf{[TBD]} requests in Experiment~1, so the deployed system operates
-between the $m=32$ and $m=256$ rows rather than at either end of the
-range.}
+\textcolor{red}{Phase~3 of VeRedact-PQ includes one PQZK verification
+per request, which enforces the private policy, does not amortize, and
+is performed by neither Scheme~\cite{ref1} nor Scheme~\cite{ref39}.
+VeRedact-PQ therefore falls below Scheme~\cite{ref1} only from
+$n\approx\textbf{[TBD]}$, and Scheme~\cite{ref39} remains below it at
+every $n$; the difference is the cost of the private-policy predicate,
+the committee, and the freshness check (Table~\ref{tab:comparison}). In
+Experiment~1, CORA formed rounds of \textbf{[TBD]} requests, i.e.,
+between the $m=32$ and $m=256$ rows of Table~\ref{tab:exp2_m}.}
 
 \begin{table}[t]\color{red}
 \centering
@@ -3504,17 +3443,12 @@ $m$ & VeRedact-PQ & Scheme~\cite{ref1} & Scheme~\cite{ref34} & Scheme~\cite{ref3
     % ---------------------------------------------------------------------
 \subsubsection*{\textbf{Experiment 3: Audit and Verification Efficiency}}
 
-This experiment evaluates Phase~6 audit efficiency in terms of evidence
-generation, communication overhead, and auditor-side verification. The
-number of returned redaction records is varied as
-$n_Q\in\{10,10^2,10^3,10^4\}$. Evidence sharing is controlled by
-varying the number of returned records that share authorization,
-transition, and checkpoint dependencies.
-
-VeRedact-PQ is compared with Schemes~\cite{ref1} and~\cite{ref13}
-where their original designs provide comparable redaction-verification
-or audit functionality; unsupported operations are reported as N/A.
-Two internal variants are additionally evaluated:
+This experiment evaluates Phase~6 audit efficiency\textcolor{red}{ under
+routine auditing ($d_Q=0$)}. The number of returned redaction records is
+varied as $n_Q\in\{10,10^2,10^3,10^4\}$. Evidence sharing is controlled
+by varying the number of returned records that share authorization,
+transition, and checkpoint dependencies. VeRedact-PQ is compared with
+Schemes~\cite{ref1} and~\cite{ref13} and with two internal variants:
 \begin{enumerate}
 \item \textbf{Per-Record}: complete evidence is independently
 transferred and verified for every returned redaction, without
@@ -3526,77 +3460,31 @@ for each dependent record.
 \end{enumerate}
 The full VeRedact-PQ configuration additionally applies SAVER to reuse
 successfully verified shared dependencies only under matching
-state-bound contexts $\chi(v)$.
-
-We measure (i) response-generation time, (ii) audit-response size,
-(iii) auditor-side verification latency, and (iv) the number of
-cryptographically verified evidence nodes. Routine auditing is used
-with $d_Q=0$ so that this experiment isolates evidence sharing and
-verification reuse from deep PQZK escalation. \textcolor{red}{The
-response is generated by the audit service and verified by the auditor,
-so the two costs are paid by different parties; the figure reports their
-sum, the end-to-end cost of answering an audit query, and
-Table~\ref{tab:exp3_split} reports each term and the response size
-separately.}
+state-bound contexts $\chi(v)$. \textcolor{red}{Response generation is
+paid by the audit service and verification by the auditor; the figure
+reports their sum, and Table~\ref{tab:exp3_split} reports each term, the
+response size, and the number of decisions returned.}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\linewidth]{exp3_audit_efficiency.png}
 \caption{\textcolor{red}{End-to-end audit cost per query (response
-generation plus auditor-side verification) versus the number of returned
-redaction records $n_Q$. Scheme~\cite{ref13} returns one decision for
-the whole query; the other systems return one decision per record.}}
+generation plus verification) versus $n_Q$. Scheme~\cite{ref13} returns
+one decision per query, the other systems one per record.}}
 \label{fig:exp3_audit}
 \end{figure}
 
-\textcolor{red}{Fig.~\ref{fig:exp3_audit}} compares the end-to-end cost
-as $n_Q$ increases. Conventional per-record processing repeatedly
-constructs evidence for individual redactions, whereas VeRedact-PQ
-uses a query-scoped RAI multiproof and represents common authorization,
-transition, and checkpoint dependencies once. Its generation cost
-therefore depends on both $n_Q$ and the number of distinct shared
-dependencies. Per-Record duplicates authentication paths and shared
-evidence for each returned record, whereas Shared-Evidence and
-VeRedact-PQ eliminate this duplication through $MP_{Q_j}^A$ and the
-verification-dependency DAG. Shared-Evidence reduces transferred
-evidence but still independently re-verifies shared dependencies.
-VeRedact-PQ additionally verifies each distinct shared node once under
-its authenticated context and reuses the result for dependent records.
-For routine auditing, its cost follows
-\begin{equation}
-C_{\mathrm{audit}}
-\approx
-n_QC_{\mathrm{req}}
-+a_QC_{\mathrm{auth}}
-+z_QC_{\mathrm{trans}}
-+c_QC_{\mathrm{cp}},
-\end{equation}
-where $a_Q$, $z_Q$, and $c_Q$ denote the numbers of distinct
-authorization, transition, and checkpoint dependencies, respectively.
-Thus, when related redactions share evidence,
-$a_Q,z_Q,c_Q\ll n_Q$, reducing repeated verification without extending
-a verified result across different authenticated state contexts.
-
-\textcolor{red}{Scheme~\cite{ref13} challenges every block touched by
-the query and verifies one aggregate proof, so its verification cost and
-response size are nearly constant in $n_Q$, while its response
-generation builds one non-membership witness per challenged block. Its
-single decision covers ledger integrity and version freshness of the
-challenged set; it does not establish who authorized a redaction, under
-which policy, or whether the state transition was correct, and it cannot
-identify an invalid record (Experiment~4). Scheme~\cite{ref13}
-therefore remains below VeRedact-PQ in auditor-side verification time
-and in response size at every $n_Q$, as Table~\ref{tab:exp3_split}
-shows.}
-
-\textcolor{red}{Over the evidence-sharing parameter (records per
-authorization batch $\in\{1,8,64\}$), the number of distinct
-authorization nodes $a_Q$ and transition nodes $z_Q$ at $n_Q=10^4$ are
-\textbf{[TBD]} and \textbf{[TBD]}, respectively. Because the transition
-nodes carry the PQCH check, the verification saving of SAVER over
-Shared-Evidence is bounded by how many returned records share a batch
-transition, which is set by the redaction history rather than by this
-parameter.}
+\textcolor{red}{VeRedact-PQ builds one query-scoped RAI multiproof and
+represents each shared dependency once, and SAVER verifies each distinct
+node once, so its routine cost follows Eq.~\eqref{eq:saver_cost} with
+$d_Q=0$.} \textcolor{red}{Scheme~\cite{ref13} verifies one aggregate
+proof for all challenged blocks, so its verification time and response
+size are nearly constant in $n_Q$ and remain below those of VeRedact-PQ
+at every $n_Q$. Its single decision does not establish who authorized a
+redaction, under which policy, or whether the transition was correct,
+and it cannot identify an invalid record (Experiment~4). The saving of
+SAVER over Shared-Evidence is bounded by how many returned records share
+a batch transition: $z_Q=\textbf{[TBD]}$ at $n_Q=10^4$.}
 
 \begin{table}[t]\color{red}
 \centering
@@ -3617,106 +3505,57 @@ Decisions         & $n_Q$ & $n_Q$ & $n_Q$ & $n_Q$ & 1 \\
 \end{tabular}
 \end{table}
 
-Overall, the experiment distinguishes three sources of audit cost:
-per-record evidence processing, communication savings from shared
-evidence, and verification savings from state-bound reuse. The external
-baselines quantify comparative audit performance, while the internal
-variants isolate the contribution of VeRedact-PQ's evidence-sharing and
-verification mechanisms.
-
     
     % ---------------------------------------------------------------------
  \subsubsection*{\textbf{Experiment 4: Selective Verification and Evidence Integrity}}
 
 This experiment evaluates the cost and detection effectiveness of
-Phase~6 verification under different audit depths. Unlike
-Experiment~3, which evaluates evidence sharing and verification reuse,
-this experiment focuses on selective PQZK escalation and the detection
-of invalid audit evidence.
-
-The number of returned records is varied as
-$n_Q\in\{10,10^2,10^3,10^4\}$, while the fraction requiring independent
-PQZK verification is varied as
+Phase~6 verification under different audit depths. The number of
+returned records is varied as $n_Q\in\{10,10^2,10^3,10^4\}$, and the
+fraction escalated to deep verification as
 $d_Q/n_Q\in\{0,0.01,0.05,0.10,0.25,1.0\}$.
-Routine verification authenticates the VPS attestation $\alpha_i$ and
-the associated request, authorization, transition, and checkpoint
-dependencies. It does not require transmission or independent
-verification of $\pi_i^{PQ}$. For each request selected for deep
-verification, the auditor additionally retrieves the proof and checks
-\begin{equation}
-\mathsf{PQZK.Verify}
-(vk_{\mathrm{PQZK}},x_i,\pi_i^{PQ})=1,
-\qquad
-H(\pi_i^{PQ})=h_i^{PQ}.
-\end{equation}
-
-Verification time is decomposed into RAI and response authentication,
-request-attestation verification, committee-approval verification,
-transition/PQCH verification, and PQZK verification. VeRedact-PQ is
-compared with Schemes~\cite{ref1} and~\cite{ref13} for verification
-operations supported by their original designs; unsupported operations
-are reported as N/A. \textcolor{red}{Scheme~\cite{ref13} defines two
-verification procedures: its Audit, which verifies one aggregate proof
-for all challenged blocks and returns one decision for the whole query,
-and its Query, which verifies one block and returns one decision for
-that block. Both are evaluated; the Query procedure is applied once per
-distinct block of the result, which gives the decision granularity
-closest to the per-record decisions of VeRedact-PQ and
-Scheme~\cite{ref1}.}
+\textcolor{red}{Routine verification checks $\alpha_i$ and the shared
+dependencies without $\pi_i^{PQ}$; deep verification additionally checks
+$\mathsf{PQZK.Verify}(vk_{\mathrm{PQZK}},x_i,\pi_i^{PQ})=1$ and
+$H(\pi_i^{PQ})=h_i^{PQ}$.} VeRedact-PQ is compared with
+Schemes~\cite{ref1} and~\cite{ref13}\textcolor{red}{. For
+Scheme~\cite{ref13}, both of its procedures are evaluated: its Audit,
+which returns one aggregate decision for the whole query, and its Query,
+applied once per distinct block of the result, which is the granularity
+closest to per-record decisions.}
 
 To evaluate evidence integrity, \textbf{[1\%--10\%]} of returned
 records are independently subjected to three fault classes:
 \textbf{modified evidence}, where a committed field is altered;
-\textbf{substituted evidence}, where evidence from another redaction or
-dependency context is inserted; and \textbf{stale evidence}, where an
-older authenticated state or checkpoint is replayed. We measure the
-invalid-record rejection rate and valid-record acceptance rate.
-\textcolor{red}{Substituted evidence is valid evidence taken from a
-different record or dependency context, and stale evidence is a real
-earlier checkpoint of the same batch. Schemes~\cite{ref1}
-and~\cite{ref13} bind no dependency context, so for them each class is
-applied as a corruption of the affected record.}
+\textbf{substituted evidence}, where \textcolor{red}{valid} evidence
+from another redaction or dependency context is inserted; and
+\textbf{stale evidence}, where \textcolor{red}{a real earlier checkpoint
+of the same batch} is replayed. \textcolor{red}{Schemes~\cite{ref1}
+and~\cite{ref13} bind no dependency context, so each class is applied
+to them as a corruption of the record.} We measure the invalid-record
+rejection rate and valid-record acceptance rate.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\linewidth]{exp4_verification_time.png}
-\caption{\textcolor{red}{Auditor-side verification time versus the number
-of returned records $n_Q$: VeRedact-PQ routine ($d_Q=0$) and deep
-($d_Q=n_Q$), Scheme~\cite{ref1}, and Scheme~\cite{ref13} with one
-decision for the whole query (Audit) and one decision per block
-(Query).}}
+\caption{\textcolor{red}{Verification time versus $n_Q$: VeRedact-PQ
+routine ($d_Q=0$) and deep ($d_Q=n_Q$), Scheme~\cite{ref1}, and
+Scheme~\cite{ref13} per query (Audit) and per block (Query).}}
 \label{fig:exp4_verify}
 \end{figure}
 
-\textcolor{red}{Fig.~\ref{fig:exp4_verify}} evaluates the cost of
-selective escalation. Routine auditing corresponds to $d_Q=0$ and relies
-on authenticated VPS decisions together with the required shared
-authorization, transition, and checkpoint evidence. As the escalation
-fraction increases, verification cost additionally includes
-$d_QT_{ZV}$, approaching full independent PQZK verification when
-$d_Q=n_Q$. The expected cost therefore follows
-\begin{equation}
-C_{\mathrm{verify}}
-\approx
-C_{\mathrm{routine}}+d_QT_{ZV},
-\end{equation}
-demonstrating the trade-off between routine verification and
-request-level independent validation. \textcolor{red}{The two
-VeRedact-PQ lines bound this range; the measured cost per escalated
-request is \textbf{[TBD]}\,ms, compared with $T_{ZV}$ in
-Table~\ref{tab:primitives}.}
-
-\textcolor{red}{Table~\ref{tab:exp4_breakdown} decomposes the routine
-cost at $n_Q=10^4$.} Routine verification is dominated by request
-attestations and the distinct authorization, transition, and checkpoint
-dependencies, whereas PQZK verification becomes dominant as $d_Q/n_Q$
-increases. The classical baselines provide reference costs for the
-verification operations they support, while VeRedact-PQ additionally
-quantifies the overhead introduced by post-quantum signatures and
-selective PQZK verification. \textcolor{red}{Scheme~\cite{ref13}'s
-whole-query Audit remains below every VeRedact-PQ line at every $n_Q$,
-because it verifies one aggregate proof regardless of the result size;
-its decision, however, does not identify which record is invalid.}
+Verification cost follows
+$C_{\mathrm{verify}}\approx C_{\mathrm{routine}}+d_QT_{ZV}$;
+\textcolor{red}{the routine and deep lines in
+Fig.~\ref{fig:exp4_verify} bound this range, and
+Table~\ref{tab:exp4_breakdown} decomposes the routine cost.
+Scheme~\cite{ref13}'s Audit remains below every VeRedact-PQ line because
+it verifies one aggregate proof regardless of $n_Q$, but it rejects every
+record of a query that contains one invalid record, and its Query rejects
+every record of the affected block. VeRedact-PQ and Scheme~\cite{ref1}
+decide each record separately, so an invalid record does not invalidate
+records whose dependencies remain valid. The rejection and acceptance
+rates per system and fault class are \textbf{[TBD]}.}
 
 \begin{table}[t]\color{red}
 \centering
@@ -3738,76 +3577,40 @@ Checkpoints & [TBD] \\
 \end{tabular}
 \end{table}
 
-\textcolor{red}{Verification granularity is reported in the text.}
-Modified evidence should fail its content or authenticated-path
-binding, substituted evidence should fail its dependency or
-state-context binding, and stale evidence should fail the applicable
-version, epoch, or checkpoint checks. Because request-specific evidence
-remains individually bound to the shared verification structure, an
-invalid record can be rejected without invalidating unrelated records
-whose dependencies remain valid. \textcolor{red}{VeRedact-PQ and
-Scheme~\cite{ref1} decide each record separately; Scheme~\cite{ref13}'s
-Audit rejects every record of a query that contains one invalid record,
-and its per-block Query rejects the records of the affected block. The
-invalid-record rejection rate and valid-record acceptance rate of each
-system and fault class are \textbf{[TBD]}.} The experiment therefore
-evaluates both the cost of selective verification and the ability to
-localize invalid evidence without requiring full-query rejection.
-
     
     % ---------------------------------------------------------------------
  \subsubsection*{\textbf{Experiment 5: Permissioned Blockchain Finalization Overhead}}
 
 This experiment evaluates the overhead introduced by PBN anchoring and
-atomic redaction finalization. Because VeRedact-PQ targets a permissioned
-blockchain rather than a public cryptocurrency network, we measure
-\textcolor{red}{the load each scheme places on the PBN per finalized
-redaction: the number of anchoring transactions, their size, and the
-gas they consume, together with the finalization latency.}
-\textcolor{red}{VeRedact-PQ is compared with Schemes~\cite{ref1},
-\cite{ref13}, \cite{ref27}, and~\cite{ref34}, each of which writes one
-ledger transaction per redaction as specified by its design, under the
-workload and arrival rates of Experiment~1.}
-
-The experiment covers Phase~5 redaction finalization, which atomically
-commits the updated batch checkpoints and authenticated SA-RLI state,
-and Phase~6 RAI checkpoint anchoring. \textcolor{red}{In addition, the
-number of affected transaction batches is varied as
-$|\Omega_e|\in\{1,8,32,64,128\}$, which covers the round sizes CORA
-produces in Experiment~1, and we measure the size and gas of the
-finalization transaction and the time from its submission until QBFT
-finalization.}
+atomic redaction finalization. \textcolor{red}{Under the workload and
+arrival rates of Experiment~1, we measure the anchoring transactions,
+bytes, and gas per finalized redaction for VeRedact-PQ and
+Schemes~\cite{ref1}, \cite{ref13}, \cite{ref27}, and~\cite{ref34}, each
+of which writes one ledger transaction per redaction. For VeRedact-PQ,
+the number of affected batches is also varied as
+$|\Omega_e|\in\{1,8,32,64,128\}$ to measure the size, gas, and
+finalization latency of the Phase~5 finalization transaction
+(Table~\ref{tab:exp5_size}).}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\linewidth]{exp5_blockchain_overhead.png}
 \caption{\textcolor{red}{PBN anchoring transactions per finalized
-redaction versus request arrival rate, for VeRedact-PQ and
-Schemes~\cite{ref1}, \cite{ref13}, \cite{ref27}, and~\cite{ref34}.}}
+redaction versus request arrival rate.}}
 \label{fig:exp5_blockchain}
 \end{figure}
 
-\textcolor{red}{Fig.~\ref{fig:exp5_blockchain}} evaluates the amount of
-state submitted to the PBN. VeRedact-PQ anchors compact commitments and
-finalized checkpoints rather than complete PBRP, SFMR, or audit
-evidence. \textcolor{red}{It submits one authorization and one
-finalization transaction per CORA round, so its transactions per
-finalized redaction fall as $2/m$ with the round size $m$, whereas every
-baseline submits one transaction per redaction.} Consequently, on-chain
-data growth is determined primarily by the number of affected batch
-checkpoints $|\Omega_e|$, while detailed supporting evidence remains
-off-ledger and integrity-bound to the anchored state.
-
-\textcolor{red}{A VeRedact-PQ transaction is larger than a baseline
-transaction because it carries post-quantum objects. With one round
-checkpoint signature, the finalization transaction grows by the
-checkpoint fields and a membership proof per affected batch.
-Table~\ref{tab:exp5_size} reports its size and gas for each
-$|\Omega_e|$, and the bytes and gas per finalized redaction of every
-scheme at each arrival rate are \textbf{[TBD]}. If a deployment were
-limited by bytes or gas rather than by the number of transactions, the
-comparison would be determined by these values rather than by
-Fig.~\ref{fig:exp5_blockchain}.}
+VeRedact-PQ anchors compact commitments and finalized checkpoints rather
+than complete PBRP, SFMR, or audit evidence. \textcolor{red}{It submits
+one authorization and one finalization transaction per CORA round, so
+its transactions per finalized redaction fall as $2/m$
+(Fig.~\ref{fig:exp5_blockchain}), whereas each baseline submits one per
+redaction. Its transactions are larger, because they carry post-quantum
+objects; with one round checkpoint signature, the finalization
+transaction grows only by the checkpoint fields and a membership proof
+per affected batch. The bytes and gas per finalized redaction of every
+scheme are \textbf{[TBD]}; a deployment limited by bytes or gas rather
+than by transaction count should be compared on these values.}
 
 \begin{table}[t]\color{red}
 \centering
@@ -3829,18 +3632,9 @@ $|\Omega_e|$ & Size (B) & Gas & Finalization (s) \\
 \end{tabular}
 \end{table}
 
-\textcolor{red}{Finalization takes one QBFT block period: a transaction
-submitted within a period is finalized with the next block, so the
-measured latency reflects the submission time within the period rather
-than consensus cost, and it does not decrease with larger rounds. All
-validators run on one host, so varying the validator count within the
-tested range does not resolve consensus-related overhead; this is a
-limitation of the testbed rather than a property of the protocol.}
-
-Overall, the experiment verifies that VeRedact-PQ's blockchain layer
-serves as a compact finalization and audit anchor rather than as the
-primary execution environment for post-quantum cryptographic
-operations.
+\textcolor{red}{Finalization takes one QBFT block period, independent of
+$|\Omega_e|$. All validators run on one host, so the testbed cannot
+resolve consensus overhead across validator counts.}
 
 
 \section{Conclusion}
