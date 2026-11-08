@@ -278,13 +278,13 @@ def test_phase4_rejects_a_request_whose_attested_commitment_does_not_reconstruct
 # ---------------------------------------------------------------- batched PQCH verification
 def test_pqch_is_checked_once_per_distinct_transition(audited):
     """SAVER checks each distinct transition once, and _pqch_batch does all of them in one matrix product:
-    the T_CH ops of an audit equal its verified transition nodes."""
+    the T_CH ops of an audit are two per verified transition node (P6: the old AND the new state)."""
     s = audited
     s.p.vcs.clear()
     before = s.crypto.counts["T_CH"]
     accepted, nodes = audit(s, s.p.records[:16])
     assert all(accepted.values())
-    assert s.crypto.counts["T_CH"] - before == nodes["trans"]
+    assert s.crypto.counts["T_CH"] - before == 2 * nodes["trans"]
 
 
 def test_batched_pqch_rejects_only_the_tampered_transition(audited):
@@ -301,7 +301,7 @@ def test_batched_pqch_rejects_only_the_tampered_transition(audited):
 
 def test_shared_evidence_still_rechecks_pqch_for_every_record(cfg, ds):
     """The ablation keeps its meaning: Shared-Evidence re-verifies a shared node per dependent record, so it
-    pays one T_CH per record where SAVER pays one per distinct transition."""
+    pays two T_CH per record (old and new state, P6) where SAVER pays two per distinct transition."""
     from veredact_bench.evaluation.common import build_history
 
     s = open_system(cfg, "veredact-shared-evidence", ds)
@@ -311,7 +311,7 @@ def test_shared_evidence_still_rechecks_pqch_for_every_record(cfg, ds):
     before = s.crypto.counts["T_CH"]
     accepted, _ = audit(s, recs)
     assert all(accepted.values())
-    assert s.crypto.counts["T_CH"] - before == len(recs)
+    assert s.crypto.counts["T_CH"] - before == 2 * len(recs)
 
 
 def test_checkpoint_signature_binds_r_through_its_digest(audited):
@@ -571,4 +571,18 @@ def test_a_record_with_its_own_copy_of_the_evidence_is_its_own_node(audited):
     bad.pbrp = dict(shared.pbrp, r_new=shared.pbrp["r_new"] + 1)
     s.p.vcs.clear()
     accepted, _ = audit(s, [bad if r is shared else r for r in recs])
+    assert not accepted[bad.RID] and all(ok for rid, ok in accepted.items() if rid != bad.RID)
+
+
+# ---------------------------------------------------------------- P6: PQCH of the old AND the new state
+def test_audit_checks_pqch_for_the_old_state_too(audited):
+    """P6 (paper-conformance gap #1): the audit checks PQCH.Hash(MR_b, r_b) = PQCH.Hash(MR_b', r_b') = CH_b, as the
+    manuscript writes; an altered OLD randomness r_b is rejected, though the new state still verifies."""
+    s = audited
+    recs = s.p.records[:16]
+    assert all("r" in r.pbrp for r in recs)
+    bad = copy.copy(recs[1])
+    bad.pbrp = dict(bad.pbrp, r=bad.pbrp["r"] + 1)
+    s.p.vcs.clear()
+    accepted, _ = audit(s, recs[:1] + [bad] + recs[2:])
     assert not accepted[bad.RID] and all(ok for rid, ok in accepted.items() if rid != bad.RID)

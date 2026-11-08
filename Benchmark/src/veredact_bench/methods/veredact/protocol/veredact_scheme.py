@@ -208,7 +208,7 @@ class VeRedactScheme(Scheme):
             older = [o for o in self.p.records if o.pbrp["b"] == b and o.v_b_new < rr.v_b_new]
             if older:
                 old = max(older, key=lambda o: o.v_b_new)
-                for k in ("v_b", "v_b_new", "MR", "MR_new", "r_new", "theta", "xi", "positions", "cp"):
+                for k in ("v_b", "v_b_new", "MR", "MR_new", "r", "r_new", "theta", "xi", "positions", "cp"):
                     r.pbrp[k] = old.pbrp[k]
                 r.v_b, r.v_b_new = old.v_b, old.v_b_new
             else:  # the batch has no earlier transition in this history: an older version number is claimed

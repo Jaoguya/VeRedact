@@ -233,7 +233,8 @@ def test_veredact_state_check_once_per_transition_and_tamper_still_caught(cfg, d
     before = p.c.counts["T_CH"]
     acc = p.verify_audit(resp, q)
     distinct = len({(rr.pbrp["b"], rr.pbrp["MR_new"]) for rr in resp.records})
-    assert all(acc.values()) and p.c.counts["T_CH"] - before == distinct <= len(resp.records)
+    # P6: the old and the new state of every distinct transition, PQCH.Hash(MR_b, r_b) = PQCH.Hash(MR_b', r_b')
+    assert all(acc.values()) and p.c.counts["T_CH"] - before == 2 * distinct <= 2 * len(resp.records)
     import copy as _copy
 
     bad = _copy.deepcopy(resp)

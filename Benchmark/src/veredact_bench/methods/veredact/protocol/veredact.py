@@ -486,19 +486,19 @@ class VeRedactPQ:
             deltas = [c.ch_part_adapt_many(L.td[k + 1], Z) for k in range(L.t)]
             R_new = c.ch_combine_many(P, Z, deltas)
             ok = c.ch_verify_many(L.pk_ch, [L.batches[j[0]].ch for j in jobs], [j[4] for j in jobs], R_new)
-            for col, (b, grp, old_root, _, new_root, theta) in enumerate(jobs):
+            for col, (b, grp, old_root, old_r, new_root, theta) in enumerate(jobs):
                 if not ok[col]:
                     raise RuntimeError(f"PQCH adaptation failed for batch {b}")
                 bt = L.batches[b]
                 bt.r, bt.v = R_new[:, col].copy(), bt.v + 1
-                prepared.append((b, grp, old_root, new_root, bt.v - 1, bt.v, bt.r, theta))
-        for b, grp, old_root, new_root, v_old, v_new, new_r, theta in prepared:  # atomic finalization
+                prepared.append((b, grp, old_root, new_root, bt.v - 1, bt.v, bt.r, theta, old_r))
+        for b, grp, old_root, new_root, v_old, v_new, new_r, theta, old_r in prepared:  # atomic finalization
             for vr in grp:
                 tx = L.txs[vr.req.TID]
                 D_old = tx.D
                 tx.m, tx.rho, tx.D, tx.e_i = vr.req.m_new, vr.req.rho_new, vr.req.D_new, L.e
                 L._index_put(tx)
-                finalized.append((vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r, theta))
+                finalized.append((vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r, theta, old_r))
         if not prepared:
             return []
         R = L.rli.finalize()
@@ -531,7 +531,7 @@ class VeRedactPQ:
         for p in prepared:
             cp = L.checkpoints[p[0]]
             xis[p[0]] = c.HV("EXEC-EVIDENCE", p[7], cp.CH, cp.v_b, cp.R_RLI, cp.v_RLI)
-        for vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r, theta in finalized:
+        for vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r, theta, old_r in finalized:
             pbrp = {
                 "RID": vr.RID,
                 "eta": auth.leaves[auth.members.index(vr)],
@@ -548,6 +548,7 @@ class VeRedactPQ:
                 "MR": old_root,
                 "MR_new": new_root,
                 "CH": L.batches[b].ch,
+                "r": old_r,  # r_b of the old state: P6 checks PQCH.Hash(MR_b, r_b) = CH_b as well
                 "r_new": new_r,
                 "e": L.e,
                 "vr": vr,
@@ -617,7 +618,7 @@ class VeRedactPQ:
         windows = len(records) if self.audit_mode == "per_record" else len({a.w for a in att})
         rec_bytes = len(records) * 32 * 8 + sum(16 + 32 * len(a.path) for a in att)
         rec_bytes += windows * (32 + L.c.sig.sig_size)
-        trans_bytes = 32 * 2 + 32 * 4  # Theta_b, Xi_b, (MR_b, MR_b', CH_b, r_b' digest)
+        trans_bytes = 32 * 2 + 32 * 5  # Theta_b, Xi_b, (MR_b, MR_b', CH_b, r_b and r_b' digests)
         cp_bytes = 8 * 4 + 32 * 4  # A_b' fields + h_b^CP; no checkpoint signature (P3: the chain is the authority)
         if self.audit_mode == "per_record":  # Per-Record: individual paths + complete evidence for every record
             paths = sum(
@@ -812,6 +813,7 @@ class VeRedactPQ:
             p["MR"],
             p["MR_new"],
             _raw(p["CH"]),
+            _raw(p["r"]),
             _raw(p["r_new"]),
             *p["positions"],
             auth.gamma,
@@ -836,6 +838,7 @@ class VeRedactPQ:
             p["xi"],
             p["positions"],
             id(p["CH"]),
+            id(p["r"]),
             id(p["r_new"]),
         )
 
@@ -862,14 +865,16 @@ class VeRedactPQ:
             if mode == "saver" and x in self.vcs:  # reused: never re-verified, so never a column
                 continue
             key = x if mode == "saver" else rr.RID
-            cols.setdefault(key, (p["CH"], p["MR_new"], p["r_new"]))
+            # P6: two columns per transition, PQCH.Hash(MR_b, r_b) = CH_b and PQCH.Hash(MR_b', r_b') = CH_b
+            cols.setdefault(key, ((p["CH"], p["MR"], p["r"]), (p["CH"], p["MR_new"], p["r_new"])))
             of_record[rr.RID] = key
         if not cols:
             return chi, {}
         keys = list(cols)
-        R = np.stack([cols[k][2] for k in keys], axis=1)  # r_b' of each column, as recorded in A_b'
-        oks = c.ch_verify_many(L.pk_ch, [cols[k][0] for k in keys], [cols[k][1] for k in keys], R)
-        verdict = dict(zip(keys, oks))
+        flat = [side for k in keys for side in cols[k]]  # [old_0, new_0, old_1, new_1, ...]
+        R = np.stack([s[2] for s in flat], axis=1)  # r_b and r_b' of each transition
+        oks = c.ch_verify_many(L.pk_ch, [s[0] for s in flat], [s[1] for s in flat], R)
+        verdict = {k: bool(oks[2 * i]) and bool(oks[2 * i + 1]) for i, k in enumerate(keys)}
         return chi, {rid: verdict[k] for rid, k in of_record.items()}
 
     def _verify_transition_node(self, rr, auth, pqch_ok: bool) -> bool:
