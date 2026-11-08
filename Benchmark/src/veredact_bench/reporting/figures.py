@@ -6,8 +6,8 @@ Each figure draws one line per system: VeRedact-PQ, its internal ablation varian
 Schemes [1], [13], [27], [34] and LETA where they run. Fig. 5 at VeRedact-PQ's default sharing level
 (veredact.reference_batch records per authorization batch). Panels follow the captions:
   Fig. 3  one panel (#5): finalized valid redactions/s vs arrival rate, 20 % invalid (stale, absent) requests
-  Fig. 4  Phase 4 authorization (VeRedact-optimize.tex): (a) amortized per request vs selected-set size m,
-          (b) one set of m0 vs committee size; schemes without a batch protocol drawn dashed
+  Fig. 4  one panel (#6): complete authorization per request vs committee size n at m = reference_batch;
+          schemes without a batch protocol drawn dashed
   Fig. 5  (a) response generation, (b) response size, (c) routine verification vs returned records
   Fig. 6  (a) verification vs PQZK escalation fraction, (b) breakdown, (c) rejection / acceptance per fault class
   Fig. 7  (a) finalization / RAI-checkpoint transaction size, (b) finalization latency per validator count,
@@ -182,40 +182,38 @@ def _flat(ax, key, xs, ys, yerr=None):
 
 
 def fig_exp2(tier, written):
+    """One panel (#6 redesign): COMPLETE authorization per request (Phase 3 validation + Phase 4 / m; a baseline's
+    whole authorization) vs committee size n, at the reference round m = veredact.reference_batch (or the largest
+    m run). The m axis is a table in the text (metrics.json, every m at every n)."""
     ms = metrics("exp02_authorization_latency", tier)
     if not ms:
         return
     cfg = load(tier, "exp02_authorization_latency")
-    sizes = {k[1] for key, m in ms.items() if key.startswith("veredact") for k in _points(m)}
-    n0 = float(cfg["veredact"]["committee_n"])  # per-batch panel: the default batch, or the largest one run
+    sizes = {k[1] for m in ms.values() for k in _points(m)}
     m0 = (
         float(cfg["veredact"]["reference_batch"])
         if cfg["veredact"]["reference_batch"] in sizes
         else max(sizes, default=1.0)
     )
-    fig, (a, b) = _panels(2, height_in=2.2)
+    fig, (a,) = _panels(1, height_in=2.6)
+    f = "auth_complete_per_request_ms"
     for key, m in ms.items():
         pts = _points(m)
-        amort = sorted((k[1], v) for k, v in pts.items() if k[0] == n0)
-        per_batch = sorted((k[0], v) for k, v in pts.items() if k[1] == m0)
-        batched = any(v["phase4_batch_ms"].get("n") for v in pts.values())
-        draw = style.line if batched else _flat
-        # VeRedact-optimize.tex Exp. 2: Phase 4 (attestations, freshness, R_e^VR + Gamma_e, committee), amortized
-        # over m in (a) and per selected set in (b); a baseline without a batch protocol: m own authorizations
-        for ax, series, f in ((a, amort, "auth_per_request_ms"), (b, per_batch, "batch_total_ms")):
-            vs = [v for _, v in series]
-            draw(ax, key, [x for x, _ in series], [v[f]["median"] for v in vs], yerr=_ci(m, vs, f, "ci95_halfwidth"))
-    a.set(xscale="log", yscale="log", xlabel="Selected-set size $m$", ylabel="Authorization\nper request (ms)")
-    b.set(
+        series = sorted((k[0], v) for k, v in pts.items() if k[1] == m0 and v.get(f, {}).get("n"))
+        if not series:
+            continue
+        batched = any(v.get("phase4_batch_ms", {}).get("n") for v in pts.values())
+        draw = style.line if batched else _flat  # no batch protocol: m own authorizations, drawn dashed
+        vs = [v for _, v in series]
+        draw(a, key, [x for x, _ in series], [v[f]["median"] for v in vs], yerr=_ci(m, vs, f, "ci95_halfwidth"))
+    a.set(
+        xscale="log",
         yscale="log",
         xlabel="Committee size $n$ ($t=\\lfloor 2n/3\\rfloor+1$)",
-        ylabel=f"One set of $m$={int(m0)} (ms)",
+        ylabel=f"Authorization per request\n(ms, $m$={int(m0)})",
     )
-    for ax in (a, b):
-        ax.sci_y = True
-    _tag(a, "a")
-    _tag(b, "b")
-    fig.legend(*a.get_legend_handles_labels(), loc="outside upper center", ncol=2, frameon=False)
+    a.sci_y = True
+    _legend(a, outside=True)
     _save(fig, "exp2_authorization_latency", written)
 
 

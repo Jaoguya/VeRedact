@@ -40,6 +40,16 @@ def test_exp1_config_follows_the_redesign():
     assert max(x["rates"]) == 1000 and min(x["rates"]) == 25
 
 
+def test_exp2_config_follows_the_redesign():
+    """#6 redesign: committee size is the axis (extended to 48 and 64 so the crossing with Scheme [1] is inside
+    the figure); Re-ZK, an ablation of VeRedact-PQ itself, is dropped; the round-size axis keeps m = 64."""
+    c = load("experiment", "exp02_authorization_latency")
+    x = c["experiment"]
+    assert "veredact-re-zk" not in x["systems"] and {"veredact", "S1", "S34", "S99"} <= set(x["systems"])
+    assert x["committee_sizes"] == [4, 7, 10, 16, 32, 48, 64]
+    assert c["veredact"]["reference_batch"] in x["batch_sizes"] and 1 in x["batch_sizes"]
+
+
 def test_merkle_proofs_and_bimc():
     leaves = [os.urandom(32) for _ in range(37)]
     t = MerkleTree(leaves)

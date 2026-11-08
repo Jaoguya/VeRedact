@@ -291,6 +291,44 @@ def test_exp2_complete_authorization_counts_both_steps():
     assert b["auth_complete_per_request_ms"]["median"] == 2.0 and b["auth_complete_per_batch_ms"]["median"] == 4.0
 
 
+def test_exp2_figure_is_one_panel_of_complete_cost_vs_committee_size(monkeypatch):
+    """#6 redesign: Fig. 4 is one panel, complete authorization per request (Phase 3 + Phase 4 / m) vs committee
+    size n at the reference round m; a scheme without a batch protocol is drawn dashed."""
+    from veredact_bench.reporting import figures, style
+
+    def pt(y, batched):
+        return {
+            "auth_complete_per_request_ms": {"n": 3, "median": y},
+            "phase4_batch_ms": {"n": 3 if batched else 0},
+        }
+
+    def fake(exp, tier):
+        out = {}
+        for key, batched in (("veredact", True), ("S1", False), ("S99", True)):
+            out[key] = {
+                "points": {f"committee_n={n}|batch_size={m}": pt(n + m, batched) for n in (4, 7, 64) for m in (1, 64)}
+            }
+        return out
+
+    monkeypatch.setattr(figures, "_all_metrics", fake)
+    monkeypatch.setattr(figures, "load", lambda tier, exp: {"veredact": {"committee_n": 7, "reference_batch": 64}})
+    drawn = {}
+
+    def save(fig, name, w):
+        drawn[name] = [
+            [(ln.get_linestyle(), list(ln.get_xdata()), list(ln.get_ydata())) for ln in a.lines] for a in fig.axes
+        ]
+
+    monkeypatch.setattr(figures, "_save", save)
+    style.apply()
+    figures.fig_exp2("smoke", [])
+    (lines,) = drawn["exp2_authorization_latency"]
+    assert len(lines) == 3
+    assert all(xs == [4, 7, 64] for _, xs, _ in lines)
+    assert sorted(ys[0] for _, _, ys in lines) == [68, 68, 68]  # m = 64 at n = 4
+    assert sorted(ls for ls, _, _ in lines) == ["-", "-", "--"]  # S1 has no batch protocol: dashed
+
+
 def test_exp2_s99_amortized_is_its_batch_protocol(tmp_path):
     """S99 has its own batch protocol (aggregation + Eq. 13): amortized = batch / m, like VeRedact-PQ Phase 4."""
     import csv
