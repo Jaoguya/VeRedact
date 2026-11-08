@@ -13,6 +13,11 @@ veredact:
   T_max_ms: 500                 # [DERIVED] manuscript Table VII
   reference_batch: 64           # [DERIVED] the manuscript's reference ABRRR batch size [64]: authorization batch for
                                 #   building the Exp. 3-4 redaction histories and the per-batch panel of Fig. 4
+  snapshot_window_k: 8          # [PROPOSED] FreshLeaf (#5 step 3): how many versions old the anchored
+                                #   checkpoint a request was validated against may be. At the ~2 rounds/s
+                                #   measured in Exp. 1 and the 3-5 s a proof waited at the VPS, 8 covers the
+                                #   queue without letting a validation outlive its evidence. k = 0 is the
+                                #   pre-FreshLeaf rule (the current checkpoint only)
   rli_shards: 16                # [DERIVED] manuscript Table VII S = [16]
   rli_buckets: 64               # [PROPOSED] logical lookup buckets B per SA-RLI shard (bid_i = H_2(tau_i) mod B)
   rai_shards: 16                # [DERIVED] manuscript Table VII S_A = [16]

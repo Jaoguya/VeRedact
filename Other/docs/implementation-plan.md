@@ -64,7 +64,7 @@ Each needs a red-marked manuscript copy in `suggest_change/<lane>/VeRedact-optim
 
 | # | Change | Lane | Touches | Predicted effect |
 |---|---|---|---|---|
-| **P1** | **FreshLeaf** — `h_st = H(h_leaf ‖ h_snap)`; a request stays fresh while its own leaf is unchanged and its snapshot is an anchored checkpoint within k versions | #5 | Phases 3/4/5, PBRP gains `v_snap`, Phase 6 request check, config `snapshot_window_k` | Exp. 1: throughput stops collapsing above 250 req/s |
+| **P1** ✔ | **FreshLeaf** — `h_st = H(h_leaf ‖ h_snap)`; a request stays fresh while its own leaf is unchanged and its snapshot is an anchored checkpoint within k versions | #5 | Phases 3/4/5, PBRP gains `v_snap`, Phase 6 request check, config `snapshot_window_k` = 8 | **implemented**; Exp. 1: throughput should stop collapsing above 250 req/s |
 | **P2** | **BatchAttest** — the VPS signs one Merkle root per admission window W instead of α_i and rc_i per request | #6 O3 ≡ #7 O4 | Phase 3 Step 5, Phase 4 Step 2, Theorem 1, Lemma 1, Theorem 5 | Exp. 2: −0.15 ms per request · Exp. 3: −30.4 MB of response |
 | **P3** | **Anchor `H(A_b′)`** so the audit response need not carry σ_b′ | #7 O3 | `_checkpoint`, `verify_audit`, `VeRedactRegistry.sol` `anchorCheckpoint` | Exp. 3: −25.1 MB, `cp` 226 → ~50 ms |
 | **P4** | **RoundCheckpoint** — one σ_e over a Merkle root of the round's checkpoints plus an inclusion path per batch, instead of σ_b′ per batch | #9 | Phase 5 Steps 5–6, Phase 6 Step 5, Theorems 3 and 5, same contract call | Exp. 5: transaction 6.2× smaller, 304 B per redaction |
@@ -112,7 +112,7 @@ predictions are **lower bounds** if P1 lands, and Exp. 3's sharing claim stays w
 1. S1  S2  S6  S7          independent, any order, no rebases
 2. S4                      batched PQCH verify      (must precede P6)
 3. S3a                     authorization chi key
-5. P1                      FreshLeaf                (everything below rebases onto it)
+5. P1  DONE                FreshLeaf                (everything below rebases onto it)
 6. P2                      BatchAttest              (#6 + #7)
 7. P3 + P4 + S3b together  H(A_b'), RoundCheckpoint and nodes-by-id: one contract change, one rebuild
 8. P6                      conformance gap, reported together with S3a, S3b and S4
@@ -199,3 +199,26 @@ python Other/analysis/exp1_step1.py     # #5 (on branch 5-exp1-analysis)
 
 The `exp<N>_layout_preview.py` scripts redraw each proposed panel from measured data; they are previews of the
 layout, never a paper figure.
+
+
+## 9. Progress log
+
+| Done | What | Commit |
+|---|---|---|
+| S1 | anchoring out of the Phase 4 **and** Phase 5 crypto timers (`flush_anchors`) | `8f984ba` |
+| S2 | Phase 4 stops re-hashing the STARK proof | `8f984ba` |
+| S4 | every transition's PQCH check as one `verify_many` matrix product | `5a699e7` |
+| S3a | authorization node's χ(v) keyed by BID | `5a699e7` |
+| S6 | `finalize_gas` / `rai_gas` recorded in Exp. 5 | `d0012eb` |
+| S5 | **withdrawn** — the S34/S99 zeros are deliberate; it is `AuthCost`'s vocabulary that is short | `d0012eb` |
+| S7 | σ_b signs `H(r_b)`, hashed once at checkpoint time (replaces P7) | `c98401e` |
+| P1 | **FreshLeaf** — `leaf_digest` / `state_digest` split, `fresh_leaf` used in Phases 3, 4 and 5, `v_snap` in PBRP and checked in Phase 6, `veredact.snapshot_window_k` | this commit |
+
+**Not run:** `make test`. It is forwarded to the AWS server by `deploy/aws/remote.sh`, which needs jaoguya's
+yes. Only `ruff check` and `ruff format --check` were run locally, with the arguments CI uses. The 15 tests
+added here have never been executed.
+
+**Manuscript:** P1's text already exists in red at `suggest_change/exp1/VeRedact-optimize2.tex` (#5 step 3).
+One thing the implementation adds that the tex does not yet say: the anchored snapshots are kept per batch
+(`Ledger.snaps`) and the window k is applied by the predicate, so k is a protocol parameter and the list is
+an implementation detail. Nothing else in `Overleaf/` is touched, per the one-merge-at-the-end rule.

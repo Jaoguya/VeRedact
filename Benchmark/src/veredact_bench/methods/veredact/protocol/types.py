@@ -40,6 +40,9 @@ class Checkpoint:  # A_b
     # (64 KiB), so re-hashing it inside every checkpoint verification cost ~0.25 ms per node; the
     # PQCH equation is what binds r_b to CH_b and MR_b, the signature only has to bind the same value.
     r_digest: bytes = b""
+    # h_b^snap = H(enc(State_b)): the snapshot half of h_i^st, so a request can be checked against an
+    # earlier anchored checkpoint of its batch without recomputing it (FreshLeaf, condition 3)
+    snap: bytes = b""
 
 
 @dataclass
@@ -80,6 +83,7 @@ class ValidatedRequest:  # VR_i
     receipt: tuple = ()  # (ts_rc, rc_i): VPS admission receipt returned to the requester
     h_st: bytes = b""  # authenticated transaction-state digest h_i^st
     v_RLI: int = 0  # SA-RLI snapshot of the batch checkpoint the request was validated against
+    v_snap: int = -1  # v_b of the anchored checkpoint h_i^st was validated against (FreshLeaf)
 
 
 @dataclass

@@ -57,6 +57,7 @@ class Ledger:
         self.cfg, self.c, self.anchor = cfg, crypto, anchor
         self.n, self.t, self.N = committee_n, committee_t, d["leaves_per_batch"]
         self.e = 1  # authorization epoch
+        self.snaps: dict[int, list] = {}  # b -> [(v_b, h_b^snap)] of every anchored checkpoint
         # ---- Phase 1 Step 2: entity keys (ML-DSA-65) and lambda-bit PRF keys -----------------------------
         kb = cfg["security"]["prf_key_bits"] // 8
         self.K_idx, self.K_A = os.urandom(kb), os.urandom(kb)
@@ -159,8 +160,9 @@ class Ledger:
         bt = self.batches[b]
         ts = int(time.time())
         r_digest = self.c.H(bt.r.tobytes())  # H(r_b): hashed once here, never again per audited record
+        snap = self.c.H(b, bt.tree.root, bt.ch, bt.v, R_RLI, self.rli.snapshot, self.e)  # h_b^snap
         msg = self.c.H(b, bt.ch, bt.tree.root, r_digest, R_RLI, self.rli.snapshot, self.e, bt.v, ts)
-        return Checkpoint(
+        cp = Checkpoint(
             b,
             bt.ch,
             bt.tree.root,
@@ -172,4 +174,9 @@ class Ledger:
             ts,
             self.c.sign(self.cp.sk, msg),
             r_digest,
+            snap,
         )
+        # every anchored snapshot of this batch, newest last: FreshLeaf accepts a request validated
+        # against any of the last k (the window itself is applied by VeRedactPQ, which holds k)
+        self.snaps.setdefault(b, []).append((bt.v, snap))
+        return cp

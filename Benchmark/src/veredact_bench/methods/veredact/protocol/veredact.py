@@ -49,6 +49,7 @@ class VeRedactPQ:
         v = cfg["veredact"]
         self.variant = variant
         self.fixed_B, self.w_ch, self.w_f = v["fixed_batch"], v["cora_w_ch_ms"], v["cora_w_f_ms"]
+        self.k = v["snapshot_window_k"]  # FreshLeaf: how many versions old an anchored snapshot may be
         self.audit_mode = {"shared-evidence": "shared", "per-record": "per_record"}.get(variant, "saver")
         self.last_exec = {"batches": 0, "frontier": 0}  # |Omega_e| and F_e of the last execute()
         self.L, self.c = ledger, ledger.c
@@ -117,11 +118,33 @@ class VeRedactPQ:
     def _hR(self, R):
         return self.c.H(R.ID_r, R.TID, R.op, R.D_new, R.e, R.ts_r, R.n_r)
 
+    def leaf_digest(self, tx) -> bytes:
+        """h_i^leaf = H(TID || I || D || pos): the target leaf alone, unaffected by its neighbours."""
+        return self.c.H(tx.TID, tx.I, tx.D, tx.pos)
+
     def state_digest(self, tx) -> bytes:
-        """h_i^st = H(TID || I || D || pos || enc(State_b)), State_b from batch b's finalized checkpoint A_b. A_b is
-        re-signed only when batch b itself changes, so a redaction in another batch leaves h_i^st unchanged."""
-        cp = self.L.checkpoints[tx.b]
-        return self.c.H(tx.TID, tx.I, tx.D, tx.pos, cp.b, cp.MR, cp.CH, cp.v_b, cp.R_RLI, cp.v_RLI, cp.e)
+        """h_i^st = H(h_i^leaf || h_b^snap). Splitting it is what lets FreshLeaf accept a request whose batch
+        has moved on while its own leaf has not: under the old single digest, a redaction of ANY leaf of
+        batch b invalidated every pending request on b."""
+        return self.c.H(self.leaf_digest(tx), self.L.checkpoints[tx.b].snap)
+
+    def fresh_leaf(self, tx, h_st: bytes):
+        """FreshLeaf_i (Phases 3, 4 and 5). Returns the snapshot version v the request was validated
+        against, or None. h_i^st must equal H(h_i^leaf || h_b^snap) for
+
+          (2) the target's CURRENT leaf  -- so a redaction of this very leaf still rejects it, and
+          (3) an ANCHORED checkpoint of its batch with v_cur - k <= v <= v_cur.
+
+        Execution always starts from the latest state; the snapshot only certifies that validation used an
+        authentic, recent checkpoint."""
+        h_leaf = self.leaf_digest(tx)
+        cur = self.L.checkpoints[tx.b].v_b
+        for v, snap in reversed(self.L.snaps.get(tx.b, ())):
+            if v < cur - self.k:
+                break
+            if self.c.H(h_leaf, snap) == h_st:
+                return v
+        return None
 
     def _statement(self, R, tx, h_st):
         """x_i = (ID_r, TID, op, D_i', C_P, h_i^st, e_i, e, ts_r, n_r)."""
@@ -157,9 +180,10 @@ class VeRedactPQ:
             return Rejection("public policy", "policy")
         if R.tamper == "stale":
             return Rejection("stale state", "policy")
-        h_st = self.state_digest(tx)
-        if R.h_st != h_st:  # honest request overtaken by a redaction of its batch: returned for revalidation
+        v_snap = self.fresh_leaf(tx, R.h_st)
+        if v_snap is None:  # the target leaf itself changed, or the snapshot is older than k: revalidate
             return Rejection("stale state", "freshness")
+        h_st = R.h_st  # the digest the requester proved against, now certified fresh by FreshLeaf
         # Step 4: state-bound PQZK private policy (threshold from the authenticated policy, ts_r from the request)
         if R.x != self._statement(R, tx, h_st) or not c.zk_verify(R.ID_r, R.x, R.proof, pol.threshold, R.ts_r // 1000):
             return Rejection("PQZK", "zk")
@@ -186,6 +210,7 @@ class VeRedactPQ:
             t_submit,
             h_st=h_st,
             v_RLI=L.checkpoints[tx.b].v_RLI,
+            v_snap=v_snap,
         )
         self.evidence[RID] = {"R": R, "x": R.x, "proof": R.proof}
         # admission to Q_e: signed receipt rc_i = Sign(sk_V, H(RID || H(R_i) || ts_rc)) returned to the requester
@@ -254,7 +279,7 @@ class VeRedactPQ:
             bd["attest_ms"] += (t1 - t0) * 1000
             if not ok:
                 continue
-            fresh = self.state_digest(L.txs[vr.req.TID]) == vr.h_st and vr.e == L.e  # recomputed h_i^st
+            fresh = self.fresh_leaf(L.txs[vr.req.TID], vr.h_st) is not None and vr.e == L.e  # FreshLeaf_i
             bd["fresh_ms"] += (time.perf_counter() - t1) * 1000
             if fresh:
                 eligible.append(vr)
@@ -336,11 +361,11 @@ class VeRedactPQ:
             by_batch.setdefault(vr.b, []).append(vr)
         groups = {}
         for b, reqs in by_batch.items():
-            bt = L.batches[b]
             seen, exe = set(), []
             for vr in reqs:  # conflicts: one resulting commitment per transaction per round
                 tx = L.txs[vr.req.TID]
-                if vr.req.TID in seen or bt.v != vr.v_b or (tx.b, tx.pos) not in authorized:  # P^exec in P^auth
+                stale = self.fresh_leaf(tx, vr.h_st) is None  # FreshLeaf: only ITS OWN leaf changing is stale
+                if vr.req.TID in seen or stale or (tx.b, tx.pos) not in authorized:  # P^exec in P^auth
                     continue
                 if c.H(vr.req.m_new, vr.req.rho_new) != vr.req.D_new:
                     continue
@@ -443,6 +468,7 @@ class VeRedactPQ:
                 "pos": tx.pos,
                 "v_b": v_old,
                 "v_b_new": v_new,
+                "v_snap": vr.v_snap,
                 "MR": old_root,
                 "MR_new": new_root,
                 "CH": L.batches[b].ch,
@@ -454,7 +480,9 @@ class VeRedactPQ:
                 "positions": tuple(sorted(L.txs[v.req.TID].pos for v in groups[b])),  # P_b^exec
                 "cp": L.checkpoints[b],  # the finalized A_b' of this transition
             }
-            h_pbrp = self.pbrp_digest(vr.RID, auth.BID, tx.I, D_old, tx.D, b, tx.pos, v_old, v_new, theta, xis[b])
+            h_pbrp = self.pbrp_digest(
+                vr.RID, auth.BID, tx.I, D_old, tx.D, b, tx.pos, v_old, v_new, theta, xis[b], vr.v_snap
+            )
             rr = RedactionRecord(
                 vr.RID,
                 tx.TID,
@@ -534,9 +562,11 @@ class VeRedactPQ:
     def _auth_bytes(self):
         return 16 + 32 + 32 + 8 + 8 + self.L.t * (8 + self.c.sig.sig_size)
 
-    def pbrp_digest(self, RID, BID, I, D, D_new, b, pos, v_b, v_b_new, theta, xi) -> bytes:
-        """h_i^PBRP = H_V(PBRP || enc(PBRP_i)); Theta_b already binds (MR_b, MR_b', P_b, v_b, Gamma_e)."""
-        return self.c.HV("PBRP", RID, BID, I, D, D_new, b, pos, v_b, v_b_new, theta, xi)
+    def pbrp_digest(self, RID, BID, I, D, D_new, b, pos, v_b, v_b_new, theta, xi, v_snap) -> bytes:
+        """h_i^PBRP = H_V(PBRP || enc(PBRP_i)); Theta_b already binds (MR_b, MR_b', P_b, v_b, Gamma_e).
+        v_snap is the version of the anchored checkpoint the request was validated against (FreshLeaf), so
+        an auditor can check the validation used a recent snapshot, not only that execution was authorized."""
+        return self.c.HV("PBRP", RID, BID, I, D, D_new, b, pos, v_b, v_b_new, theta, xi, v_snap)
 
     def rai_entry(self, rr) -> bytes:
         tau = rr.pbrp["tau_A"]
@@ -653,9 +683,13 @@ class VeRedactPQ:
                     rr.v_b_new,
                     p["theta"],
                     p["xi"],
+                    p["v_snap"],
                 )
                 == rr.h_pbrp
             )
+            # FreshLeaf: validation must have used an anchored snapshot within k versions of the state the
+            # redaction was executed against (Phase 6 Step 4)
+            ok &= rr.v_b - self.k <= p["v_snap"] <= rr.v_b
             tau = p["tau_A"]
             ok &= self.rai_entry(rr) == L.rai.shards[L.rai.sid(tau)].entries[tau]
             bd["committee_ms"] += (t1 - t0) * 1000

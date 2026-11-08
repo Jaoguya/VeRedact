@@ -326,3 +326,61 @@ def test_checkpoint_signature_binds_r_through_its_digest(audited):
     accepted, _ = audit(s, recs)
     assert accepted[recs[2].RID] is False
     assert all(ok for rid, ok in accepted.items() if rid != recs[2].RID)
+
+
+# ---------------------------------------------------------------- FreshLeaf (#5 step 3)
+def prepared(s, req):
+    """A request prepared against the state as it is NOW, not submitted yet."""
+    return s.p.make_request(req.requester, req.tid, b"new-payload")
+
+
+def test_freshleaf_accepts_a_request_whose_neighbour_was_redacted(cfg, ds):
+    """The point of splitting h_i^st: a redaction of ANOTHER leaf of the same batch no longer invalidates a
+    pending request, because h_i^leaf is unchanged and the snapshot it used is still within k."""
+    s = open_system(cfg, "veredact", ds)
+    mine = request_for(ds, s, 0)
+    R = prepared(s, mine)
+    redact(s, request_for(ds, s, 0, avoid={mine.tid}))  # neighbour in the SAME batch
+    assert s.ledger.batches[0].v > 0
+    assert s.p.fresh_leaf(s.ledger.txs[mine.tid], R.h_st) == 0  # validated against snapshot v_b = 0
+
+
+def test_freshleaf_rejects_a_request_whose_own_leaf_was_redacted(cfg, ds):
+    """Condition (2): the target's own leaf must be unchanged. This is the conflict FreshLeaf must still catch."""
+    s = open_system(cfg, "veredact", ds)
+    mine = request_for(ds, s, 0)
+    R = prepared(s, mine)
+    redact(s, mine)
+    assert s.p.fresh_leaf(s.ledger.txs[mine.tid], R.h_st) is None
+
+
+def test_freshleaf_rejects_a_snapshot_older_than_k(cfg, ds):
+    """Condition (3): the snapshot must be anchored AND within k versions of the current one."""
+    s = open_system(cfg, "veredact", ds)
+    s.p.k = 1
+    mine = request_for(ds, s, 0)
+    R = prepared(s, mine)
+    others = [r for r in ds.trace if not r.fault and r.tid != mine.tid and s.ledger.txs[r.tid].b == 0][:2]
+    redact(s, others[0])
+    assert s.p.fresh_leaf(s.ledger.txs[mine.tid], R.h_st) == 0  # one version old: inside the window
+    redact(s, others[1])
+    assert s.p.fresh_leaf(s.ledger.txs[mine.tid], R.h_st) is None  # two versions old: outside it
+
+
+def test_freshleaf_rejects_a_snapshot_that_was_never_anchored(cfg, ds):
+    """Condition (3): a snapshot the requester invented, of the right shape, is not an anchored checkpoint."""
+    s = open_system(cfg, "veredact", ds)
+    mine = request_for(ds, s, 0)
+    tx = s.ledger.txs[mine.tid]
+    forged = s.crypto.H(s.p.leaf_digest(tx), s.crypto.H(b"not-an-anchored-snapshot"))
+    assert s.p.fresh_leaf(tx, forged) is None
+
+
+def test_pbrp_records_the_snapshot_the_request_was_validated_against(cfg, ds):
+    """v_snap goes into PBRP_i and into h_i^PBRP, so an audit can check validation used a recent snapshot."""
+    s = open_system(cfg, "veredact", ds)
+    mine = request_for(ds, s, 0)
+    res = redact(s, mine)
+    assert res.outcomes[0].ok
+    rr = s.p.records[-1]
+    assert rr.pbrp["v_snap"] == 0 and rr.v_b - s.p.k <= rr.pbrp["v_snap"] <= rr.v_b
