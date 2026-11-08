@@ -54,12 +54,15 @@ class VeRedactScheme(Scheme):
         )
 
     def auth_cost(self) -> AuthCost:
-        # per request at the VPS: requester ML-DSA verify + STARK verify + attestation and admission-receipt
-        # signatures; Phase 4 adds (1 attestation verify) per request and t signatures + t verifications per BATCH.
+        # per request at the VPS: requester ML-DSA verify + STARK verify; BatchAttest signs one window root per
+        # vps_window admissions (the attestation is also the receipt), so per request it rounds to 0 for W > 1.
+        # Phase 4 adds the attestation check (one window verify per distinct window + a path) per request and t
+        # signatures + t verifications per BATCH.
+        W = int(self.cfg["veredact"].get("vps_window", 1))
         return AuthCost(
             signature_verifications=2,
             proof_verifications=1,
-            signatures_generated=2,
+            signatures_generated=1 if W == 1 else 0,
             consensus_blocks=0,
             round_trips=0,
         )
@@ -71,6 +74,8 @@ class VeRedactScheme(Scheme):
         self.ledger = Ledger(self.cfg, self.crypto, self.anchor, self.n, self.t)
         self.ledger.commit_transactions(dataset.transactions)
         self.p = VeRedactPQ(self.ledger, self.cfg, self.variant)
+        self.committee = self.p.committee
+        self.last_auth_net_ms = 0.0  # committee message delay of the last authorize_batch
         self.crypto.reset()
 
     def prepare(self, req: RedactionRequest):
@@ -116,7 +121,10 @@ class VeRedactScheme(Scheme):
     def authorize_batch(self, auths: list):
         t0 = time.perf_counter()
         batch_auth = self.p.authorize([a.handle for a in auths if a.ok])
-        return batch_auth, (time.perf_counter() - t0) * 1000
+        credit_s, self.last_auth_net_ms = self.committee.take()  # slowest member only; delay is not crypto
+        ph4_ms = (time.perf_counter() - t0 - credit_s) * 1000
+        self.p.flush_anchors()  # ledger work, outside the Phase 4 crypto timer (rule 6)
+        return batch_auth, ph4_ms
 
     # ------------------------------------------------------------------ Phase 5
     def redact(self, batch: list, batch_auth=None) -> RedactionResult:
@@ -125,7 +133,9 @@ class VeRedactScheme(Scheme):
             batch_auth = self.p.authorize([a.handle for a in batch if a.ok])
         before = self.crypto.counts["T_CB"]
         records = self.p.execute(batch_auth) if batch_auth else []
-        crypto_ms = (time.perf_counter() - t0) * 1000
+        credit_s, net_ms = self.committee.take()  # slowest committee member only; message delay is not crypto
+        crypto_ms = (time.perf_counter() - t0 - credit_s) * 1000
+        self.p.flush_anchors()  # ledger work, outside the Phase 4/5 crypto timer (rule 6)
         done = {rr.RID for rr in records}
         outcomes = []
         for a in batch:
@@ -144,6 +154,7 @@ class VeRedactScheme(Scheme):
             0.0,
             self.crypto.counts["T_CB"] - before,
             finality=self.p.last_finalization if records else None,
+            net_ms=net_ms,
         )
 
     # ------------------------------------------------------------------ Phase 6
@@ -184,12 +195,29 @@ class VeRedactScheme(Scheme):
         from ..crypto.hashing import H
 
         r = copy.copy(rr)
-        if kind == "modified":
+        r.pbrp = dict(rr.pbrp)
+        if kind == "modified":  # a committed field altered
             r.D_new = H("forged", r.D_new)
         elif kind == "substituted":
-            r.h_pbrp = H("substituted", r.h_pbrp)
+            # #8 change 3: GENUINE evidence of another redaction (preferably another authorization batch) inserted
+            # under this record; only its context binding (h_i^PBRP in the RAI entry, chi(v)) can catch it
+            others = [o for o in self.p.records if o.RID != rr.RID]
+            other = next((o for o in others if o.BID != rr.BID), others[0] if others else None)
+            if other is None:
+                raise ValueError("substituted evidence needs a second record in the history")
+            r.pbrp = dict(other.pbrp, tau_A=rr.pbrp["tau_A"])  # still resolves to this record's RAI entry
         elif kind == "stale":
-            r.v_b_new -= 1
+            # #8 change 3: a GENUINE earlier transition and checkpoint of the same batch replayed (anchored on the
+            # chain and correctly signed); the batch's most recent earlier version
+            b = rr.pbrp["b"]
+            older = [o for o in self.p.records if o.pbrp["b"] == b and o.v_b_new < rr.v_b_new]
+            if older:
+                old = max(older, key=lambda o: o.v_b_new)
+                for k in ("v_b", "v_b_new", "MR", "MR_new", "r", "r_new", "theta", "xi", "positions", "cp"):
+                    r.pbrp[k] = old.pbrp[k]
+                r.v_b, r.v_b_new = old.v_b, old.v_b_new
+            else:  # the batch has no earlier transition in this history: an older version number is claimed
+                r.v_b_new -= 1
         return r
 
     def set_variant(self, variant: str) -> None:

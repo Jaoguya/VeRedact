@@ -2,7 +2,10 @@
 experiment:
   id: exp05_blockchain_overhead
   paper: [fig:exp5_blockchain]
-  systems: [veredact]             # the manuscript measures VeRedact-PQ's anchoring (no gas comparison)
-  affected_batches: [1, 2, 4, 8, 16, 32]  # [DERIVED] manuscript |Omega_e|
+  # #9 redesign: Fig. 7 compares every system's PBN load per finalized redaction, measured inside Exp. 1's points
+  # (same workload; reporting/figures.fig_exp5). This experiment keeps VeRedact-PQ's finalization transaction vs
+  # |Omega_e| (size, gas, latency) for the text table.
+  systems: [veredact]
+  affected_batches: [1, 8, 32, 64, 128]  # [PROPOSED] #9 step 2: covers the 32-75 batches per round of Exp. 1
   validators: [4, 7, 10]          # [DERIVED] author decision 2026-10-24 (manuscript [TBD]); Besu restarted per count
   samples_per_point: 30           # [PROPOSED] rounds per (validators, |Omega_e|); 3 runs x 10

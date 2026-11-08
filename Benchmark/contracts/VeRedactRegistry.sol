@@ -15,7 +15,7 @@ contract VeRedactRegistry {
         uint64 epoch;            // e
         uint64 vb;               // v_b
         uint64 ts;               // ts_b
-        bytes32 sigDigest;       // H(sigma_b)
+        bytes32 cpDigest;        // h_b^CP = H_V(CP || A_b fields): what an auditor compares the returned A_b with (P3)
     }
 
     address public immutable ordering;           // PBN ordering service / validator gateway
@@ -24,10 +24,12 @@ contract VeRedactRegistry {
     mapping(uint256 => Checkpoint) public checkpoints;
     mapping(bytes32 => bytes32) public authorizations; // BID -> H(Auth_e^B)
     mapping(uint64 => bytes32) public raiCheckpoints;  // e -> CP_e^A
+    mapping(uint256 => bytes32) public initialSigs;    // b -> keccak256(sigma_b) of its Phase 2 checkpoint
+    mapping(bytes32 => bytes32) public roundCheckpoints; // BID -> keccak256(R_e^CP, keccak256(sigma_e^CP)) (P4)
 
     event PolicyRegistered(bytes32 indexed pid, bytes32 cP, uint64 v, uint64 eP);
     event CommitteeRegistered(uint64 indexed epoch, bytes32 membersRoot, uint16 n, uint16 t);
-    event CheckpointAnchored(uint256 indexed b, uint64 vb, bytes32 mr);
+    event CheckpointAnchored(uint256 indexed b, uint64 vb, bytes32 mr, bytes32 cpDigest);
     event RedactionFinalized(bytes32 indexed bid, uint256 transitions);
     event RaiCheckpoint(uint64 indexed epoch, bytes32 cp);
 
@@ -57,7 +59,8 @@ contract VeRedactRegistry {
     // ---------------- Phase 2 ----------------
     function anchorCheckpoint(uint256 b, Checkpoint calldata cp, bytes calldata sig) external onlyOrdering {
         require(checkpoints[b].ts == 0, "exists");
-        _store(b, cp, sig);
+        initialSigs[b] = keccak256(sig);  // Phase 2: each initial checkpoint keeps its own signature
+        _store(b, cp);
     }
 
     // ---------------- Phase 4 ----------------
@@ -66,20 +69,25 @@ contract VeRedactRegistry {
     }
 
     // ---------------- Phase 5: atomic finalization of all affected batches ----------------
+    /// @notice P4 (RoundCheckpoint): ONE checkpoint-authority signature sigma_e^CP over R_e^CP, the Merkle root of
+    ///         the round's checkpoint digests, instead of one signature per batch; the validators verify it (and
+    ///         recompute R_e^CP from the cpDigests) off-chain before anchoring, as for every PQ signature here.
     function finalizeRedaction(
         bytes32 bid,
         uint256[] calldata bs,
         Checkpoint[] calldata cps,
-        bytes[] calldata sigs
+        bytes32 roundRoot,
+        bytes calldata roundSig
     ) external onlyOrdering {
-        require(bs.length == cps.length && cps.length == sigs.length, "length");
+        require(bs.length == cps.length && bs.length > 0, "length");
         require(authorizations[bid] != bytes32(0), "unauthorized batch");
         for (uint256 i = 0; i < bs.length; i++) {
             Checkpoint storage prev = checkpoints[bs[i]];
             require(prev.ts != 0 && cps[i].vb == prev.vb + 1, "stale version");
             require(cps[i].chDigest == prev.chDigest, "CH changed");
-            _store(bs[i], cps[i], sigs[i]);
+            _store(bs[i], cps[i]);
         }
+        roundCheckpoints[bid] = keccak256(abi.encode(roundRoot, keccak256(roundSig)));
         emit RedactionFinalized(bid, bs.length);
     }
 
@@ -89,11 +97,9 @@ contract VeRedactRegistry {
         emit RaiCheckpoint(epoch, cpA);
     }
 
-    function _store(uint256 b, Checkpoint calldata cp, bytes calldata sig) internal {
-        Checkpoint memory c = cp;
-        c.sigDigest = keccak256(sig);
-        checkpoints[b] = c;
-        emit CheckpointAnchored(b, cp.vb, cp.mr);
+    function _store(uint256 b, Checkpoint calldata cp) internal {
+        checkpoints[b] = cp;
+        emit CheckpointAnchored(b, cp.vb, cp.mr, cp.cpDigest);
     }
 }
 

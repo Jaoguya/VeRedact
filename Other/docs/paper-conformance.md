@@ -8,13 +8,13 @@ the results text or a reviewer touches them. The manuscript is edited only by th
 
 | # | Where | Manuscript | Code |
 |:--|:--|:--|:--|
-| 1 | Phase 6 transition node | checks PQCH.Hash for old and new (2 T_CH) | checks PQCH.Hash(MR_b', r_b') = CH_b only |
+| 1 | Phase 6 transition node | checks PQCH.Hash for old and new (2 T_CH) | **closed (#13 P6):** both, PQCH.Hash(MR_b, r_b) = PQCH.Hash(MR_b', r_b') = CH_b, two columns per transition in one batched product |
 | 2 | Phase 6 routine request node | checks h_i^PQ = H(pi_i^PQ) | only in deep (escalated) mode |
 | 3 | Phase 6 request node | recomputes L_i, L_i', checks Pi_i^SF | counts 2 T_H; tampering caught via h_PBRP |
 | 4 | Audit response signature | H(enc(Body)) | H(Q, \|records\|, R_RAI, v_A) |
 | 5 | Phase 3 | verifies the checkpoint signature sigma_b | not verified (the cost table also leaves it out) |
-| 6 | Admission receipt rc_i | H(RID \|\| C_VR \|\| ts_adm) | H(RID \|\| H(R_i) \|\| ts) |
-| 7 | Phase 3 signing | T_S in the cost table | 2 T_S (alpha_i and rc_i) |
+| 6 | Admission receipt rc_i | H(RID \|\| C_VR \|\| ts_adm) | **closed (#13 P2):** rc_i = alpha_i, whose leaf lambda_i = H_V(VR-LEAF \|\| RID \|\| C_VR \|\| ts_adm \|\| e) is signed in its window (red manuscript copy) |
+| 7 | Phase 3 signing | T_S in the cost table | **closed (#13 P2):** one T_S per admission window of W requests (T_S / W per request; red manuscript copy) |
 | — | minor | RAI checkpoint uses e_A; CORA's f(·) and weights open | RAI checkpoint uses e; f = lambda_e · T_max; w_CH, w_F from Exp. 0 costs (`configs/methods/veredact.yaml`); the auditor rebuilds the RAI multiproof inside the timed step |
 
 ## 2. Text the author still has to write (results and setup)

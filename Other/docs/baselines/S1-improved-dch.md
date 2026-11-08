@@ -21,6 +21,9 @@ adapter: `adapter.py` (`ImprovedDCHScheme`, key `S1`) · own evaluation: `reprod
   its creator before the timer. No non-membership witness is built per request: witnesses serve clients
   (consistency check, Sec. III-C4; audit A6), and building one per request cost O(history) — ~3 s per request
   at 3,500 redactions (audit A8).
+- committee timing (#13, the same for every threshold scheme, `methods/committee.py`): the approving nodes' checks
+  and the t parties' collision partials are one message round each; a round's crypto time counts the slowest
+  node/party and the round really waits `committee.message_delay_ms` (10 ms, = the Besu netem delay).
 - `redact`: threshold `Collision` over the new header content with t parties, `Verify`, accumulator
   update `acc ← acc^{H_prime(header')}`, one ledger write.
 - `audit`: membership proofs `g^{∏ other primes}` held locally by the node (built once with RootFactor, audit

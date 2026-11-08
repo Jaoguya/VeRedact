@@ -51,6 +51,9 @@ def _exp01(rows, cfg):
     out = {}
     for k, rs in _group(rows, "sweep", "rate_rps", "zipf_s").items():
         win = [r for r in rs if str(r["in_window"]) == "1" and not r.get("fault")]
+        bad = [r for r in rs if str(r["in_window"]) == "1" and r.get("fault")]  # injected invalid requests (#5)
+        bad_ok = sum(r["status"] == "finalized" for r in bad)
+        executed = sum(r["status"] == "finalized" for r in rs)  # any request the scheme executed and finalized
         fin = [r for r in win if r["status"] == "finalized"]
         # Fig. 3(c) counts PQCH adaptations over EVERY finalized redaction of the point (warm-up included): the
         # count does not depend on arrival time, and a scheme saturated at zipf_rate (S13, S34 at the
@@ -78,8 +81,16 @@ def _exp01(rows, cfg):
             ),
             "finalized": len(fin),  # arrived in the window and finalized (any time): kept for traceability
             "completed_in_window": len(completed),
-            "throughput_per_s": M.throughput(len(completed), dur),
+            "throughput_per_s": M.throughput(len(completed), dur),  # valid redactions only
             "throughput_per_s_ci95": M.ci95_halfwidth(sub_tp),
+            # #5 redesign: invalid requests (stale, absent) that arrived in the window, and how many were executed
+            "invalid_offered": len(bad),
+            "invalid_accepted": bad_ok,
+            "invalid_accepted_rate": M.rate(bad_ok, len(bad)) if bad else None,
+            # #9 (Fig. 7): the point's PBN load per finalized redaction. Every executed request counts, valid or
+            # not (each occupied the ledger); the totals are the same in every row of the point
+            "finalized_all": executed,
+            **_pbn_load(rs[0], executed),
             # end-to-end (arrival -> finalized) over the window's arrivals; unfinished = lower bound (_e2e_latency_ms)
             "latency_ms": _stats(e2e) | ({"p95_ci95": M.bootstrap_ci95_halfwidth(e2e, 95)} if e2e else {}),
             "latency_censored_fraction": M.rate(censored, len(e2e)),
@@ -93,6 +104,15 @@ def _exp01(rows, cfg):
             "affected_batches_per_1000": _per_round_k(rounds, "batch_batches", len(done)),  # |Omega_e|
             "frontier_nodes_per_1000": _per_round_k(rounds, "batch_frontier", len(done)),  # F_e
         }
+    return out
+
+
+def _pbn_load(r, n_executed: int) -> dict:
+    """Anchoring transactions, bytes and gas of one Exp. 1 point per finalized redaction (None if not recorded)."""
+    out = {}
+    for col, name in (("anchor_tx", "tx"), ("anchor_tx_bytes", "bytes"), ("anchor_gas", "gas")):
+        v = _num(r.get(col))
+        out[f"anchor_{name}_per_finalized"] = v / n_executed if v is not None and n_executed else None
     return out
 
 
@@ -135,6 +155,14 @@ def _complete_per_request(r) -> float:
     return _num(r["phase3_ms"]) + (ph4 / int(r["batch_size"]) if ph4 is not None else 0.0)
 
 
+def _with_net_per_request(r):
+    """Fig. 4 (#6, option 1 of the fairness fix): complete authorization per request + its committee message
+    delay (network time; methods/committee.py). None for rows written before the delay was recorded, so an old
+    run is never drawn as if its committee rounds cost nothing."""
+    net = _num(r.get("auth_net_per_request_ms"))
+    return None if net is None else _complete_per_request(r) + net
+
+
 def _complete_per_batch(rs) -> list[float]:
     """Complete authorization of each batch of m requests: m per-request steps + the batch step (once)."""
     by = defaultdict(list)
@@ -159,11 +187,20 @@ def _exp02(rows, cfg):
             "phase3_ms": _stats(r["phase3_ms"] for r in rs),
             "phase4_batch_ms": _stats(r["phase4_batch_ms"] for r in rs),
             "batch_total_ms": _stats(r.get("batch_total_ms") for r in rs),
+            # committee message delay per request (fairness fix): network time, kept apart from the crypto above
+            "auth_net_per_request_ms": _stats(r.get("auth_net_per_request_ms") for r in rs),
+            "auth_with_net_per_request_ms": _stats(_with_net_per_request(r) for r in rs),  # the Fig. 4 line
             "accepted": sum(int(r["auth_ok"]) for r in rs),
             "requests": len(rs),
         }
         for k, rs in _group(rows, "committee_n", "batch_size").items()
     }
+
+
+def _sum_ms(r, *cols):
+    """Sum of one row's timing columns, or None when any is missing (the query then has no end-to-end value)."""
+    vals = [_num(r.get(c)) for c in cols]
+    return None if any(v is None for v in vals) else sum(vals)
 
 
 def _exp03(rows, cfg):
@@ -176,8 +213,10 @@ def _exp03(rows, cfg):
             "retrieval_ms": _stats(r["retrieval_ms"] for r in ok),
             "evidence_bytes": _stats(r["evidence_bytes"] for r in ok),
             "verify_ms": _stats(r.get("verify_ms") for r in ok),
+            # #7 redesign (Fig. 5): end-to-end audit cost of each query = its generation + its verification
+            "end_to_end_ms": _stats(_sum_ms(r, "retrieval_ms", "verify_ms") for r in ok),
             # cryptographically verified evidence nodes per query (VeRedact-PQ systems; SAVER vs variants)
-            **{f"nodes_{t}": _stats(r.get(f"nodes_{t}") for r in ok) for t in ("req", "auth", "trans", "cp")},
+            **{f"nodes_{t}": _stats(r.get(f"nodes_{t}") for r in ok) for t in ("req", "auth", "trans", "cp", "win")},
         }
     return out
 
@@ -217,8 +256,10 @@ def _exp05(rows, cfg):
             "checkpoints": _stats(r.get("checkpoints") for r in rs),
             "finalize_tx_bytes": _stats(r.get("finalize_tx_bytes") for r in rs),
             "finalize_ms": _stats(r.get("finalize_ms") for r in rs),
+            "finalize_gas": _stats(r.get("finalize_gas") for r in rs),
             "rai_tx_bytes": _stats(r.get("rai_tx_bytes") for r in rs),
             "rai_ms": _stats(r.get("rai_ms") for r in rs),
+            "rai_gas": _stats(r.get("rai_gas") for r in rs),
         }
         for k, rs in _group(rows, "validators", "affected_batches").items()
     }

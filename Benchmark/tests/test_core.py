@@ -18,6 +18,44 @@ def cfg():
     return load("smoke")
 
 
+def test_dataset_fault_kinds_restrict_the_injected_faults(cfg):
+    """#5 redesign: Exp. 1 injects only stale and absent requests. fault_kinds restricts the classes; leaving it
+    out keeps the previous dataset (and its dataset_id) unchanged."""
+    ds = build_dataset(cfg, n_requests=400, fault_fraction=0.2, fault_kinds=("stale", "absent"))
+    faults = [r.fault for r in ds.trace if r.fault]
+    assert set(faults) == {"stale", "absent"} and 0.1 < len(faults) / 400 < 0.3
+    default = build_dataset(cfg, n_requests=400)
+    assert default.dataset_id == build_dataset(cfg, n_requests=400, fault_kinds=None).dataset_id
+    assert ds.dataset_id != build_dataset(cfg, n_requests=400, fault_fraction=0.2).dataset_id
+    with pytest.raises(ValueError):
+        build_dataset(cfg, n_requests=4, fault_fraction=0.2, fault_kinds=("nonsense",))
+
+
+def test_exp1_config_follows_the_redesign():
+    """#5 redesign: Exp. 1 compares VeRedact-PQ with the baselines only (no ablation variants), on 20 % invalid
+    requests (stale + absent), at rates up to 1,000 req/s."""
+    x = load("experiment", "exp01_redaction_throughput")["experiment"]
+    assert not [k for k in x["systems"] if k.startswith("veredact-")]
+    assert x["fault_fraction"] == 0.2 and sorted(x["fault_kinds"]) == ["absent", "stale"]
+    assert max(x["rates"]) == 1000 and min(x["rates"]) == 25
+
+
+def test_exp2_config_follows_the_redesign():
+    """#6 redesign: committee size is the axis (extended to 48 and 64 so the crossing with Scheme [1] is inside
+    the figure); Re-ZK, an ablation of VeRedact-PQ itself, is dropped; the round-size axis keeps m = 64."""
+    c = load("experiment", "exp02_authorization_latency")
+    x = c["experiment"]
+    assert "veredact-re-zk" not in x["systems"] and {"veredact", "S1", "S34", "S99"} <= set(x["systems"])
+    assert x["committee_sizes"] == [4, 7, 10, 16, 32, 48, 64]
+    assert c["veredact"]["reference_batch"] in x["batch_sizes"] and 1 in x["batch_sizes"]
+
+
+def test_exp5_config_covers_the_operating_range():
+    """#9 redesign: the |Omega_e| sweep (text table) covers the 32-75 batches per round Exp. 1 produces."""
+    x = load("experiment", "exp05_blockchain_overhead")["experiment"]
+    assert x["affected_batches"] == [1, 8, 32, 64, 128]
+
+
 def test_merkle_proofs_and_bimc():
     leaves = [os.urandom(32) for _ in range(37)]
     t = MerkleTree(leaves)

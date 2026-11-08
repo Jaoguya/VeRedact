@@ -2,10 +2,13 @@
 experiment:
   id: exp01_redaction_throughput
   paper: [fig:exp1_redaction]
-  # VeRedact-optimize.tex Exp. 1: VeRedact-PQ (CORA + SFMR), its internal variants, and Refs. [1], [13], [27], [34]
-  systems: [veredact, veredact-per-request, veredact-fixed-batch, veredact-cora-no-sfmr, S1, S13, S27, S34]
-  rates: [100, 250, 500, 1000, 2000, 5000]  # [DERIVED] manuscript [100]..[5,000] req/s (author 2026-10-24:
-                                #   follow VeRedact-optimize.tex; supersedes the 23-Oct 1-1,000 plan)
+  # #5 redesign (2026-11-08): VeRedact-PQ and Refs. [1], [13], [27], [34] only. The ablation variants
+  # (Per-Request, Fixed-Batch, CORA-No-SFMR) are dropped (Ppdfd, #5 owner); veredact.VARIANTS keeps them runnable
+  systems: [veredact, S1, S13, S27, S34]
+  rates: [25, 50, 100, 250, 500, 750, 1000]  # [PROPOSED] #5 step 2: 25-1,000 req/s, dense around saturation
+                                #   (the 3 Nov run saturated every system above ~500 req/s)
+  fault_fraction: 0.20          # [PROPOSED] #5 step 2: 20 % invalid requests (threat model: replayed / stale /
+  fault_kinds: [stale, absent]  #   nonexistent targets), 10 % stale + 10 % absent, the same trace for every system
   zipf_sweep: [0.0, 0.4, 0.8, 1.2]           # [DERIVED] manuscript Exp. 1: |Omega_e|, PQCH adaptations, F_e per 1,000
   zipf_rate: 100                # [DERIVED] manuscript: skew sweep "at a fixed arrival rate" = its lowest rate [100]
                                 #   (author decision 2026-10-04; S13/S34 saturate there, Fig. 3(c) counts every
@@ -25,4 +28,8 @@ experiment:
                                 #   the achieved rate is recorded and a client-bound point is reported as such
   saturation_tolerance: 0.10    # [PROPOSED] a point is NOTED saturated when decided/offered or on-time < 1 - tol;
                                 #   every rate runs for every system (author rule 2026-10-05: no capped lines)
+  baseline_inflight: 16         # [METHOD] fairness fix: redactions a baseline with a committee (Schemes [1], [27])
+                                #   keeps in flight while its committee messages travel (10 ms per round); CPU
+                                #   stays serialised, so only network waits overlap. 16 > the 20 ms of Scheme
+                                #   [27]'s two rounds / its ~2 ms of CPU per redaction: never the limit
   drain_s: 30                   # [PROPOSED] wait for in-flight requests after the window; the rest are recorded

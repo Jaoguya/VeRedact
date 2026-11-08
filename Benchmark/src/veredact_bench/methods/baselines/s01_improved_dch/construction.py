@@ -187,14 +187,18 @@ class ImprovedDCH:
         """eta_i = (H(m)/H(m'))^{lambda_i x_i}."""
         return (H_G1(m) - H_G1(m2)) * sc(lam_i * self.k.shares[i])
 
-    def collision(self, m: bytes, m2: bytes, r: G1Point, h: G1Point, participants: list[int]) -> G1Point:
-        """r' = r * prod_j eta_j over t participants."""
+    def collision(self, m: bytes, m2: bytes, r: G1Point, h: G1Point, participants: list[int], run=None) -> G1Point:
+        """r' = r * prod_j eta_j over t participants. run: executes the participants' partial computations (one
+        message round, each participant on its own machine); default: one after another."""
         if not self.verify(m, r, h):
             raise ValueError("invalid (m, r, h)")
         lam = lagrange_at_zero(participants)
+        parts = (run or (lambda fs: [f() for f in fs]))(
+            [lambda i=i: self.partial(i, lam[i], m, m2) for i in participants]
+        )
         out = r
-        for i in participants:
-            out = out + self.partial(i, lam[i], m, m2)
+        for eta in parts:
+            out = out + eta
         return out
 
 
