@@ -45,12 +45,13 @@ def test_tiny_end_to_end_run(tmp_path):
 def test_paper_artifacts_show_only_the_paper_schemes(monkeypatch):
     from veredact_bench.reporting import figures, style, tables
 
-    # S98: a method the paper does not compare; the VeRedact-PQ ablation variants are paper systems
-    # (VeRedact-optimize.tex Exp. 1-3, 2026-10-24) and are drawn in the paper's order
+    # S98: a method the paper does not compare. A figure draws, in the paper's order, only the systems its
+    # experiment runs now: Exp. 1 dropped the ablation variants (#5 redesign) and never ran S99, so a leftover
+    # results folder of either is not drawn (Exp. 3 keeps its two variants: they are in its systems)
     keys = ["S98", "veredact-cora-no-sfmr", "veredact", "S1", "S13", "S27", "S34", "S99"]
     monkeypatch.setattr(figures, "_all_metrics", lambda exp, tier: {k: {"points": {}} for k in keys})
     drawn = list(figures.metrics("exp01_redaction_throughput", "smoke"))
-    assert drawn == ["veredact", "veredact-cora-no-sfmr", "S1", "S13", "S27", "S34", "S99"]
+    assert drawn == ["veredact", "S1", "S13", "S27", "S34"]
     assert set(style.VARIANTS) <= set(style.PAPER_METHODS)
     assert tables.ORDER == list(style.PAPER_METHODS)  # a table lists only the systems its experiment ran
 
@@ -835,3 +836,25 @@ def test_coverage_of_one_part_checks_only_its_experiments(tmp_path, monkeypatch,
         cov.main()
     gaps = [line for line in capsys.readouterr().out.splitlines() if line.startswith("GAP")]
     assert gaps and all("exp05_blockchain_overhead" in g for g in gaps)
+
+
+def test_figures_never_draw_a_system_the_experiment_no_longer_runs(monkeypatch):
+    """Results folders of dropped systems (the 3 Nov Exp. 1 variants, Re-ZK) stay on veredact-bench; a figure of a
+    new run draws only the experiment's configured systems, so old numbers never sit beside new ones."""
+    from veredact_bench.reporting import figures
+
+    fake = {k: {"points": {}} for k in ("veredact", "veredact-per-request", "veredact-fixed-batch", "S27")}
+    monkeypatch.setattr(figures, "_all_metrics", lambda exp, tier: fake)
+    assert list(figures.metrics("exp01_redaction_throughput", "smoke")) == ["veredact", "S27"]
+    fake2 = {k: {"points": {}} for k in ("veredact", "veredact-re-zk", "S1")}
+    monkeypatch.setattr(figures, "_all_metrics", lambda exp, tier: fake2)
+    assert list(figures.metrics("exp02_authorization_latency", "smoke")) == ["veredact", "S1"]
+
+
+def test_release_lists_only_configured_systems():
+    """make-release.sh packs results/<exp>/<system>/ of these pairs only."""
+    from veredact_bench.utils.run_plan import configured
+
+    pairs = configured("experiment")
+    assert "exp01_redaction_throughput/veredact" in pairs and "exp03_audit_efficiency/veredact-per-record" in pairs
+    assert not any(p.endswith(("veredact-per-request", "veredact-re-zk", "veredact-fixed-batch")) for p in pairs)

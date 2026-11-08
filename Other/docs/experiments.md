@@ -110,6 +110,12 @@ evaluation: `make paper-runs` → `Benchmark/results/reproduction/<S id>/*.csv`.
   never two on one target, CPU still serialised; one at a time, the waits alone capped both at ~45/s (smoke
   check), a strawman. VeRedact-PQ keeps the lock through its two rounds per round of m (round e+1 builds on
   round e), which is conservative against it.
+- **Requesters read a checkpoint before it is anchored (favours VeRedact-PQ).** `Ledger._checkpoint` records
+  h_b^snap and the new leaves as soon as Phase 5 builds them; the anchoring transaction is submitted afterwards
+  and finalizes about one block period later. A VeRedact-PQ requester (and FreshLeaf) therefore sees a
+  redacted leaf ~1 block period before a requester reading the chain would, so some proofs that would go
+  stale in a deployment do not (the snapshot age itself is covered by k = 8). It can only LOWER VeRedact-PQ's
+  revalidations in Exp. 1, most at high rates and skew; the text states it. Baselines have no freshness check.
 - **Setup reuse.** Data-owner keys and their ML-DSA signatures over the seeded commitments D_i are made
   once per process and reused by every setup (Exp. 1 re-runs setup per point); the PBN verifies each
   signature when it is first made. Setup is untimed, so no measured number changes.

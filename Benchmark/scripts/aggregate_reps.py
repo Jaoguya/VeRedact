@@ -70,7 +70,11 @@ def main():
     folders = [f"{a.tier}-rep{r:02d}" for r in range(1, a.reps + 1)]
     for exp in experiments():
         reps = 1 if exp in ONCE else a.reps
+        systems = set(load(a.tier, exp)["experiment"]["systems"])
         for mdir in sorted(p for p in (R / exp).iterdir() if p.is_dir()) if (R / exp).exists() else []:
+            if mdir.name not in systems:  # an earlier run's system this experiment no longer runs: never mixed in
+                print(f"{mdir.relative_to(R)}: not in {exp}'s systems, skipped")
+                continue
             have = [mdir / f for f in folders[:reps] if (mdir / f / "metrics.json").exists()]
             if not have:
                 continue
