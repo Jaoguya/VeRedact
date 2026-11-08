@@ -278,13 +278,13 @@ def test_phase4_rejects_a_request_whose_attested_commitment_does_not_reconstruct
 # ---------------------------------------------------------------- batched PQCH verification
 def test_pqch_is_checked_once_per_distinct_transition(audited):
     """SAVER checks each distinct transition once, and _pqch_batch does all of them in one matrix product:
-    the T_CH ops of an audit equal its verified transition nodes."""
+    the T_CH ops of an audit are two per verified transition node (P6: the old AND the new state)."""
     s = audited
     s.p.vcs.clear()
     before = s.crypto.counts["T_CH"]
     accepted, nodes = audit(s, s.p.records[:16])
     assert all(accepted.values())
-    assert s.crypto.counts["T_CH"] - before == nodes["trans"]
+    assert s.crypto.counts["T_CH"] - before == 2 * nodes["trans"]
 
 
 def test_batched_pqch_rejects_only_the_tampered_transition(audited):
@@ -301,7 +301,7 @@ def test_batched_pqch_rejects_only_the_tampered_transition(audited):
 
 def test_shared_evidence_still_rechecks_pqch_for_every_record(cfg, ds):
     """The ablation keeps its meaning: Shared-Evidence re-verifies a shared node per dependent record, so it
-    pays one T_CH per record where SAVER pays one per distinct transition."""
+    pays two T_CH per record (old and new state, P6) where SAVER pays two per distinct transition."""
     from veredact_bench.evaluation.common import build_history
 
     s = open_system(cfg, "veredact-shared-evidence", ds)
@@ -311,7 +311,7 @@ def test_shared_evidence_still_rechecks_pqch_for_every_record(cfg, ds):
     before = s.crypto.counts["T_CH"]
     accepted, _ = audit(s, recs)
     assert all(accepted.values())
-    assert s.crypto.counts["T_CH"] - before == len(recs)
+    assert s.crypto.counts["T_CH"] - before == 2 * len(recs)
 
 
 def test_checkpoint_signature_binds_r_through_its_digest(audited):
@@ -384,3 +384,205 @@ def test_pbrp_records_the_snapshot_the_request_was_validated_against(cfg, ds):
     assert res.outcomes[0].ok
     rr = s.p.records[-1]
     assert rr.pbrp["v_snap"] == 0 and rr.v_b - s.p.k <= rr.pbrp["v_snap"] <= rr.v_b
+
+
+# ---------------------------------------------------------------- BatchAttest (P2: #6 step 3 O3 = #7 step 3 O4)
+def _windowed(cfg, W, ms=60_000):
+    c = copy.deepcopy(cfg)
+    c["veredact"]["vps_window"], c["veredact"]["vps_window_ms"] = W, ms
+    return c
+
+
+def _distinct_targets(s, ds, n):
+    out, seen = [], set()
+    for r in ds.trace:
+        if not r.fault and r.tid not in seen:
+            out.append(r)
+            seen.add(r.tid)
+        if len(out) == n:
+            return out
+    raise LookupError("not enough distinct targets")
+
+
+def test_batchattest_signs_once_per_admission_window(cfg, ds):
+    """The VPS signs one Merkle root per window of W admissions (alpha_i = window root + membership path),
+    instead of one ML-DSA attestation and one receipt per request. Every member verifies against it, and the
+    receipt rc_i is the same attestation."""
+    s = open_system(_windowed(cfg, 4), "veredact", ds)
+    vrs = [validated(s, r).handle for r in _distinct_targets(s, ds, 8)]
+    assert len(s.p.windows) == 2 and len({(v.att.w, v.att.sigma) for v in vrs}) == 2
+    assert all(s.p.att_verify(v) for v in vrs)
+    assert all(v.receipt[1] is v.att for v in vrs)
+    s.teardown()
+
+
+def test_batchattest_rejects_a_path_from_another_member(cfg, ds):
+    """A membership path that does not lead from this request's own leaf to the signed root is rejected, in
+    att_verify and therefore in Phase 4 (the request leaves the round)."""
+    s = open_system(_windowed(cfg, 4), "veredact", ds)
+    a, b, c_, d = (validated(s, r).handle for r in _distinct_targets(s, ds, 4))
+    a.att = dataclasses.replace(a.att, path=b.att.path, index=b.att.index)
+    assert not s.p.att_verify(a) and s.p.att_verify(b)
+    auth = s.p.authorize([a, b, c_, d])
+    assert a.RID not in {v.RID for v in auth.members} and len(auth.members) == 3
+    s.teardown()
+
+
+def test_phase4_closes_an_open_window_instead_of_waiting(cfg, ds):
+    """A round may select requests whose window has not filled yet: Phase 4 closes that window (one more
+    signature, never fewer than the protocol needs) rather than waiting for W admissions or T_vps."""
+    s = open_system(_windowed(cfg, 256), "veredact", ds)
+    vrs = [validated(s, r).handle for r in _distinct_targets(s, ds, 3)]
+    assert not s.p.windows and not any(v.att.sigma for v in vrs)
+    auth = s.p.authorize(vrs)
+    assert len(auth.members) == 3 and len(s.p.windows) == 1
+    s.teardown()
+
+
+def test_window_closes_after_its_time_bound(cfg, ds):
+    """T_vps bounds the wait: with T_vps = 0 every new admission closes the window before it."""
+    s = open_system(_windowed(cfg, 256, ms=0), "veredact", ds)
+    for r in _distinct_targets(s, ds, 3):
+        validated(s, r)
+    assert len(s.p.windows) == 2  # the third admission is still in the open window
+    s.teardown()
+
+
+def test_saver_verifies_each_window_signature_once_per_query(audited):
+    """The window signature is shared evidence: SAVER verifies it once per distinct window in the query;
+    Shared-Evidence re-verifies it for every record."""
+    s = audited
+    recs = s.p.records[:24]
+    windows = len({r.pbrp["vr"].att.w for r in recs})
+    s.p.vcs.clear()
+    accepted, nodes = audit(s, recs)
+    assert all(accepted.values()) and nodes["win"] == windows < len(recs)
+    s.p.audit_mode = "shared"
+    try:
+        s.p.vcs.clear()
+        accepted, nodes = audit(s, recs)
+        assert all(accepted.values()) and nodes["win"] == len(recs)
+    finally:
+        s.p.audit_mode = "saver"
+
+
+# ---------------------------------------------------------------- P3 + P4: anchored digest, one round signature
+def _round(cfg, ds, nb=3):
+    """One authorization round that redacts one transaction in each of nb distinct batches."""
+    s = open_system(cfg, "veredact", ds)
+    reqs = [request_for(ds, s, b) for b in range(nb)]
+    auths = [validated(s, r) for r in reqs]
+    res = s.redact(auths)
+    assert all(o.ok for o in res.outcomes)
+    return s, reqs
+
+
+def test_round_checkpoint_is_signed_once_for_every_affected_batch(cfg, ds):
+    """P4 (#9 RoundCheckpoint): the finalized A_b' of a round carry no signature of their own; the checkpoint
+    authority signs the Merkle root of their digests h_b^CP once, and each digest is a member of that root."""
+    from veredact_bench.methods.veredact.ds.merkle import verify_proof
+
+    s, reqs = _round(cfg, ds)
+    L, c = s.ledger, s.crypto
+    cps = [L.checkpoints[L.txs[r.tid].b] for r in reqs]
+    assert all(cp.sigma == b"" and cp.v_b == 1 for cp in cps)
+    assert len({(cp.round_root, cp.round_sigma) for cp in cps}) == 1
+    cp0 = cps[0]
+    assert c.verify(L.cp.pk, c.HV("CP-ROUND", cp0.round_bid, cp0.round_root, cp0.v_RLI), cp0.round_sigma)
+    for cp in cps:
+        assert cp.digest == L.checkpoint_digest(cp)
+        assert verify_proof(cp.round_root, cp.digest, cp.round_index, cp.round_path)
+    s.teardown()
+
+
+def test_finalization_transaction_carries_one_signature_and_the_digests(cfg, ds):
+    """P4: the Phase 5 finalization transaction carries the round root and ONE signature (not one per batch),
+    and P3: the digest h_b^CP of every new checkpoint, which the chain stores beside MR_b'."""
+    s, reqs = _round(cfg, ds)
+    s.p.flush_anchors()
+    op, f = next((op, f) for op, f in s.anchor.oplog if op == "redaction_finalization")
+    assert "sigs" not in f and isinstance(f["round_sig"], bytes) and len(f["digests"]) == len(f["batches"]) == 3
+    chain = s.anchor.read("checkpoint_history", keys={(b, v) for b, v in zip(f["batches"], f["vbs"])})
+    assert all(chain[(b, v)] == (s.ledger.checkpoints[b].MR, s.ledger.checkpoints[b].digest) for b, v in chain)
+    s.teardown()
+
+
+def test_audit_checks_the_checkpoint_against_its_anchored_digest(audited):
+    """P3: the response carries the checkpoint fields but no checkpoint signature; the auditor recomputes h_b^CP
+    and compares it with the chain. An altered field fails, only for the records of that checkpoint."""
+    s = audited
+    recs = s.p.records[:16]
+    s.p.vcs.clear()
+    accepted, _ = audit(s, recs)
+    assert all(accepted.values())
+    bad = copy.copy(recs[2])
+    bad.pbrp = dict(bad.pbrp, cp=dataclasses.replace(bad.pbrp["cp"], ts=bad.pbrp["cp"].ts + 1))
+    s.p.vcs.clear()
+    accepted, _ = audit(s, recs[:2] + [bad] + recs[3:])
+    assert not accepted[bad.RID] and all(ok for rid, ok in accepted.items() if rid != bad.RID)
+
+
+def test_registry_contract_takes_one_round_signature_and_stores_the_digest():
+    """The Solidity contract matches the protocol (compiled with the pinned solc; skipped without py-solc-x)."""
+    solcx = pytest.importorskip("solcx")
+    from veredact_bench.utils.config import REPO_ROOT
+
+    solcx.install_solc("0.8.24")
+    src = str(REPO_ROOT / "contracts" / "VeRedactRegistry.sol")
+    out = solcx.compile_files([src], output_values=["abi"], solc_version="0.8.24")
+    abi = next(v["abi"] for k, v in out.items() if k.endswith(":VeRedactRegistry"))
+    fin = next(x for x in abi if x.get("name") == "finalizeRedaction")
+    assert [i["type"] for i in fin["inputs"]] == ["bytes32", "uint256[]", "tuple[]", "bytes32", "bytes"]
+    assert "cpDigest" in {c["name"] for c in fin["inputs"][2]["components"]}
+    ev = next(x for x in abi if x.get("type") == "event" and x["name"] == "CheckpointAnchored")
+    assert [i["name"] for i in ev["inputs"]] == ["b", "vb", "mr", "cpDigest"]
+
+
+# ---------------------------------------------------------------- S3b: shared nodes carried once, by id
+def test_transition_node_identity_is_computed_once_per_node(audited, monkeypatch):
+    """S3b (#7 step 3 O2): the response carries each transition node once and records reference it, so the
+    auditor computes a node's identity (which hashes the 64 KiB PQCH randomness) once per distinct node, not once
+    per record. Per-Record duplicates the evidence per record, so it hashes it per record."""
+    s = audited
+    recs = s.p.records[:24]
+    calls = []
+    real = s.p._chi_trans
+    monkeypatch.setattr(s.p, "_chi_trans", lambda rr, auth: calls.append(rr.RID) or real(rr, auth))
+    transitions = len({(r.pbrp["b"], r.v_b_new) for r in recs})
+    s.p.vcs.clear()
+    accepted, _ = audit(s, recs)
+    assert all(accepted.values()) and len(calls) == transitions < len(recs)
+    calls.clear()
+    s.p.audit_mode = "per_record"
+    try:
+        accepted, _ = audit(s, recs)
+        assert all(accepted.values()) and len(calls) == len(recs)
+    finally:
+        s.p.audit_mode = "saver"
+
+
+def test_a_record_with_its_own_copy_of_the_evidence_is_its_own_node(audited):
+    """A record whose transition evidence differs from its batch's node (e.g. an altered r_b') does not share that
+    node's identity or verdict: it is verified on its own and rejected; the node's other records stay accepted."""
+    s = audited
+    recs = s.p.records[:24]
+    shared = next(r for r in recs if sum(o.pbrp["b"] == r.pbrp["b"] and o.v_b_new == r.v_b_new for o in recs) > 1)
+    bad = copy.copy(shared)
+    bad.pbrp = dict(shared.pbrp, r_new=shared.pbrp["r_new"] + 1)
+    s.p.vcs.clear()
+    accepted, _ = audit(s, [bad if r is shared else r for r in recs])
+    assert not accepted[bad.RID] and all(ok for rid, ok in accepted.items() if rid != bad.RID)
+
+
+# ---------------------------------------------------------------- P6: PQCH of the old AND the new state
+def test_audit_checks_pqch_for_the_old_state_too(audited):
+    """P6 (paper-conformance gap #1): the audit checks PQCH.Hash(MR_b, r_b) = PQCH.Hash(MR_b', r_b') = CH_b, as the
+    manuscript writes; an altered OLD randomness r_b is rejected, though the new state still verifies."""
+    s = audited
+    recs = s.p.records[:16]
+    assert all("r" in r.pbrp for r in recs)
+    bad = copy.copy(recs[1])
+    bad.pbrp = dict(bad.pbrp, r=bad.pbrp["r"] + 1)
+    s.p.vcs.clear()
+    accepted, _ = audit(s, recs[:1] + [bad] + recs[2:])
+    assert not accepted[bad.RID] and all(ok for rid, ok in accepted.items() if rid != bad.RID)

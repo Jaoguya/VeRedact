@@ -2,9 +2,11 @@
 experiment:
   id: exp02_authorization_latency
   paper: [fig:exp2_auth]
-  systems: [veredact, veredact-re-zk, S1, S34, S99]  # VeRedact-optimize.tex Exp. 2 + Re-ZK variant. S13: key
-                                     #   possession only; S27: threshold enforced inside Adapt, no approval step;
+  systems: [veredact, S1, S34, S99]  # VeRedact-optimize.tex Exp. 2. Re-ZK dropped (#6 step 2: an ablation of our
+                                     #   own scheme; veredact.VARIANTS keeps it runnable). S13: key possession only;
+                                     #   S27: threshold enforced inside Adapt, no approval step;
                                      #   S99 (LETA, kept by the author): PQ batch authentication, no committee (flat in n)
-  committee_sizes: [4, 7, 10, 16, 32]        # [DERIVED] manuscript; t = floor(2n/3)+1
-  batch_sizes: [1, 8, 32, 64, 128, 256]      # [DERIVED] manuscript
+  committee_sizes: [4, 7, 10, 16, 32, 48, 64]  # [PROPOSED] #6 step 2: the one axis of Fig. 4, extended to 48 and
+                                     #   64 so the crossing with Scheme [1] lies inside it; t = floor(2n/3)+1
+  batch_sizes: [1, 8, 32, 64, 128, 256]      # [DERIVED] manuscript; the m axis is a table in the text (#6)
   samples_per_point: 30         # [PROPOSED] batches per (system, n, m); 3 runs x 10 (config.REPS)

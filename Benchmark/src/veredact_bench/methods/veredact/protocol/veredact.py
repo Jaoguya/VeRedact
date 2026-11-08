@@ -21,7 +21,7 @@ import numpy as np
 from ..ds.merkle import MerkleTree, verify_multiproof, verify_proof
 from .cora import Candidate, cora_select
 from .ledger import Ledger
-from .types import BatchAuth, RedactionRecord, Request, ValidatedRequest
+from .types import Attestation, BatchAuth, RedactionRecord, Request, ValidatedRequest
 
 
 @dataclass
@@ -65,6 +65,14 @@ class VeRedactPQ:
         self.records: list[RedactionRecord] = []
         self._rid = 0
         self._admit = threading.Lock()
+        # BatchAttest (P2, #6 step 3 O3 = #7 step 3 O4): the VPS signs one Merkle root per admission window,
+        # closed after W admissions or T_vps ms, whichever first. W = 1 is one signature per request.
+        self.W = int(v.get("vps_window", 1))
+        self.T_vps_ms = float(v.get("vps_window_ms", self.T_max_ms))
+        self._win: list[ValidatedRequest] = []
+        self._win_t0, self._win_no = 0.0, 0
+        self._win_lock = threading.Lock()
+        self.windows: dict[int, tuple[bytes, bytes]] = {}  # w -> (R_w^V, sigma_w^V), as the VPS published them
         self.vcs: set = set()  # auditor's Verified-Context Store: chi(v) of successfully verified shared nodes
 
     # ============================================================ requester side
@@ -97,6 +105,12 @@ class VeRedactPQ:
         if tx is not None:
             bt = L.batches[tx.b]
             R.v_b, R.h_st = bt.v, self.state_digest(tx)
+            if tamper == "stale":
+                # fault "stale" (#5): an honest requester that read the target before an earlier redaction
+                # replaced its content commitment. It proves against that superseded D_i, so FreshLeaf rejects it
+                # in Phase 3 like any stale request (own leaf changed), not through a flag.
+                D_old = c.H(b"superseded-content", tx.D)
+                R.h_st = c.H(c.H(tx.TID, tx.I, D_old, tx.pos), L.checkpoints[tx.b].snap)
             R.x = self._statement(R, tx, R.h_st)
             # fault "zk": the requester lacks a valid credential -> a proof over a non-registered witness
             forged = int.from_bytes(os.urandom(15), "big") if tamper == "zk" else None
@@ -178,8 +192,6 @@ class VeRedactPQ:
         pol = L.policies[tx.PID]
         if c.H(pol.PID, pol.body, pol.v, pol.e_P) != pol.C_P or R.op not in pol.ops or R.tamper == "policy":
             return Rejection("public policy", "policy")
-        if R.tamper == "stale":
-            return Rejection("stale state", "policy")
         v_snap = self.fresh_leaf(tx, R.h_st)
         if v_snap is None:  # the target leaf itself changed, or the snapshot is older than k: revalidate
             return Rejection("stale state", "freshness")
@@ -193,7 +205,6 @@ class VeRedactPQ:
             RID = self._rid.to_bytes(8, "big")
         h_proof = c.H(R.proof)  # h_i^PQ
         C_VR = c.H(RID, self._hR(R), h_st, pol.C_P, h_proof, L.e)
-        alpha = c.sign(L.vps.sk, c.H(RID, C_VR, L.e))
         vr = ValidatedRequest(
             RID,
             C_VR,
@@ -205,18 +216,76 @@ class VeRedactPQ:
             L.e,
             R.sigma_R,
             h_proof,
-            alpha,
+            b"",  # alpha_i: set when the request's admission window closes (BatchAttest)
             R,
             t_submit,
             h_st=h_st,
             v_RLI=L.checkpoints[tx.b].v_RLI,
             v_snap=v_snap,
+            att=Attestation(ts_adm=int(time.time() * 1000)),
         )
         self.evidence[RID] = {"R": R, "x": R.x, "proof": R.proof}
-        # admission to Q_e: signed receipt rc_i = Sign(sk_V, H(RID || H(R_i) || ts_rc)) returned to the requester
-        ts_rc = int(time.time() * 1000)
-        vr.receipt = (ts_rc, c.sign(L.vps.sk, c.H(RID, self._hR(R), ts_rc)))
+        self._admit_to_window(vr)  # alpha_i and the receipt rc_i = alpha_i come with the window's one signature
         return vr
+
+    # ------------------------------------------------------------ BatchAttest (Phase 3 Step 5)
+    def _vr_leaf(self, vr: ValidatedRequest) -> bytes:
+        """lambda_i = H_V(VR-LEAF || RID || C_VR || ts_adm || e)."""
+        return self.c.HV("VR-LEAF", vr.RID, vr.C_VR, vr.att.ts_adm, vr.e)
+
+    def _win_msg(self, w: int, root: bytes, e: int) -> bytes:
+        return self.c.HV("VPS-WIN", w, root, e)
+
+    def _admit_to_window(self, vr: ValidatedRequest) -> None:
+        now = time.perf_counter()
+        with self._win_lock:  # VPS workers admit concurrently (Exp. 1)
+            if self._win and (now - self._win_t0) * 1000 >= self.T_vps_ms:
+                self._close_window()  # T_vps reached: the waiting window closes before this admission
+            if not self._win:
+                self._win_t0 = now
+            vr.att.w, vr.att.index = self._win_no, len(self._win)
+            self._win.append(vr)
+            if len(self._win) >= self.W:
+                self._close_window()
+
+    def _close_window(self) -> None:
+        """One Merkle root over the window's leaves, one ML-DSA signature; each member gets root + its path.
+        Caller holds _win_lock."""
+        L, c = self.L, self.c
+        win, w = self._win, self._win_no
+        self._win, self._win_no = [], w + 1
+        tree = MerkleTree([self._vr_leaf(v) for v in win])
+        c.counts["T_H"] += tree.hash_ops[0] + len(win)
+        sigma = c.sign(L.vps.sk, self._win_msg(w, tree.root, L.e))
+        self.windows[w] = (tree.root, sigma)
+        for i, v in enumerate(win):
+            v.att = Attestation(w, tree.root, tree.proof(i), sigma, v.att.ts_adm, i)
+            v.alpha = v.att.enc()
+            v.receipt = (v.att.ts_adm, v.att)
+
+    def flush_window(self) -> None:
+        """Close the open window now (Phase 4 selected a member before W admissions or T_vps)."""
+        with self._win_lock:
+            if self._win:
+                self._close_window()
+
+    def att_verify(self, vr: ValidatedRequest, seen: dict | None = None, nodes: dict | None = None) -> bool:
+        """AttVerify(alpha_i): the window signature (once per distinct window when `seen` is shared) and the
+        membership path of this request's own leaf lambda_i."""
+        a, c = vr.att, self.c
+        if a is None or not a.sigma:
+            return False
+        key = (a.w, a.root, a.sigma, vr.e)
+        if seen is not None and key in seen:
+            ok = seen[key]
+        else:
+            ok = c.verify(self.L.vps.pk, self._win_msg(a.w, a.root, vr.e), a.sigma)
+            if nodes is not None:
+                nodes["win"] += 1
+            if seen is not None:
+                seen[key] = ok
+        c.counts["T_H"] += len(a.path) + 1
+        return ok and verify_proof(a.root, self._vr_leaf(vr), a.index, a.path)
 
     # ============================================================ Phase 4 (ABRRR + committee)
     def target_batch_size(self, arrival_rate: float) -> int:
@@ -262,10 +331,12 @@ class VeRedactPQ:
         L, c = self.L, self.c
         bd = {"attest_ms": 0.0, "fresh_ms": 0.0, "commit_ms": 0.0, "committee_ms": 0.0}
         self.last_breakdown = bd
-        eligible = []
+        if any(vr.att is None or not vr.att.sigma for vr in batch):
+            self.flush_window()  # a selected request's window is still open: close it now (timed in Phase 4)
+        eligible, seen = [], {}  # seen: each distinct window signature is verified once per round
         for vr in batch:  # Step 2: attestation + freshness
             t0 = time.perf_counter()
-            ok = c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)
+            ok = self.att_verify(vr, seen)
             if ok:  # C_VR must reconstruct from the request's own fields and the attested h_i^PQ.
                 # h_i^PQ is not re-derived from the stored proof here: alpha_i, verified on the line above,
                 # already binds it, and Phase 6 re-derives it from the evidence on every escalated record.
@@ -415,27 +486,28 @@ class VeRedactPQ:
             deltas = [c.ch_part_adapt_many(L.td[k + 1], Z) for k in range(L.t)]
             R_new = c.ch_combine_many(P, Z, deltas)
             ok = c.ch_verify_many(L.pk_ch, [L.batches[j[0]].ch for j in jobs], [j[4] for j in jobs], R_new)
-            for col, (b, grp, old_root, _, new_root, theta) in enumerate(jobs):
+            for col, (b, grp, old_root, old_r, new_root, theta) in enumerate(jobs):
                 if not ok[col]:
                     raise RuntimeError(f"PQCH adaptation failed for batch {b}")
                 bt = L.batches[b]
                 bt.r, bt.v = R_new[:, col].copy(), bt.v + 1
-                prepared.append((b, grp, old_root, new_root, bt.v - 1, bt.v, bt.r, theta))
-        for b, grp, old_root, new_root, v_old, v_new, new_r, theta in prepared:  # atomic finalization
+                prepared.append((b, grp, old_root, new_root, bt.v - 1, bt.v, bt.r, theta, old_r))
+        for b, grp, old_root, new_root, v_old, v_new, new_r, theta, old_r in prepared:  # atomic finalization
             for vr in grp:
                 tx = L.txs[vr.req.TID]
                 D_old = tx.D
                 tx.m, tx.rho, tx.D, tx.e_i = vr.req.m_new, vr.req.rho_new, vr.req.D_new, L.e
                 L._index_put(tx)
-                finalized.append((vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r, theta))
+                finalized.append((vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r, theta, old_r))
         if not prepared:
             return []
         R = L.rli.finalize()
         c.counts["T_H"] += L.rli.last_hash_ops
-        for b in {p[0] for p in prepared}:
-            L.checkpoints[b] = L._checkpoint(b, R)
-        # one anchored checkpoint per root transition (|Omega_e| with BIMC), finalized atomically
         touched = [p[0] for p in prepared]
+        for b in touched:  # Phase 5 checkpoints are signed as one round (P4), not one by one
+            L.checkpoints[b] = L._checkpoint(b, R, sign=False)
+        round_root, round_sig = L.round_checkpoint(auth.BID, [L.checkpoints[b] for b in touched])
+        # one anchored checkpoint per root transition (|Omega_e| with BIMC), finalized atomically
         self._deferred.append(
             (
                 "redaction_finalization",
@@ -445,7 +517,11 @@ class VeRedactPQ:
                     # MR_b' of each transition, as the auditor reads it
                     "mrs": [L.checkpoints[b].MR for b in touched],
                     "vbs": [L.checkpoints[b].v_b for b in touched],
-                    "sigs": [L.checkpoints[b].sigma for b in touched],
+                    # P3: h_b^CP of each new checkpoint, stored on the chain beside MR_b'
+                    "digests": [L.checkpoints[b].digest for b in touched],
+                    # P4: one checkpoint-authority signature for the whole round (validators verify it once)
+                    "round_root": round_root,
+                    "round_sig": round_sig,
                 },
                 True,
             )
@@ -455,7 +531,7 @@ class VeRedactPQ:
         for p in prepared:
             cp = L.checkpoints[p[0]]
             xis[p[0]] = c.HV("EXEC-EVIDENCE", p[7], cp.CH, cp.v_b, cp.R_RLI, cp.v_RLI)
-        for vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r, theta in finalized:
+        for vr, tx, D_old, b, v_old, v_new, old_root, new_root, new_r, theta, old_r in finalized:
             pbrp = {
                 "RID": vr.RID,
                 "eta": auth.leaves[auth.members.index(vr)],
@@ -472,6 +548,7 @@ class VeRedactPQ:
                 "MR": old_root,
                 "MR_new": new_root,
                 "CH": L.batches[b].ch,
+                "r": old_r,  # r_b of the old state: P6 checks PQCH.Hash(MR_b, r_b) = CH_b as well
                 "r_new": new_r,
                 "e": L.e,
                 "vr": vr,
@@ -535,9 +612,14 @@ class VeRedactPQ:
             tau = rr.pbrp["tau_A"]
             by_shard.setdefault(L.rai.sid(tau), []).append(L.rai.shards[L.rai.sid(tau)].pos[tau])
         entries_bytes = 128 * len(records)
-        rec_bytes = len(records) * (32 * 8 + L.c.sig.sig_size)  # per-record: eta, MP_B, C_VR, alpha, ...
-        trans_bytes = 32 * 2 + 32 * 4  # Theta_b, Xi_b, (MR_b, MR_b', CH_b, r_b' digest)
-        cp_bytes = 8 * 4 + 32 * 3 + L.c.sig.sig_size  # A_b' fields + sigma_b'
+        # per record: eta, MP_B, C_VR, ... and alpha_i = (w, ts_adm) + its window path (BatchAttest). The window
+        # root + signature travel once per distinct window (SAVER, Shared-Evidence) or per record (Per-Record)
+        att = [rr.pbrp["vr"].att for rr in records]
+        windows = len(records) if self.audit_mode == "per_record" else len({a.w for a in att})
+        rec_bytes = len(records) * 32 * 8 + sum(16 + 32 * len(a.path) for a in att)
+        rec_bytes += windows * (32 + L.c.sig.sig_size)
+        trans_bytes = 32 * 2 + 32 * 5  # Theta_b, Xi_b, (MR_b, MR_b', CH_b, r_b and r_b' digests)
+        cp_bytes = 8 * 4 + 32 * 4  # A_b' fields + h_b^CP; no checkpoint signature (P3: the chain is the authority)
         if self.audit_mode == "per_record":  # Per-Record: individual paths + complete evidence for every record
             paths = sum(
                 len(L.rai.shards[s].tree.proof(p)) + len(L.rai.global_tree.proof(s))
@@ -586,7 +668,10 @@ class VeRedactPQ:
         body = resp.body
         deep = {rr.RID for rr in resp.records} if deep is True else set(deep or ())
         bd = dict.fromkeys(("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms", "cp_ms", "zk_ms"), 0.0)
-        nodes = dict.fromkeys(("req", "auth", "trans", "cp", "zk"), 0)
+        nodes = dict.fromkeys(("req", "auth", "trans", "cp", "zk", "win"), 0)
+        # BatchAttest: the window signature is shared evidence. SAVER verifies it once per distinct window in
+        # the query; Shared-Evidence and Per-Record re-verify it for every record
+        win_seen = {} if mode == "saver" else None
         self.last_breakdown, self.last_nodes = bd, nodes
         t0 = time.perf_counter()
         e, R_cp, v_cp, ts_cp, cp_A = self.rai_checkpoint
@@ -645,9 +730,12 @@ class VeRedactPQ:
             t1 = time.perf_counter()
             nodes["req"] += 1  # request node: q * C_req, always verified
             ok &= c.HV("AUTH-LEAF", vr.RID, vr.C_VR, vr.alpha) == p["eta"]
-            ok &= verify_proof(auth.R_VR, p["eta"], auth.members.index(vr), p["MP_B"])
+            # a request that is not a member of the authorization batch it claims (e.g. evidence substituted from
+            # another batch, #8 change 3) is rejected, never an exception that aborts the whole audit
+            pos_B = auth.members.index(vr) if vr in auth.members else None
+            ok &= pos_B is not None and verify_proof(auth.R_VR, p["eta"], pos_B, p["MP_B"])
             c.counts["T_H"] += len(p["MP_B"]) + 1
-            ok &= c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)  # routine: the VPS decision alpha_i
+            ok &= self.att_verify(vr, win_seen, nodes)  # routine: the VPS decision alpha_i (AttVerify)
             t2 = time.perf_counter()
             c.counts["T_H"] += 2  # L_i, L_i' recomputation (request-specific)
             # chi(v) hashes the node's complete evidence and its state context (computed in _pqch_batch,
@@ -656,9 +744,10 @@ class VeRedactPQ:
                 "trans", chi[rr.RID], lambda rr=rr, auth=auth: self._verify_transition_node(rr, auth, pqch[rr.RID])
             )
             t3 = time.perf_counter()
-            mr_chain = anchored.get((p["b"], rr.v_b_new))  # MR_b' as anchored on the PBN, read in THIS audit
-            chi_cp = c.HV("VERIFY-CTX", "cp", cp.b, cp.MR, cp.v_b, cp.sigma, cp.v_RLI, mr_chain, v_cp, cp_A)
-            ok &= node("cp", chi_cp, lambda rr=rr, mr_chain=mr_chain: self._verify_checkpoint_node(rr, mr_chain))
+            # (MR_b', h_b^CP) as anchored on the PBN, read in THIS audit
+            mr_chain, d_chain = anchored.get((p["b"], rr.v_b_new), (None, None))
+            chi_cp = c.HV("VERIFY-CTX", "cp", cp.b, cp.MR, cp.v_b, cp.digest, cp.v_RLI, mr_chain, d_chain, v_cp, cp_A)
+            ok &= node("cp", chi_cp, lambda rr=rr, m=mr_chain, d=d_chain: self._verify_checkpoint_node(rr, m, d))
             t4 = time.perf_counter()
             if rr.RID in deep:  # dependency-selective escalation: x_i, pi_i^PQ for this request only
                 nodes["zk"] += 1
@@ -724,9 +813,33 @@ class VeRedactPQ:
             p["MR"],
             p["MR_new"],
             _raw(p["CH"]),
+            _raw(p["r"]),
             _raw(p["r_new"]),
             *p["positions"],
             auth.gamma,
+        )
+
+    @staticmethod
+    def _node_ref(rr) -> tuple:
+        """S3b: a record's reference to the transition node it depends on. The evidence store holds each node once
+        and every record of a transition points at that one object, so the reference is the node's identity: the
+        records of one transition share it, and a record carrying ANY other evidence (another record's, an older
+        one, an altered copy) references another node and is verified on its own. The scalar fields are part of
+        the reference so that two nodes can never be confused even if an object were reused."""
+        p = rr.pbrp
+        return (
+            rr.BID,
+            p["b"],
+            rr.v_b,
+            rr.v_b_new,
+            p["MR"],
+            p["MR_new"],
+            p["theta"],
+            p["xi"],
+            p["positions"],
+            id(p["CH"]),
+            id(p["r"]),
+            id(p["r_new"]),
         )
 
     def _pqch_batch(self, records, mode):
@@ -740,20 +853,28 @@ class VeRedactPQ:
         what a per-record `ch_verify` would have returned, and `ch_verify_many` counts one T_CH per column."""
         L, c = self.L, self.c
         chi, cols, of_record = {}, {}, {}
+        ids = {}  # S3b: the identity of each transition node carried in the response, computed once per node
         for rr in records:
             p = rr.pbrp
-            chi[rr.RID] = x = self._chi_trans(rr, self.auths[rr.BID])
+            if mode == "per_record":  # Per-Record carries (and so hashes) a full copy of the evidence per record
+                x = self._chi_trans(rr, self.auths[rr.BID])
+            else:  # the response carries each node once; a record references its node
+                k = self._node_ref(rr)
+                x = ids[k] if k in ids else ids.setdefault(k, self._chi_trans(rr, self.auths[rr.BID]))
+            chi[rr.RID] = x
             if mode == "saver" and x in self.vcs:  # reused: never re-verified, so never a column
                 continue
             key = x if mode == "saver" else rr.RID
-            cols.setdefault(key, (p["CH"], p["MR_new"], p["r_new"]))
+            # P6: two columns per transition, PQCH.Hash(MR_b, r_b) = CH_b and PQCH.Hash(MR_b', r_b') = CH_b
+            cols.setdefault(key, ((p["CH"], p["MR"], p["r"]), (p["CH"], p["MR_new"], p["r_new"])))
             of_record[rr.RID] = key
         if not cols:
             return chi, {}
         keys = list(cols)
-        R = np.stack([cols[k][2] for k in keys], axis=1)  # r_b' of each column, as recorded in A_b'
-        oks = c.ch_verify_many(L.pk_ch, [cols[k][0] for k in keys], [cols[k][1] for k in keys], R)
-        verdict = dict(zip(keys, oks))
+        flat = [side for k in keys for side in cols[k]]  # [old_0, new_0, old_1, new_1, ...]
+        R = np.stack([s[2] for s in flat], axis=1)  # r_b and r_b' of each transition
+        oks = c.ch_verify_many(L.pk_ch, [s[0] for s in flat], [s[1] for s in flat], R)
+        verdict = {k: bool(oks[2 * i]) and bool(oks[2 * i + 1]) for i, k in enumerate(keys)}
         return chi, {rid: verdict[k] for rid, k in of_record.items()}
 
     def _verify_transition_node(self, rr, auth, pqch_ok: bool) -> bool:
@@ -766,12 +887,17 @@ class VeRedactPQ:
         xi = c.HV("EXEC-EVIDENCE", theta, cp.CH, cp.v_b, cp.R_RLI, cp.v_RLI)
         return set(p["positions"]) <= authorized and theta == p["theta"] and xi == p["xi"] and pqch_ok
 
-    def _verify_checkpoint_node(self, rr, mr_chain) -> bool:
-        """The checkpoint authority's PQ signature on the finalized A_b' and its MR_b' as anchored on the PBN."""
-        L, c = self.L, self.c
+    def _verify_checkpoint_node(self, rr, mr_chain, d_chain) -> bool:
+        """P3: the finalized A_b' against the PBN. Its digest h_b^CP, recomputed from the returned fields, must equal
+        the digest anchored for (b, v_b'), and its MR_b' the anchored MR_b'. No checkpoint signature is checked
+        here: the validators verified the round signature sigma_e^CP once before anchoring (P4)."""
         cp, p = rr.pbrp["cp"], rr.pbrp
-        msg = c.H(cp.b, cp.CH, cp.MR, cp.r_digest, cp.R_RLI, cp.v_RLI, cp.e, cp.v_b, cp.ts)
-        return cp.MR == p["MR_new"] == mr_chain and cp.v_b == rr.v_b_new and c.verify(L.cp.pk, msg, cp.sigma)
+        self.c.counts["T_H"] += 1
+        return (
+            cp.MR == p["MR_new"] == mr_chain
+            and cp.v_b == rr.v_b_new
+            and self.L.checkpoint_digest(cp) == cp.digest == d_chain
+        )
 
 
 def _raw(x) -> bytes:

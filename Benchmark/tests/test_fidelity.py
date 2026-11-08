@@ -44,6 +44,31 @@ def test_veredact_rejects_every_fault_class(cfg, ds):
     s.teardown()
 
 
+def test_veredact_stale_request_fails_freshleaf_not_a_flag(cfg, ds):
+    """#5 redesign (Exp. 1 invalid workload): a stale request is proved honestly, but against a content commitment
+    an earlier redaction replaced. Phase 3 rejects it in FreshLeaf (its own leaf no longer matches), exactly as a
+    real stale request, and the harness does not send it back for re-proving (an injected fault)."""
+    from veredact_bench.evaluation.common import revalidate
+    from veredact_bench.methods.scheme import RedactionOutcome
+
+    s = open_system(cfg, "veredact", ds)
+    r = faulty(ds, "stale", 5)
+    a = authorize(s, r, prepare(s, r))
+    assert not a.ok and a.reason == "freshness:stale state"
+    assert not revalidate(r, RedactionOutcome(r.seq, False, reason=a.reason))
+    assert decide(s, ds.trace[5])  # the same target without the fault is valid
+    s.teardown()
+
+
+@pytest.mark.parametrize("key", ["S1", "S13", "S27", "S34"])
+def test_baseline_executes_a_stale_request(cfg, ds, key):
+    """#5: no baseline binds a request to the content commitment it expects to replace, so a stale request is
+    authorized like a valid one. Exp. 1 counts it as an accepted invalid request, never as throughput."""
+    s = open_system(cfg, key, ds)
+    assert decide(s, faulty(ds, "stale", 6))
+    s.teardown()
+
+
 @pytest.mark.parametrize("key", ["S1", "S13", "S27", "S34"])
 def test_baseline_rejects_absent_target_and_claims_match(cfg, ds, key):
     s = open_system(cfg, key, ds)
@@ -112,6 +137,46 @@ def test_audits_detect_tampering_with_their_own_granularity(cfg, ds):
         s.teardown()
 
 
+def test_veredact_real_substituted_and_stale_evidence_are_rejected_per_record(cfg):
+    """#8 step 2 change 3: 'substituted' carries another record's genuine evidence, 'stale' replays a genuine
+    earlier transition and checkpoint of the same batch (anchored, correctly signed). Only the context binding
+    (h_i^PBRP in the RAI entry, chi(v)) can catch them; each is rejected, every other record still accepted."""
+    big = build_dataset(cfg, n_requests=160, zipf_s=1.2)  # skewed: batches are redacted more than once
+    s = open_system(cfg, "veredact", big)
+    build_history(s, big.trace, 8)
+    s.index_records()
+    recs = s.p.records
+    later = next(
+        i for i, r in enumerate(recs[:40]) if any(o.pbrp["b"] == r.pbrp["b"] and o.v_b_new < r.v_b_new for o in recs)
+    )
+    n = max(later + 1, 4)
+    assert all(s.audit(AuditQuery(n)).accepted.values())
+    for kind, i in (("substituted", 1), ("stale", later)):
+        r = s._tamper(recs[i], kind, None)
+        if kind == "stale":  # a real, older checkpoint of the same batch, not an edited number
+            old = r.pbrp["cp"]
+            assert r.pbrp["b"] == recs[i].pbrp["b"] and r.v_b_new < recs[i].v_b_new
+            assert any(o.pbrp["cp"] is old for o in recs if o is not recs[i])
+        else:  # a genuine evidence object of a different record
+            assert r.pbrp["RID"] != recs[i].RID and any(
+                o.pbrp is not recs[i].pbrp and o.pbrp["RID"] == r.pbrp["RID"] for o in recs
+            )
+        acc = s.audit(AuditQuery(n, tamper={i: kind})).accepted
+        assert not acc[i], kind
+        assert all(ok for j, ok in acc.items() if j != i), kind
+    s.teardown()
+
+
+def test_s13_per_block_variant_is_registered_on_s13s_history(cfg, ds):
+    """S13-per-block (#8) is S13 with the paper's Query phase per block: made by the registry and, in Exp. 3/4,
+    run on S13's own history (HISTORY_OF), never on a history of its own."""
+    from veredact_bench.evaluation.experiments.exp03_audit_efficiency import HISTORY_OF
+
+    s = make(cfg, "S13-per-block")
+    assert s.key == "S13-per-block" and s.per_block
+    assert HISTORY_OF["S13-per-block"] == "S13"
+
+
 def test_s13_reused_audit_response_gives_the_same_decision(cfg, ds):
     """Exp. 4 verifies S13's response again instead of rebuilding it: same decisions, tampering still caught."""
     s = open_system(cfg, "S13", ds)
@@ -168,7 +233,8 @@ def test_veredact_state_check_once_per_transition_and_tamper_still_caught(cfg, d
     before = p.c.counts["T_CH"]
     acc = p.verify_audit(resp, q)
     distinct = len({(rr.pbrp["b"], rr.pbrp["MR_new"]) for rr in resp.records})
-    assert all(acc.values()) and p.c.counts["T_CH"] - before == distinct <= len(resp.records)
+    # P6: the old and the new state of every distinct transition, PQCH.Hash(MR_b, r_b) = PQCH.Hash(MR_b', r_b')
+    assert all(acc.values()) and p.c.counts["T_CH"] - before == 2 * distinct <= 2 * len(resp.records)
     import copy as _copy
 
     bad = _copy.deepcopy(resp)

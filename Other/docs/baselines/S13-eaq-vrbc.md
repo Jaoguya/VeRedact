@@ -1,7 +1,7 @@
 # S13 — Zhang et al. [13], EAQ-VRBC
 
 Paper: `Reference/S13_Zhang2025_EAQ-VRBC/` · construction: `Benchmark/src/veredact_bench/methods/baselines/s13_eaq_vrbc/construction.py` ·
-adapter: `adapter.py` (`EAQVRBCScheme`, key `S13`) · own evaluation: `reproduce.py` (Figs. 4–9).
+adapter: `adapter.py` (`EAQVRBCScheme`, keys `S13` and `S13-per-block`) · own evaluation: `reproduce.py` (Figs. 4–9).
 The manuscript calls it "VRBC [13]".
 
 ## Role per experiment
@@ -11,7 +11,7 @@ The manuscript calls it "VRBC [13]".
 | 1 | ✓ | per-request block-level redaction by the System Manager (Update phase) |
 | 2 | ✗ | no per-request authorization protocol: authority = trapdoor possession (`auth_cost` = 0 operations). Excluded from `exp2.systems` rather than shown as a meaningless 0 ms bar |
 | 3 | ✓ | Audit phase: challenge → aggregated tags + aggregated non-membership witness (Alg. 2, NI-SimPoE) |
-| 4 | ✓ | AuditVerify (Alg. 3); **one decision for the whole challenged set** |
+| 4 | ✓ | `S13`: AuditVerify (Alg. 3), **one decision for the whole challenged set**. `S13-per-block` (#8): the paper's **Query** phase once per distinct block of the result, **one decision per block** — S13's finest output granularity, compared with VeRedact-PQ's per-record decisions |
 | 5 | ✗ | Exp. 5 measures VeRedact-PQ's own anchoring only; this scheme's per-redaction ledger write is part of its Exp. 1 |
 
 ## Boundaries
@@ -23,6 +23,11 @@ The manuscript calls it "VRBC [13]".
 - `audit`: challenge over the distinct blocks of the queried records; proof generation (service) and
   AuditVerify (auditor) timed separately; the auditor takes the accumulator from the trusted node, as in the
   paper (not from the chain). Tampering corrupts each affected block's tag once.
+- `audit` of `S13-per-block`: the paper's Query phase (Sec. III, "Query {(s, π_q) → T/F}") for every distinct
+  block of the queried records: the Auditee returns (B_s, t_s, hh_s, w̄_x) with the same prebuilt Alg. 1
+  witness as the Audit; the TPA checks non-membership (u^{aθ'} B^{∏s} = u), the identity-based tag and the
+  chameleon hash `ch_s` — all three checks of the Query paragraph. A block's decision applies to each of its
+  records. Runs on S13's own history (`HISTORY_OF`).
 
 ## Instantiation and deviations
 
@@ -38,10 +43,11 @@ The manuscript calls it "VRBC [13]".
 
 ## Not implemented
 
-Query phase is reproduced in `reproduce.py` only (the comparison audits redaction records, not index queries).
+The Query phase enters the comparison only as `S13-per-block` in Exp. 4 (per-block decisions); Exp. 3 uses the Audit.
 
 ## Fidelity checklist
 
 - [x] rejects a nonexistent target
 - [x] a tampered record makes the whole query fail (aggregate decision), no false accept
+- [x] `S13-per-block`: a tampered record rejects exactly the records of its own block (`test_per_block_query_decides_each_block`)
 - [x] Alg. 2/3 verify for honest sets; non-membership fails for revoked tags (`Benchmark/tests/baselines/test_s13_eaq_vrbc.py`)

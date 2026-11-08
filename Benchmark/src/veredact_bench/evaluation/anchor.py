@@ -42,6 +42,8 @@ class _Metered:
         if op.startswith("baseline_redaction"):
             self.base_count += 1  # BaselineRedactionLog record id = submission order (one sender, ordered nonces)
         fut = self._submit(op, **fields)
+        # (op, size of the submitted transaction): Exp. 1 counts each point's PBN load from it (#9)
+        self.__dict__.setdefault("txlog", []).append((op, getattr(fut, "tx_bytes", None)))
         fut.add_done_callback(lambda f, op=op: f.exception() is None and self.receipts.append((op, *f.result())))
         return fut
 
@@ -52,7 +54,7 @@ class _Metered:
     def read(self, what: str, **keys):
         """Auditor-side chain read:
         rai_checkpoint(epoch) -> bytes32 (CP_e^A);
-        checkpoint_history(keys) -> {(b, v_b): MR_b} of the given checkpoints, from their anchoring blocks;
+        checkpoint_history(keys) -> {(b, v_b): (MR_b, h_b^CP)} of the given checkpoints, from their anchoring blocks;
         commits(ids) -> [bytes32] (BaselineRedactionLog records);
         latest_acc() -> bytes32 (keccak256 of S1's latest header accumulator)."""
         return self._read(what, **keys)
@@ -103,6 +105,7 @@ class InProcessAnchor(_Metered):
     def __init__(self, cfg=None):
         self.log, self.receipts, self.oplog, self.base_count = [], [], [], 0
         self._rai, self._cps, self._commits, self._accs = {}, {}, [], {}
+        self._cpd = {}  # (b, v_b) -> h_b^CP, stored beside MR_b (P3)
         self._ver = {}
 
     def _submit(self, op: str, **fields) -> Future:
@@ -112,12 +115,14 @@ class InProcessAnchor(_Metered):
         if op == "batch_checkpoint":
             self._ver[f["b"]] = 0
             self._cps[(f["b"], 0)] = f["mr"]
+            self._cpd[(f["b"], 0)] = f.get("digest", b"")
         elif op == "redaction_finalization":
-            for b, mr, vb in zip(f["batches"], f["mrs"], f["vbs"]):
+            for b, mr, vb, d in zip(f["batches"], f["mrs"], f["vbs"], f["digests"]):
                 if vb != self._ver[b] + 1:
                     raise RuntimeError(f"stale version: batch {b} v_b {vb} after {self._ver[b]}")
                 self._ver[b] = vb
                 self._cps[(b, vb)] = mr
+                self._cpd[(b, vb)] = d
         elif op == "rai_checkpoint":
             self._rai[f["epoch"]] = f["cp"]
         elif op.startswith("baseline_redaction"):
@@ -133,7 +138,7 @@ class InProcessAnchor(_Metered):
         if what == "rai_checkpoint":
             return self._rai.get(k["epoch"], b"\0" * 32)
         if what == "checkpoint_history":
-            return {key: self._cps[key] for key in k["keys"] if key in self._cps}
+            return {key: (self._cps[key], self._cpd.get(key, b"")) for key in k["keys"] if key in self._cps}
         if what == "commits":
             return [self._commits[i] for i in k["ids"]]
         if what == "latest_acc":
@@ -353,7 +358,7 @@ class BesuAnchor(_Metered):
             f.get("epoch", 1),
             vb,
             int(time.time()),
-            b"\0" * 32,
+            f.get("digest", b"\0" * 32),  # cpDigest: h_b^CP (P3); a finalization sets each batch's own below
         )
         if op == "policy_register":
             h = self._send(self.reg.functions.registerPolicy(f["pid"], f["commit"], 1, 0, f["sig"]), t0)
@@ -368,13 +373,13 @@ class BesuAnchor(_Metered):
             # each touched batch's NEW checkpoint: its real MR_b' and v_b' (2026-10-19: MR_b' was a random
             # placeholder of the right size, so an auditor reading the chain could not check a transition)
             bs, cps = f["batches"], []
-            for b, mr, vb in zip(bs, f["mrs"], f["vbs"]):
+            for b, mr, vb, d in zip(bs, f["mrs"], f["vbs"], f["digests"]):
                 c = list(cp(b, vb))
-                c[1] = mr
+                c[1], c[8] = mr, d
                 cps.append(tuple(c))
                 self._ver[b] = vb
-            h = self._send(
-                self.reg.functions.finalizeRedaction(f["bid"], bs, cps, f["sigs"]),
+            h = self._send(  # P4: one round root and ONE checkpoint-authority signature for every batch
+                self.reg.functions.finalizeRedaction(f["bid"], bs, cps, f["round_root"], f["round_sig"]),
                 t0,
                 list(zip(bs, f["vbs"])),
             )
@@ -403,7 +408,8 @@ class BesuAnchor(_Metered):
                     wins[-1][1] = bn
                 else:
                     wins.append([bn, bn])
-            topic0 = "0x" + self.w3.keccak(text="CheckpointAnchored(uint256,uint64,bytes32)").hex().removeprefix("0x")
+            sig = "CheckpointAnchored(uint256,uint64,bytes32,bytes32)"
+            topic0 = "0x" + self.w3.keccak(text=sig).hex().removeprefix("0x")
             for lo, hi in wins:
                 bs = sorted({b for b, v in keys if lo <= self.cp_block.get((b, v), -1) <= hi})
                 topics = [topic0, ["0x" + b.to_bytes(32, "big").hex() for b in bs]] if len(bs) <= 100 else [topic0]
@@ -415,7 +421,7 @@ class BesuAnchor(_Metered):
                     d = bytes.fromhex(e["data"][2:])
                     key = (int(e["topics"][1], 16), int.from_bytes(d[:32], "big"))
                     if key in keys:
-                        out[key] = d[32:64]
+                        out[key] = (d[32:64], d[64:96])  # (MR_b, h_b^CP)
             return out
         if what == "commits":
             ids, out = list(k["ids"]), []

@@ -43,6 +43,17 @@ class Checkpoint:  # A_b
     # h_b^snap = H(enc(State_b)): the snapshot half of h_i^st, so a request can be checked against an
     # earlier anchored checkpoint of its batch without recomputing it (FreshLeaf, condition 3)
     snap: bytes = b""
+    # P3: h_b^CP = H_V(CP || b || CH_b || MR_b || H(r_b) || R_RLI || v_RLI || e || v_b || ts_b), anchored on the PBN
+    # beside MR_b; the auditor recomputes it from the fields and compares it with the chain
+    digest: bytes = b""
+    # P4 (RoundCheckpoint): a checkpoint finalized in Phase 5 has no signature of its own (sigma = b""); the
+    # checkpoint authority signs R_e^CP, the Merkle root of the round's digests, once. Phase 2 checkpoints keep
+    # their own sigma and no round fields.
+    round_bid: bytes = b""
+    round_root: bytes = b""
+    round_sigma: bytes = b""
+    round_path: list = field(default_factory=list)  # Pi_b^CP: h_b^CP under R_e^CP
+    round_index: int = -1
 
 
 @dataclass
@@ -66,6 +77,22 @@ class Request:  # R_i plus requester-side material sent alongside
 
 
 @dataclass
+class Attestation:  # alpha_i under BatchAttest (P2): (w, R_w^V, MP_i^V, sigma_w^V, ts_i^adm)
+    w: int = -1  # admission window
+    root: bytes = b""  # R_w^V: Merkle root of the window's leaves lambda_i
+    path: list = field(default_factory=list)  # MP_i^V: lambda_i under R_w^V
+    sigma: bytes = b""  # sigma_w^V: the VPS's one ML-DSA signature for the whole window
+    ts_adm: int = 0  # ts_i^adm (ms), bound in lambda_i: the attestation is also the admission receipt rc_i
+    index: int = -1  # leaf position in the window
+
+    def enc(self) -> bytes:
+        """Canonical bytes of alpha_i (what eta_i = H_V(AUTH-LEAF || RID || C_VR || alpha_i) commits to)."""
+        from ..crypto.hashing import H
+
+        return H(self.w, self.root, self.sigma, self.ts_adm, self.index, *self.path)
+
+
+@dataclass
 class ValidatedRequest:  # VR_i
     RID: bytes
     C_VR: bytes
@@ -84,6 +111,7 @@ class ValidatedRequest:  # VR_i
     h_st: bytes = b""  # authenticated transaction-state digest h_i^st
     v_RLI: int = 0  # SA-RLI snapshot of the batch checkpoint the request was validated against
     v_snap: int = -1  # v_b of the anchored checkpoint h_i^st was validated against (FreshLeaf)
+    att: Attestation = None  # BatchAttest alpha_i; complete (sigma set) once its admission window has closed
 
 
 @dataclass

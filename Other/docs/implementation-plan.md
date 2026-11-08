@@ -212,7 +212,16 @@ layout, never a paper figure.
 | S6 | `finalize_gas` / `rai_gas` recorded in Exp. 5 | `d0012eb` |
 | S5 | **withdrawn** — the S34/S99 zeros are deliberate; it is `AuthCost`'s vocabulary that is short | `d0012eb` |
 | S7 | σ_b signs `H(r_b)`, hashed once at checkpoint time (replaces P7) | `c98401e` |
-| P1 | **FreshLeaf** — `leaf_digest` / `state_digest` split, `fresh_leaf` used in Phases 3, 4 and 5, `v_snap` in PBRP and checked in Phase 6, `veredact.snapshot_window_k` | this commit |
+| P1 | **FreshLeaf** — `leaf_digest` / `state_digest` split, `fresh_leaf` used in Phases 3, 4 and 5, `v_snap` in PBRP and checked in Phase 6, `veredact.snapshot_window_k` | `8b93387` |
+| §4 Exp. 1 | 20 % stale + absent workload (`fault_fraction`, `fault_kinds`), a stale request fails FreshLeaf for real (no tamper flag), `invalid_accepted` metric, variants dropped (Ppdfd), rates 25–1,000, one-panel Fig. 3 | `25e33fa` (branch `13-experiment-redesigns`, Ppdfd) |
+| §4 Exp. 2 | Re-ZK dropped, n ∈ {4 … 64}, one panel of complete cost vs n | `caea15d` |
+| §4 Exp. 3 | `end_to_end_ms` (generation + verification per query), one panel | `0a0f659` |
+| §4 Exp. 5 | anchor `txlog`; each Exp. 1 point records its anchoring tx/bytes/gas; Fig. 7 = transactions per finalized redaction for every system; Exp. 5 run keeps the \|Ω_e\| ∈ {1, 8, 32, 64, 128} sweep for the text | `81d3be7` |
+| §4 Exp. 4 | #8 change 3: real substituted (another record's genuine evidence) and stale (a genuine earlier checkpoint) faults; fixed `verify_audit` raising on evidence from another authorization batch | `09521d6` |
+| P2 | **BatchAttest** — one VPS signature per admission window (`veredact.vps_window` W = 256, `vps_window_ms` = 500); alpha_i = window root + path (`Attestation`), also the receipt; Phase 4 closes a still-open window of a selected request; SAVER verifies each window signature once per query (`nodes_win`), Shared-Evidence / Per-Record per record; response size counts one root + signature per window | `ceefbd0` |
+| P3 + P4 | **Anchored checkpoint digest + RoundCheckpoint** — every A_b carries h_b^CP (`Ledger.checkpoint_digest`), stored on the chain beside MR_b (`cpDigest`, event `CheckpointAnchored(b, vb, mr, cpDigest)`); Phase 5 checkpoints have no signature of their own, the checkpoint authority signs the round's Merkle root once (`Ledger.round_checkpoint`, `finalizeRedaction(bid, bs, cps, roundRoot, roundSig)`); the audit recomputes h_b^CP and compares it with the chain, no checkpoint signature in the response; Phase 2 checkpoints keep their own signature (`initialSigs`). **Contract changed: rebuild the image before any run.** A test compiles the contract with solc 0.8.24 | `4b012af` |
+| S3b | **Shared nodes by id** — the response carries each transition node once and a record references it (`_node_ref`); the auditor computes a node's identity (hashing the 64 KiB r_b') once per distinct node in SAVER and Shared-Evidence, per record in Per-Record (which duplicates the evidence); a record with any other evidence is its own node | `bbfe072` |
+| P6 | **PQCH for the old and the new state** (paper-conformance gap #1 closed): PBRP carries r_b; `_pqch_batch` checks two columns per transition in one batched product; T_CH = 2 per distinct transition (SAVER) or per record (variants). Lands after S4 + S3a + S3b as planned | this branch |
 
 **Not run:** `make test`. It is forwarded to the AWS server by `deploy/aws/remote.sh`, which needs jaoguya's
 yes. Only `ruff check` and `ruff format --check` were run locally, with the arguments CI uses. The 15 tests

@@ -22,7 +22,9 @@ start below every scheme's capacity, so each has a full latency measurement). A 
 saturated when decided/offered (window arrivals, valid requests; decided = any final outcome, so a
 protocol-level rejection such as S1's one-redaction-per-block is not mistaken for overload) or the on-time
 submission fraction drops below 1 - saturation_tolerance; the note never skips a rate.
-Throughput = redactions finalized during the window / its length (summaries._exp01).
+Throughput = VALID redactions finalized during the window / its length (summaries._exp01). With the #5 redesign
+a fault_fraction of the trace is invalid (fault_kinds: stale, absent); an invalid request a scheme executes is
+counted as accepted invalid, never as throughput.
 """
 
 import multiprocessing
@@ -74,9 +76,21 @@ def _req_job(job):
 def run_point(cfg, key, rate, zipf_s, out, sweep):
     x = cfg["experiment"]
     window = x["warmup_s"] + x["duration_s"]
-    ds = build_dataset(cfg, n_requests=max(1, int(rate * window)), rate=rate, zipf_s=zipf_s)
+    # #5 redesign: a fault_fraction of the trace is invalid (fault_kinds: stale, absent); every system gets the same
+    # trace. Throughput counts valid requests only; an executed invalid one is reported as accepted invalid.
+    ds = build_dataset(
+        cfg,
+        n_requests=max(1, int(rate * window)),
+        rate=rate,
+        zipf_s=zipf_s,
+        fault_fraction=x.get("fault_fraction", 0.0),
+        fault_kinds=x.get("fault_kinds"),
+    )
     out.dataset(ds.dataset_id)
     s = open_system(cfg, key, ds)
+    # #9 (Fig. 7): the point's PBN load = anchoring transactions submitted after setup (count, bytes, gas)
+    anc = getattr(s, "anchor", None)
+    tx0, rc0 = (len(getattr(anc, "txlog", [])), len(anc.receipts)) if anc is not None else (0, 0)
     lock, admit, validated, revalq = RWLock(), queue.Queue(), queue.Queue(), queue.Queue()
     stamp = {r.seq: {} for r in ds.trace}
     batch_no = [0]  # executor-side batch counter (rows of one batch share batch_id / batch_adaptations)
@@ -292,11 +306,20 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             raise RuntimeError(f"{key} rate={rate} s={zipf_s}: prover host(s) {remote.lost} lost during the point")
     if sys_cpus:
         os.sched_setaffinity(0, sum(cpus.physical_cores(), []))  # setup of the next point uses every core
+    pbn_load = {"anchor_tx": "", "anchor_tx_bytes": "", "anchor_gas": ""}
+    if anc is not None:
+        txs = getattr(anc, "txlog", [])[tx0:]
+        gas = [g for _, _, g in anc.receipts[rc0:]]
+        pbn_load = {
+            "anchor_tx": len(txs),
+            "anchor_tx_bytes": sum(b for _, b in txs if b is not None),
+            "anchor_gas": sum(gas) if gas and None not in gas else "",  # in-process ledger: no gas
+        }
     s.teardown()
 
     # rows + decisions over the measurement cohort: valid requests whose ARRIVAL falls in the window
     w0 = x["warmup_s"]
-    offered = completed = decided = on_time = 0
+    offered = completed = decided = on_time = invalid = invalid_ok = 0
     for r in ds.trace:
         st = stamp[r.seq]
         status = st.get("status", "unfinished")
@@ -310,6 +333,9 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             offered += 1
             on_time += "submit" in st and st["submit"] < window
             decided += status in ("finalized", "rejected", "failed")
+        if in_window and r.fault:
+            invalid += 1
+            invalid_ok += status == "finalized"  # an invalid request the scheme executed (summaries._exp01)
         if status == "finalized" and not r.fault and w0 <= st.get("final", -1) < window:
             completed += 1  # throughput: finalized DURING the window, whatever its arrival (summaries._exp01)
         out.row(
@@ -343,6 +369,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             finality_ledger_ms=st.get("finality_ledger_ms", ""),
             latency_ms=(st["final"] - st["submit"]) * 1000 if "final" in st else "",
             cutoff_s=cutoff,
+            **pbn_load,  # the point's anchoring transactions, bytes and gas (same value in every row of the point)
             setup_s=s.setup_s,
             **capability_fields(s),
         )
@@ -351,6 +378,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     out.log.info(
         f"  {key:28s} rate={rate:<6} s={zipf_s:<4}  offered={offered / x['duration_s']:7.1f}/s  "
         f"submitted-in-window={client:.3f}  decided/offered={ratio:.3f}  throughput={completed / x['duration_s']:.1f}/s"
+        + (f"  invalid accepted={invalid_ok}/{invalid}" if invalid else "")
     )
     return ratio, client
 

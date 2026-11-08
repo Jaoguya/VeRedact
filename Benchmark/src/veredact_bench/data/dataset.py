@@ -21,7 +21,13 @@ def build_dataset(
     zipf_s: float | None = None,
     fault_fraction: float = 0.0,
     seed_offset: int = 0,
+    fault_kinds: tuple | list | None = None,
 ) -> Dataset:
+    """fault_kinds: the fault classes drawn for the fault_fraction of requests (default: all of FAULTS). Exp. 1
+    (#5 redesign) uses ("stale", "absent"); leaving it out keeps the dataset, and its dataset_id, unchanged."""
+    kinds = tuple(fault_kinds) if fault_kinds else FAULTS
+    if not set(kinds) <= set(FAULTS):
+        raise ValueError(f"unknown fault kinds {sorted(set(kinds) - set(FAULTS))}; known: {FAULTS}")
     d, w = cfg["dataset"], cfg["workload"]
     seed = cfg["meta"]["seed"] + seed_offset
     rng = random.Random(seed)
@@ -51,7 +57,7 @@ def build_dataset(
         t += nrng.exponential(1.0 / rate)
         b = order[nrng.choice(n_batches, p=p)]
         idx = min(b * N + int(nrng.integers(N)), len(txs) - 1)
-        fault = rng.choice(FAULTS) if rng.random() < fault_fraction else ""
+        fault = rng.choice(kinds) if rng.random() < fault_fraction else ""
         trace.append(
             RedactionRequest(
                 seq,
@@ -64,6 +70,8 @@ def build_dataset(
         )
     h = hashlib.sha3_256()
     h.update(repr((seed, d, w, n_req, rate, s, fault_fraction)).encode())
+    if fault_kinds:  # only when restricted: datasets built before fault_kinds keep their dataset_id
+        h.update(repr(kinds).encode())
     for tx in txs[:: max(1, len(txs) // 1024)]:
         h.update(tx.tid + tx.payload[:32])
     return Dataset(seed, txs, d["requesters"], d["policies"], trace, h.hexdigest()[:16])
