@@ -25,4 +25,8 @@ veredact:
   cora_w_ch_ms: 102.4           # [DERIVED] CORA w_CH = t T_PA + T_CB + 2 T_CH (Exp. 0, 2026-10-21 run, t = 5:
                                 #   5 x 18.835 + 5.820 + 2 x 1.196 ms); manuscript leaves the weights open
   cora_w_f_ms: 0.001            # [DERIVED] CORA w_F = T_H per frontier node (SHA3-256, Exp. 0)
+  vps_window: 256               # [PROPOSED] BatchAttest W (#6 step 3 O3 = #7 step 3 O4): the VPS signs one Merkle
+                                #   root per W admissions instead of alpha_i + rc_i per request; 1 = per request
+  vps_window_ms: 500            # [PROPOSED] T_vps: a window also closes this long after its first admission
+                                #   (= T_max; Phase 4 closes a still-open window of a selected request at once)
   vps_workers: 8                # [PROPOSED] parallel VPS validation workers (<= vcpus / 2)

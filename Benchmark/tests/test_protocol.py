@@ -384,3 +384,83 @@ def test_pbrp_records_the_snapshot_the_request_was_validated_against(cfg, ds):
     assert res.outcomes[0].ok
     rr = s.p.records[-1]
     assert rr.pbrp["v_snap"] == 0 and rr.v_b - s.p.k <= rr.pbrp["v_snap"] <= rr.v_b
+
+
+# ---------------------------------------------------------------- BatchAttest (P2: #6 step 3 O3 = #7 step 3 O4)
+def _windowed(cfg, W, ms=60_000):
+    c = copy.deepcopy(cfg)
+    c["veredact"]["vps_window"], c["veredact"]["vps_window_ms"] = W, ms
+    return c
+
+
+def _distinct_targets(s, ds, n):
+    out, seen = [], set()
+    for r in ds.trace:
+        if not r.fault and r.tid not in seen:
+            out.append(r)
+            seen.add(r.tid)
+        if len(out) == n:
+            return out
+    raise LookupError("not enough distinct targets")
+
+
+def test_batchattest_signs_once_per_admission_window(cfg, ds):
+    """The VPS signs one Merkle root per window of W admissions (alpha_i = window root + membership path),
+    instead of one ML-DSA attestation and one receipt per request. Every member verifies against it, and the
+    receipt rc_i is the same attestation."""
+    s = open_system(_windowed(cfg, 4), "veredact", ds)
+    vrs = [validated(s, r).handle for r in _distinct_targets(s, ds, 8)]
+    assert len(s.p.windows) == 2 and len({(v.att.w, v.att.sigma) for v in vrs}) == 2
+    assert all(s.p.att_verify(v) for v in vrs)
+    assert all(v.receipt[1] is v.att for v in vrs)
+    s.teardown()
+
+
+def test_batchattest_rejects_a_path_from_another_member(cfg, ds):
+    """A membership path that does not lead from this request's own leaf to the signed root is rejected, in
+    att_verify and therefore in Phase 4 (the request leaves the round)."""
+    s = open_system(_windowed(cfg, 4), "veredact", ds)
+    a, b, c_, d = (validated(s, r).handle for r in _distinct_targets(s, ds, 4))
+    a.att = dataclasses.replace(a.att, path=b.att.path, index=b.att.index)
+    assert not s.p.att_verify(a) and s.p.att_verify(b)
+    auth = s.p.authorize([a, b, c_, d])
+    assert a.RID not in {v.RID for v in auth.members} and len(auth.members) == 3
+    s.teardown()
+
+
+def test_phase4_closes_an_open_window_instead_of_waiting(cfg, ds):
+    """A round may select requests whose window has not filled yet: Phase 4 closes that window (one more
+    signature, never fewer than the protocol needs) rather than waiting for W admissions or T_vps."""
+    s = open_system(_windowed(cfg, 256), "veredact", ds)
+    vrs = [validated(s, r).handle for r in _distinct_targets(s, ds, 3)]
+    assert not s.p.windows and not any(v.att.sigma for v in vrs)
+    auth = s.p.authorize(vrs)
+    assert len(auth.members) == 3 and len(s.p.windows) == 1
+    s.teardown()
+
+
+def test_window_closes_after_its_time_bound(cfg, ds):
+    """T_vps bounds the wait: with T_vps = 0 every new admission closes the window before it."""
+    s = open_system(_windowed(cfg, 256, ms=0), "veredact", ds)
+    for r in _distinct_targets(s, ds, 3):
+        validated(s, r)
+    assert len(s.p.windows) == 2  # the third admission is still in the open window
+    s.teardown()
+
+
+def test_saver_verifies_each_window_signature_once_per_query(audited):
+    """The window signature is shared evidence: SAVER verifies it once per distinct window in the query;
+    Shared-Evidence re-verifies it for every record."""
+    s = audited
+    recs = s.p.records[:24]
+    windows = len({r.pbrp["vr"].att.w for r in recs})
+    s.p.vcs.clear()
+    accepted, nodes = audit(s, recs)
+    assert all(accepted.values()) and nodes["win"] == windows < len(recs)
+    s.p.audit_mode = "shared"
+    try:
+        s.p.vcs.clear()
+        accepted, nodes = audit(s, recs)
+        assert all(accepted.values()) and nodes["win"] == len(recs)
+    finally:
+        s.p.audit_mode = "saver"

@@ -21,7 +21,7 @@ import numpy as np
 from ..ds.merkle import MerkleTree, verify_multiproof, verify_proof
 from .cora import Candidate, cora_select
 from .ledger import Ledger
-from .types import BatchAuth, RedactionRecord, Request, ValidatedRequest
+from .types import Attestation, BatchAuth, RedactionRecord, Request, ValidatedRequest
 
 
 @dataclass
@@ -65,6 +65,14 @@ class VeRedactPQ:
         self.records: list[RedactionRecord] = []
         self._rid = 0
         self._admit = threading.Lock()
+        # BatchAttest (P2, #6 step 3 O3 = #7 step 3 O4): the VPS signs one Merkle root per admission window,
+        # closed after W admissions or T_vps ms, whichever first. W = 1 is one signature per request.
+        self.W = int(v.get("vps_window", 1))
+        self.T_vps_ms = float(v.get("vps_window_ms", self.T_max_ms))
+        self._win: list[ValidatedRequest] = []
+        self._win_t0, self._win_no = 0.0, 0
+        self._win_lock = threading.Lock()
+        self.windows: dict[int, tuple[bytes, bytes]] = {}  # w -> (R_w^V, sigma_w^V), as the VPS published them
         self.vcs: set = set()  # auditor's Verified-Context Store: chi(v) of successfully verified shared nodes
 
     # ============================================================ requester side
@@ -197,7 +205,6 @@ class VeRedactPQ:
             RID = self._rid.to_bytes(8, "big")
         h_proof = c.H(R.proof)  # h_i^PQ
         C_VR = c.H(RID, self._hR(R), h_st, pol.C_P, h_proof, L.e)
-        alpha = c.sign(L.vps.sk, c.H(RID, C_VR, L.e))
         vr = ValidatedRequest(
             RID,
             C_VR,
@@ -209,18 +216,76 @@ class VeRedactPQ:
             L.e,
             R.sigma_R,
             h_proof,
-            alpha,
+            b"",  # alpha_i: set when the request's admission window closes (BatchAttest)
             R,
             t_submit,
             h_st=h_st,
             v_RLI=L.checkpoints[tx.b].v_RLI,
             v_snap=v_snap,
+            att=Attestation(ts_adm=int(time.time() * 1000)),
         )
         self.evidence[RID] = {"R": R, "x": R.x, "proof": R.proof}
-        # admission to Q_e: signed receipt rc_i = Sign(sk_V, H(RID || H(R_i) || ts_rc)) returned to the requester
-        ts_rc = int(time.time() * 1000)
-        vr.receipt = (ts_rc, c.sign(L.vps.sk, c.H(RID, self._hR(R), ts_rc)))
+        self._admit_to_window(vr)  # alpha_i and the receipt rc_i = alpha_i come with the window's one signature
         return vr
+
+    # ------------------------------------------------------------ BatchAttest (Phase 3 Step 5)
+    def _vr_leaf(self, vr: ValidatedRequest) -> bytes:
+        """lambda_i = H_V(VR-LEAF || RID || C_VR || ts_adm || e)."""
+        return self.c.HV("VR-LEAF", vr.RID, vr.C_VR, vr.att.ts_adm, vr.e)
+
+    def _win_msg(self, w: int, root: bytes, e: int) -> bytes:
+        return self.c.HV("VPS-WIN", w, root, e)
+
+    def _admit_to_window(self, vr: ValidatedRequest) -> None:
+        now = time.perf_counter()
+        with self._win_lock:  # VPS workers admit concurrently (Exp. 1)
+            if self._win and (now - self._win_t0) * 1000 >= self.T_vps_ms:
+                self._close_window()  # T_vps reached: the waiting window closes before this admission
+            if not self._win:
+                self._win_t0 = now
+            vr.att.w, vr.att.index = self._win_no, len(self._win)
+            self._win.append(vr)
+            if len(self._win) >= self.W:
+                self._close_window()
+
+    def _close_window(self) -> None:
+        """One Merkle root over the window's leaves, one ML-DSA signature; each member gets root + its path.
+        Caller holds _win_lock."""
+        L, c = self.L, self.c
+        win, w = self._win, self._win_no
+        self._win, self._win_no = [], w + 1
+        tree = MerkleTree([self._vr_leaf(v) for v in win])
+        c.counts["T_H"] += tree.hash_ops[0] + len(win)
+        sigma = c.sign(L.vps.sk, self._win_msg(w, tree.root, L.e))
+        self.windows[w] = (tree.root, sigma)
+        for i, v in enumerate(win):
+            v.att = Attestation(w, tree.root, tree.proof(i), sigma, v.att.ts_adm, i)
+            v.alpha = v.att.enc()
+            v.receipt = (v.att.ts_adm, v.att)
+
+    def flush_window(self) -> None:
+        """Close the open window now (Phase 4 selected a member before W admissions or T_vps)."""
+        with self._win_lock:
+            if self._win:
+                self._close_window()
+
+    def att_verify(self, vr: ValidatedRequest, seen: dict | None = None, nodes: dict | None = None) -> bool:
+        """AttVerify(alpha_i): the window signature (once per distinct window when `seen` is shared) and the
+        membership path of this request's own leaf lambda_i."""
+        a, c = vr.att, self.c
+        if a is None or not a.sigma:
+            return False
+        key = (a.w, a.root, a.sigma, vr.e)
+        if seen is not None and key in seen:
+            ok = seen[key]
+        else:
+            ok = c.verify(self.L.vps.pk, self._win_msg(a.w, a.root, vr.e), a.sigma)
+            if nodes is not None:
+                nodes["win"] += 1
+            if seen is not None:
+                seen[key] = ok
+        c.counts["T_H"] += len(a.path) + 1
+        return ok and verify_proof(a.root, self._vr_leaf(vr), a.index, a.path)
 
     # ============================================================ Phase 4 (ABRRR + committee)
     def target_batch_size(self, arrival_rate: float) -> int:
@@ -266,10 +331,12 @@ class VeRedactPQ:
         L, c = self.L, self.c
         bd = {"attest_ms": 0.0, "fresh_ms": 0.0, "commit_ms": 0.0, "committee_ms": 0.0}
         self.last_breakdown = bd
-        eligible = []
+        if any(vr.att is None or not vr.att.sigma for vr in batch):
+            self.flush_window()  # a selected request's window is still open: close it now (timed in Phase 4)
+        eligible, seen = [], {}  # seen: each distinct window signature is verified once per round
         for vr in batch:  # Step 2: attestation + freshness
             t0 = time.perf_counter()
-            ok = c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)
+            ok = self.att_verify(vr, seen)
             if ok:  # C_VR must reconstruct from the request's own fields and the attested h_i^PQ.
                 # h_i^PQ is not re-derived from the stored proof here: alpha_i, verified on the line above,
                 # already binds it, and Phase 6 re-derives it from the evidence on every escalated record.
@@ -539,7 +606,12 @@ class VeRedactPQ:
             tau = rr.pbrp["tau_A"]
             by_shard.setdefault(L.rai.sid(tau), []).append(L.rai.shards[L.rai.sid(tau)].pos[tau])
         entries_bytes = 128 * len(records)
-        rec_bytes = len(records) * (32 * 8 + L.c.sig.sig_size)  # per-record: eta, MP_B, C_VR, alpha, ...
+        # per record: eta, MP_B, C_VR, ... and alpha_i = (w, ts_adm) + its window path (BatchAttest). The window
+        # root + signature travel once per distinct window (SAVER, Shared-Evidence) or per record (Per-Record)
+        att = [rr.pbrp["vr"].att for rr in records]
+        windows = len(records) if self.audit_mode == "per_record" else len({a.w for a in att})
+        rec_bytes = len(records) * 32 * 8 + sum(16 + 32 * len(a.path) for a in att)
+        rec_bytes += windows * (32 + L.c.sig.sig_size)
         trans_bytes = 32 * 2 + 32 * 4  # Theta_b, Xi_b, (MR_b, MR_b', CH_b, r_b' digest)
         cp_bytes = 8 * 4 + 32 * 3 + L.c.sig.sig_size  # A_b' fields + sigma_b'
         if self.audit_mode == "per_record":  # Per-Record: individual paths + complete evidence for every record
@@ -590,7 +662,10 @@ class VeRedactPQ:
         body = resp.body
         deep = {rr.RID for rr in resp.records} if deep is True else set(deep or ())
         bd = dict.fromkeys(("response_ms", "rai_mp_ms", "committee_ms", "attest_ms", "state_ms", "cp_ms", "zk_ms"), 0.0)
-        nodes = dict.fromkeys(("req", "auth", "trans", "cp", "zk"), 0)
+        nodes = dict.fromkeys(("req", "auth", "trans", "cp", "zk", "win"), 0)
+        # BatchAttest: the window signature is shared evidence. SAVER verifies it once per distinct window in
+        # the query; Shared-Evidence and Per-Record re-verify it for every record
+        win_seen = {} if mode == "saver" else None
         self.last_breakdown, self.last_nodes = bd, nodes
         t0 = time.perf_counter()
         e, R_cp, v_cp, ts_cp, cp_A = self.rai_checkpoint
@@ -654,7 +729,7 @@ class VeRedactPQ:
             pos_B = auth.members.index(vr) if vr in auth.members else None
             ok &= pos_B is not None and verify_proof(auth.R_VR, p["eta"], pos_B, p["MP_B"])
             c.counts["T_H"] += len(p["MP_B"]) + 1
-            ok &= c.verify(L.vps.pk, c.H(vr.RID, vr.C_VR, vr.e), vr.alpha)  # routine: the VPS decision alpha_i
+            ok &= self.att_verify(vr, win_seen, nodes)  # routine: the VPS decision alpha_i (AttVerify)
             t2 = time.perf_counter()
             c.counts["T_H"] += 2  # L_i, L_i' recomputation (request-specific)
             # chi(v) hashes the node's complete evidence and its state context (computed in _pqch_batch,

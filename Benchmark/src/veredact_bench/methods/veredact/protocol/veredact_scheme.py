@@ -54,12 +54,15 @@ class VeRedactScheme(Scheme):
         )
 
     def auth_cost(self) -> AuthCost:
-        # per request at the VPS: requester ML-DSA verify + STARK verify + attestation and admission-receipt
-        # signatures; Phase 4 adds (1 attestation verify) per request and t signatures + t verifications per BATCH.
+        # per request at the VPS: requester ML-DSA verify + STARK verify; BatchAttest signs one window root per
+        # vps_window admissions (the attestation is also the receipt), so per request it rounds to 0 for W > 1.
+        # Phase 4 adds the attestation check (one window verify per distinct window + a path) per request and t
+        # signatures + t verifications per BATCH.
+        W = int(self.cfg["veredact"].get("vps_window", 1))
         return AuthCost(
             signature_verifications=2,
             proof_verifications=1,
-            signatures_generated=2,
+            signatures_generated=1 if W == 1 else 0,
             consensus_blocks=0,
             round_trips=0,
         )

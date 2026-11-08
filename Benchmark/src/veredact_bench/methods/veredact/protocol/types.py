@@ -66,6 +66,22 @@ class Request:  # R_i plus requester-side material sent alongside
 
 
 @dataclass
+class Attestation:  # alpha_i under BatchAttest (P2): (w, R_w^V, MP_i^V, sigma_w^V, ts_i^adm)
+    w: int = -1  # admission window
+    root: bytes = b""  # R_w^V: Merkle root of the window's leaves lambda_i
+    path: list = field(default_factory=list)  # MP_i^V: lambda_i under R_w^V
+    sigma: bytes = b""  # sigma_w^V: the VPS's one ML-DSA signature for the whole window
+    ts_adm: int = 0  # ts_i^adm (ms), bound in lambda_i: the attestation is also the admission receipt rc_i
+    index: int = -1  # leaf position in the window
+
+    def enc(self) -> bytes:
+        """Canonical bytes of alpha_i (what eta_i = H_V(AUTH-LEAF || RID || C_VR || alpha_i) commits to)."""
+        from ..crypto.hashing import H
+
+        return H(self.w, self.root, self.sigma, self.ts_adm, self.index, *self.path)
+
+
+@dataclass
 class ValidatedRequest:  # VR_i
     RID: bytes
     C_VR: bytes
@@ -84,6 +100,7 @@ class ValidatedRequest:  # VR_i
     h_st: bytes = b""  # authenticated transaction-state digest h_i^st
     v_RLI: int = 0  # SA-RLI snapshot of the batch checkpoint the request was validated against
     v_snap: int = -1  # v_b of the anchored checkpoint h_i^st was validated against (FreshLeaf)
+    att: Attestation = None  # BatchAttest alpha_i; complete (sigma set) once its admission window has closed
 
 
 @dataclass

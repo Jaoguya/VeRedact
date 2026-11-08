@@ -205,7 +205,7 @@ def _exp03(rows, cfg):
             # #7 redesign (Fig. 5): end-to-end audit cost of each query = its generation + its verification
             "end_to_end_ms": _stats(_sum_ms(r, "retrieval_ms", "verify_ms") for r in ok),
             # cryptographically verified evidence nodes per query (VeRedact-PQ systems; SAVER vs variants)
-            **{f"nodes_{t}": _stats(r.get(f"nodes_{t}") for r in ok) for t in ("req", "auth", "trans", "cp")},
+            **{f"nodes_{t}": _stats(r.get(f"nodes_{t}") for r in ok) for t in ("req", "auth", "trans", "cp", "win")},
         }
     return out
 
