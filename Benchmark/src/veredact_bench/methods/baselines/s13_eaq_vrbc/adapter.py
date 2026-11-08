@@ -43,8 +43,19 @@ from veredact_bench.utils.log import get_logger
 class EAQVRBCScheme(Scheme):
     key = "S13"
 
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, per_block: bool = False):
         self.cfg, self.b = cfg, cfg["baselines"]["S13"]
+        self.per_block = False
+        if per_block:
+            self.set_variant("per-block")
+
+    def set_variant(self, name: str) -> None:
+        """'per-block' (system key S13-per-block, Exp. 4): audits use the paper's Query phase once per distinct
+        block instead of one aggregated Audit, so the TPA gets one decision per block. Exp. 3/4 open S13's own
+        history and switch it here (exp03_audit_efficiency.HISTORY_OF)."""
+        if name != "per-block":
+            raise ValueError(f"S13 has no variant {name!r}")
+        self.per_block, self.key = True, "S13-per-block"
 
     def capabilities(self) -> Capabilities:
         return Capabilities(
@@ -145,14 +156,22 @@ class EAQVRBCScheme(Scheme):
             out[i] = wit
         return out
 
-    def audit(self, query: AuditQuery) -> AuditResult:
-        blocks = sorted({s for _, s in self.redacted[: query.records]})
-        chal = [(i, int.from_bytes(os.urandom(8), "big") + 1) for i in blocks]
+    def _corrupt(self, tamper: dict) -> dict:
+        """Exp. 4: corrupt each tampered record's block tag ONCE (two records in one block must not flip the same
+        bit back); returns the original tags, which the caller restores after the audit."""
         saved = {}
-        for s in {self.redacted[idx][1] for idx in query.tamper}:  # Exp. 4: corrupt each tampered block's tag ONCE
-            saved[s] = self.L.tags[s]  # (two records in one block must not flip the same bit back)
+        for s in {self.redacted[idx][1] for idx in tamper}:
+            saved[s] = self.L.tags[s]
             t, c, hh = self.L.tags[s]
             self.L.tags[s] = (type(t)(t.S ^ 1, t.v), c, hh)
+        return saved
+
+    def audit(self, query: AuditQuery) -> AuditResult:
+        if self.per_block:
+            return self._audit_per_block(query)
+        blocks = sorted({s for _, s in self.redacted[: query.records]})
+        chal = [(i, int.from_bytes(os.urandom(8), "big") + 1) for i in blocks]
+        saved = self._corrupt(query.tamper)
         ck = (query.records, tuple(sorted(query.tamper.items())))
         cached = getattr(self, "_responses", {}).get(ck) if query.reuse_response else None
         if cached:  # Exp. 4: same challenge + proof again; only the auditor's verification is re-timed
@@ -183,6 +202,46 @@ class EAQVRBCScheme(Scheme):
             (t2 - t1) * 1000,
             nbytes,
             {i: ok for i in range(min(query.records, len(self.redacted)))},
+        )
+
+    def _audit_per_block(self, query: AuditQuery) -> AuditResult:
+        """The paper's Query phase once per distinct block of the result (S13-per-block). Per block the Auditee
+        returns (B_s, t_s, hh_s, w_x) with the Alg. 1 witness built by index_records (Ledger.query_prove builds the
+        identical one when none is cached), and the TPA checks non-membership, the identity-based tag and the
+        chameleon hash (Ledger.query_verify). A block's decision applies to every queried record in it."""
+        recs = self.redacted[: query.records]
+        blocks = sorted({s for _, s in recs})
+        saved = self._corrupt(query.tamper)
+        ck = ("per-block", query.records, tuple(sorted(query.tamper.items())))
+        cached = getattr(self, "_responses", {}).get(ck) if query.reuse_response else None
+        if cached:  # Exp. 4: same proofs again; only the auditor's verification is re-timed
+            proofs, gen_ms = cached
+        else:
+            wits = self._cached_witnesses([(i, 0) for i in blocks])
+            t0 = time.perf_counter()
+            if wits:
+                proofs = {i: (self.L.blocks[i], self.L.tags[i][0], self.L.tags[i][2], wits[i]) for i in blocks}
+            else:
+                proofs = {i: self.L.query_prove(i) for i in blocks}
+            gen_ms = (time.perf_counter() - t0) * 1000
+            if wits:  # + each witness's own measured single-core build time (index_records)
+                gen_ms += sum(self._wit[i][2] for i in blocks)
+            if query.reuse_response:
+                self.__dict__.setdefault("_responses", {})[ck] = (proofs, gen_ms)
+        t1 = time.perf_counter()
+        ok = {i: self.L.query_verify(i, proofs[i]) for i in blocks}
+        t2 = time.perf_counter()
+        self.L.tags.update(saved)
+        size = self.p.N.bit_length() // 8
+        nbytes = sum(  # pi_q = {t_s = (S, v), hh_s, w_x = (a, B, s)} per block (the data item itself excluded)
+            2 * size + 32 + (w.a.bit_length() + 7) // 8 + size + 16 * len(w.s) for _, _, _, w in proofs.values()
+        )
+        return AuditResult(
+            "ledger integrity + version freshness + chameleon hash (paper's Query, one decision per block)",
+            gen_ms,
+            (t2 - t1) * 1000,
+            nbytes,
+            {idx: ok[s] for idx, (_, s) in enumerate(recs)},
         )
 
     def teardown(self) -> None:

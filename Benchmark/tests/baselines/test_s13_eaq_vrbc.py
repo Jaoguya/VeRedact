@@ -66,3 +66,37 @@ def test_aggregated_nonmembership_and_audit(p):
     th = A.theta()  # audit_prove passes the product once per audit: the witnesses must not change
     assert all(nonmem_create(A, x, th) == nonmem_create(A, x) for x in xs[2:])
     assert nonmem_verify_agg(A, agg)
+
+
+def test_per_block_query_decides_each_block():
+    """S13-per-block (Exp. 4, #8): the paper's Query phase (Zhang et al., Query: non-membership proof, tag and
+    chameleon-hash check of ONE block) once per distinct block of the result, with the prebuilt Alg. 1
+    witnesses. One decision per block: a tampered record rejects exactly the records of its own block."""
+    import copy
+
+    from veredact_bench.data.dataset import build_dataset
+    from veredact_bench.methods.baselines.s13_eaq_vrbc.adapter import EAQVRBCScheme
+    from veredact_bench.methods.scheme import AuditQuery
+    from veredact_bench.utils.config import load
+
+    cfg = copy.deepcopy(load("smoke"))
+    cfg["dataset"]["base_transactions"] = 1024  # test fixture size, not an experiment parameter
+    ds = build_dataset(cfg, n_requests=40)
+    s = EAQVRBCScheme(cfg, per_block=True)
+    s.setup(ds)
+    for r in ds.trace:
+        s.redact([s.authorize(r)])
+    s.index_records()
+    n = 12
+    blocks = [s.redacted[i][1] for i in range(n)]
+    assert len(set(blocks)) > 1  # several blocks, so localisation is observable
+    for reuse in (False, True):
+        clean = s.audit(AuditQuery(n, reuse_response=reuse))
+        assert len(clean.accepted) == n and all(clean.accepted.values())
+        assert clean.verify_ms > 0 and clean.retrieval_ms > 0 and clean.evidence_bytes > 0
+        bad = s.audit(AuditQuery(n, tamper={1: "modified"}, reuse_response=reuse))
+        assert bad.accepted == {i: blocks[i] != blocks[1] for i in range(n)}
+        assert "per block" in bad.semantics
+    again = s.audit(AuditQuery(n))  # the tampered tag was restored after the audit
+    assert all(again.accepted.values())
+    s.teardown()

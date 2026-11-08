@@ -24,7 +24,7 @@ VARIANTS = (
     "veredact-shared-evidence",
     "veredact-per-record",
 )
-PAPER_METHODS = ("veredact", *VARIANTS, "S1", "S13", "S27", "S34", "S99")
+PAPER_METHODS = ("veredact", *VARIANTS, "S1", "S13", "S13-per-block", "S27", "S34", "S99")
 
 METHODS = {  # key -> (label, colour, line style, marker)
     "veredact": ("VeRedact-PQ", _BLUE, "-", "o"),
@@ -37,6 +37,7 @@ METHODS = {  # key -> (label, colour, line style, marker)
     "veredact-per-record": ("Per-Record", _BLUE, ":", "*"),
     "S1": ("Scheme [1]", _ORANGE, "-", "o"),
     "S13": ("Scheme [13]", _GREEN, "-", "s"),
+    "S13-per-block": ("Scheme [13], per block", _GREEN, "--", "D"),  # its Query phase once per block (Exp. 4)
     "S27": ("Scheme [27]", _VERMILION, "-", "^"),
     "S34": ("Scheme [34]", _PURPLE, "-", "D"),
     "S99": ("Scheme [39]", _SKY, "-", "v"),  # LETA, ref [39] of the blue manuscript version
