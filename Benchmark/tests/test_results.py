@@ -249,6 +249,38 @@ def test_exp1_latency_is_end_to_end_and_never_drops_unfinished_requests():
     assert pt["latency_p95_lower_bound"] and pt["latency_median_lower_bound"]
 
 
+def test_exp3_end_to_end_is_generation_plus_verification_per_query():
+    """#7 redesign: the end-to-end audit cost of a query is its response generation plus its verification, summed
+    per query (one row) before the statistics, never median + median."""
+    from veredact_bench.evaluation.summaries import _exp03
+
+    def row(gen, ver):
+        return dict(records_per_batch=64, n_Q=10, status="ok", retrieval_ms=gen, verify_ms=ver, evidence_bytes=1)
+
+    (pt,) = _exp03([row(1.0, 100.0), row(50.0, 2.0), row(3.0, 3.0)], {}).values()
+    assert pt["end_to_end_ms"]["median"] == 52.0  # per-query sums 101, 52, 6 (median + median would be 3 + 3)
+
+
+def test_exp3_figure_is_one_panel_of_end_to_end_cost(monkeypatch):
+    """#7 redesign: Fig. 5 is one panel, end-to-end audit cost per query vs n_Q at the default sharing level."""
+    from veredact_bench.reporting import figures, style
+
+    def pt(y):
+        return {"status": "ok", "end_to_end_ms": {"n": 3, "median": y}}
+
+    pts = {f"records_per_batch={r}|n_Q={n}": pt(r * n) for r in (1, 64) for n in (10, 100)}
+    fake = {k: {"points": pts} for k in ("veredact", "veredact-shared-evidence", "S13")}
+    monkeypatch.setattr(figures, "_all_metrics", lambda exp, tier: fake)
+    monkeypatch.setattr(figures, "load", lambda tier, exp: {"veredact": {"reference_batch": 64}})
+    drawn = {}
+    save = lambda fig, name, w: drawn.update({name: [[list(ln.get_ydata()) for ln in a.lines] for a in fig.axes]})
+    monkeypatch.setattr(figures, "_save", save)
+    style.apply()
+    figures.fig_exp3("smoke", [])
+    (lines,) = drawn["exp3_audit_efficiency"]
+    assert lines == [[640, 6400]] * 3  # every system at records_per_batch = 64
+
+
 def test_exp4_detection_rate_undefined_when_nothing_injected():
     from veredact_bench.evaluation.summaries import _exp04
 

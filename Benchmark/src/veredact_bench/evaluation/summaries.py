@@ -172,6 +172,12 @@ def _exp02(rows, cfg):
     }
 
 
+def _sum_ms(r, *cols):
+    """Sum of one row's timing columns, or None when any is missing (the query then has no end-to-end value)."""
+    vals = [_num(r.get(c)) for c in cols]
+    return None if any(v is None for v in vals) else sum(vals)
+
+
 def _exp03(rows, cfg):
     out = {}
     for k, rs in _group(rows, "records_per_batch", "n_Q").items():
@@ -182,6 +188,8 @@ def _exp03(rows, cfg):
             "retrieval_ms": _stats(r["retrieval_ms"] for r in ok),
             "evidence_bytes": _stats(r["evidence_bytes"] for r in ok),
             "verify_ms": _stats(r.get("verify_ms") for r in ok),
+            # #7 redesign (Fig. 5): end-to-end audit cost of each query = its generation + its verification
+            "end_to_end_ms": _stats(_sum_ms(r, "retrieval_ms", "verify_ms") for r in ok),
             # cryptographically verified evidence nodes per query (VeRedact-PQ systems; SAVER vs variants)
             **{f"nodes_{t}": _stats(r.get(f"nodes_{t}") for r in ok) for t in ("req", "auth", "trans", "cp")},
         }

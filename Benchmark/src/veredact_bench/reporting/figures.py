@@ -8,7 +8,7 @@ Schemes [1], [13], [27], [34] and LETA where they run. Fig. 5 at VeRedact-PQ's d
   Fig. 3  one panel (#5): finalized valid redactions/s vs arrival rate, 20 % invalid (stale, absent) requests
   Fig. 4  one panel (#6): complete authorization per request vs committee size n at m = reference_batch;
           schemes without a batch protocol drawn dashed
-  Fig. 5  (a) response generation, (b) response size, (c) routine verification vs returned records
+  Fig. 5  one panel (#7): end-to-end audit cost per query (generation + verification) vs returned records
   Fig. 6  (a) verification vs PQZK escalation fraction, (b) breakdown, (c) rejection / acceptance per fault class
   Fig. 7  (a) finalization / RAI-checkpoint transaction size, (b) finalization latency per validator count,
           both vs affected batches |Omega_e| (VeRedact-optimize.tex: no gas)
@@ -222,7 +222,7 @@ def fig_exp3(tier, written):
     if not ms:
         return
     cfg = load(tier, "exp03_audit_efficiency")
-    fig, (a, b, c) = _panels(3)
+    fig, (a,) = _panels(1, height_in=2.6)
     for key, m in ms.items():
         by_rpb = defaultdict(list)
         for k, v in _points(m).items():
@@ -242,19 +242,19 @@ def fig_exp3(tier, written):
             else next(iter(by_rpb))
         )
         pts = sorted(by_rpb[rpb], key=lambda p: p[0])
-        for ax, f in ((a, "retrieval_ms"), (b, "evidence_bytes"), (c, "verify_ms")):
-            ok = [(x, v) for x, v in pts if v.get(f, {}).get("n")]
-            if ok:
-                ys = [v[f]["median"] for _, v in ok]
-                style.line(ax, key, [x for x, _ in ok], ys, yerr=_ci(m, [v for _, v in ok], f, "ci95_halfwidth"))
-    a.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel="Response generation (ms)")
-    b.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel="Response size (bytes)")
-    c.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel="Verification (ms)")
-    a.sci_y = b.sci_y = c.sci_y = True
-    _tag(a, "a")
-    _tag(b, "b")
-    _tag(c, "c")
-    _legend(c)
+        f = "end_to_end_ms"  # #7: generation + verification per query; each term and the size go to the text
+        ok = [(x, v) for x, v in pts if v.get(f, {}).get("n")]
+        if ok:
+            ys = [v[f]["median"] for _, v in ok]
+            style.line(a, key, [x for x, _ in ok], ys, yerr=_ci(m, [v for _, v in ok], f, "ci95_halfwidth"))
+    a.set(
+        xscale="log",
+        yscale="log",
+        xlabel="Returned records $n_Q$",
+        ylabel="Audit cost per query (ms)\n(generation + verification)",
+    )
+    a.sci_y = True
+    _legend(a, outside=True)
     _save(fig, "exp3_audit_efficiency", written)
 
 
