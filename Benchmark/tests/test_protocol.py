@@ -536,3 +536,39 @@ def test_registry_contract_takes_one_round_signature_and_stores_the_digest():
     assert "cpDigest" in {c["name"] for c in fin["inputs"][2]["components"]}
     ev = next(x for x in abi if x.get("type") == "event" and x["name"] == "CheckpointAnchored")
     assert [i["name"] for i in ev["inputs"]] == ["b", "vb", "mr", "cpDigest"]
+
+
+# ---------------------------------------------------------------- S3b: shared nodes carried once, by id
+def test_transition_node_identity_is_computed_once_per_node(audited, monkeypatch):
+    """S3b (#7 step 3 O2): the response carries each transition node once and records reference it, so the
+    auditor computes a node's identity (which hashes the 64 KiB PQCH randomness) once per distinct node, not once
+    per record. Per-Record duplicates the evidence per record, so it hashes it per record."""
+    s = audited
+    recs = s.p.records[:24]
+    calls = []
+    real = s.p._chi_trans
+    monkeypatch.setattr(s.p, "_chi_trans", lambda rr, auth: calls.append(rr.RID) or real(rr, auth))
+    transitions = len({(r.pbrp["b"], r.v_b_new) for r in recs})
+    s.p.vcs.clear()
+    accepted, _ = audit(s, recs)
+    assert all(accepted.values()) and len(calls) == transitions < len(recs)
+    calls.clear()
+    s.p.audit_mode = "per_record"
+    try:
+        accepted, _ = audit(s, recs)
+        assert all(accepted.values()) and len(calls) == len(recs)
+    finally:
+        s.p.audit_mode = "saver"
+
+
+def test_a_record_with_its_own_copy_of_the_evidence_is_its_own_node(audited):
+    """A record whose transition evidence differs from its batch's node (e.g. an altered r_b') does not share that
+    node's identity or verdict: it is verified on its own and rejected; the node's other records stay accepted."""
+    s = audited
+    recs = s.p.records[:24]
+    shared = next(r for r in recs if sum(o.pbrp["b"] == r.pbrp["b"] and o.v_b_new == r.v_b_new for o in recs) > 1)
+    bad = copy.copy(shared)
+    bad.pbrp = dict(shared.pbrp, r_new=shared.pbrp["r_new"] + 1)
+    s.p.vcs.clear()
+    accepted, _ = audit(s, [bad if r is shared else r for r in recs])
+    assert not accepted[bad.RID] and all(ok for rid, ok in accepted.items() if rid != bad.RID)

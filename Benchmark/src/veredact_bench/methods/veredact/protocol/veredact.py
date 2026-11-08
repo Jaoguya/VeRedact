@@ -817,6 +817,28 @@ class VeRedactPQ:
             auth.gamma,
         )
 
+    @staticmethod
+    def _node_ref(rr) -> tuple:
+        """S3b: a record's reference to the transition node it depends on. The evidence store holds each node once
+        and every record of a transition points at that one object, so the reference is the node's identity: the
+        records of one transition share it, and a record carrying ANY other evidence (another record's, an older
+        one, an altered copy) references another node and is verified on its own. The scalar fields are part of
+        the reference so that two nodes can never be confused even if an object were reused."""
+        p = rr.pbrp
+        return (
+            rr.BID,
+            p["b"],
+            rr.v_b,
+            rr.v_b_new,
+            p["MR"],
+            p["MR_new"],
+            p["theta"],
+            p["xi"],
+            p["positions"],
+            id(p["CH"]),
+            id(p["r_new"]),
+        )
+
     def _pqch_batch(self, records, mode):
         """PQCH preservation for every transition node this response still has to check, in ONE matrix
         product (`PQCHSis.verify_many`) — the verification-side twin of the round-vectorised adaptation in
@@ -828,9 +850,15 @@ class VeRedactPQ:
         what a per-record `ch_verify` would have returned, and `ch_verify_many` counts one T_CH per column."""
         L, c = self.L, self.c
         chi, cols, of_record = {}, {}, {}
+        ids = {}  # S3b: the identity of each transition node carried in the response, computed once per node
         for rr in records:
             p = rr.pbrp
-            chi[rr.RID] = x = self._chi_trans(rr, self.auths[rr.BID])
+            if mode == "per_record":  # Per-Record carries (and so hashes) a full copy of the evidence per record
+                x = self._chi_trans(rr, self.auths[rr.BID])
+            else:  # the response carries each node once; a record references its node
+                k = self._node_ref(rr)
+                x = ids[k] if k in ids else ids.setdefault(k, self._chi_trans(rr, self.auths[rr.BID]))
+            chi[rr.RID] = x
             if mode == "saver" and x in self.vcs:  # reused: never re-verified, so never a column
                 continue
             key = x if mode == "saver" else rr.RID
