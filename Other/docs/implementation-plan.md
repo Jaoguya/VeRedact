@@ -39,13 +39,23 @@ No protocol change, no manuscript change, no reviewer gate. Each is one PR.
 | **S2** | Drop `h_proof = c.H(ev["proof"])` from the Phase 4 attestation check | `veredact.py` (Phase 4 `authorize`) | C_VR already binds h_i^PQ inside α_i, verified one line earlier; Phase 6 re-derives it on every escalated record | Exp. 2: −0.09 ms per request |
 | **S3a** | Key the **authorization** node's χ(v) on `(BID)` instead of a hash of C_B, R_VR and the t committee signatures | `veredact.py` (`verify_audit`, `chi_auth`) | `auth` is read from the verifier's own store by BID, so BID alone determines the evidence `_verify_auth_node` recomputes. Nothing from the response enters the key | Exp. 3/4: `committee` 555 → ~23 ms |
 | **S4** | Use the existing `PQCHSis.verify_many` for the round's transitions instead of `ch_verify` per transition | `veredact.py` (`_verify_transition_node` → collect-then-verify) | `verify_many` is already in `crypto/pqch_sis.py` and is the verification twin of the round-vectorised adaptation already documented in `experiments.md` §4 | Exp. 3/4: `state` 11.0 s → ~2.0–2.7 s (the 4× is an estimate — see §5) |
-| **S5** | Fill in `auth_cost()` in the S34 and S99 adapters | `methods/baselines/s34_rebs/adapter.py`, `s99_leta/adapter.py` | both report all-zero counters, so rule 7 is only half met | reporting only |
-| **S6** | Record `gas_used` and the per-system anchoring transaction size in Exp. 5's rows | `evaluation/experiments/exp05_blockchain_overhead.py` | the anchor already resolves both and keeps them in `_Metered.receipts`; Exp. 5 discards them | decides whether the chain is transaction- or byte-bound, which Exp. 5's whole comparison turns on |
+| ~~S5~~ | ~~Fill in `auth_cost()` in the S34 and S99 adapters~~ | — | **withdrawn, see below** | — |
+| **S6** | Record `gas_used` for both Exp. 5 transactions | `evaluation/experiments/exp05_blockchain_overhead.py`, `evaluation/summaries.py` | every Future already resolves to `(ledger_ms, gas_used)`; Exp. 5 threw the gas away with `_` | decides whether the chain is transaction- or byte/gas-bound, which Exp. 5's whole comparison turns on |
+
+**S5 withdrawn (correction to #6's step 1).** The verdict table on #6 says S34 and S99 "report all-zero
+`auth_cost()`, so rule 7 is only half met". Reading the adapters, the zeros are **deliberate and already
+documented in the code**: S34's authorization is an MA-ABE decryption (2t pairings + t GT exponentiations,
+`s34_rebs/adapter.py` `auth_cost`) and S99's per-request step is one `h0` hash check
+(`s99_leta/adapter.py:86-93`), with its only verification being one *aggregate* check per batch. Neither is a
+signature verification, a proof verification or a signature generation, which are the only things `AuthCost`
+names. So the adapters are right and the **metric's vocabulary** is what is incomplete — `AuthCost` has no
+field for pairings or for batch-level verifications. Extending it changes a column in every system's rows, so
+it is a deliberate choice for the team, not a free fix. Posted as a correction on #6.
 
 **Test for each:** S1 — a Phase 4 timing test that asserts no ledger call inside the timer. S2/S3a — existing
 fidelity tests must still reject what they rejected (a tampered evidence blob, a stale checkpoint). S4 — one
 bad transition rejects only its own records (`verify_many` returns per-column booleans). S6 — a smoke row has
-non-empty `gas` and `tx_bytes`.
+non-empty `finalize_gas`.
 
 ## 2. Protocol changes — one ✅ each before coding
 
@@ -98,7 +108,7 @@ predictions are **lower bounds** if P1 lands, and Exp. 3's sharing claim stays w
 ### Order to implement
 
 ```
-1. S1  S2  S5  S6          independent, any order, no rebases
+1. S1  S2  S6              independent, any order, no rebases
 2. S4                      batched PQCH verify      (must precede P6)
 3. S3a                     authorization chi key
 4. P7                      r_b' width               (before P3/P4)

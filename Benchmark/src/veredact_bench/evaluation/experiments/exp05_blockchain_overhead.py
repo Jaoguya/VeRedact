@@ -63,11 +63,11 @@ def run(cfg, out):
                         if not all(o.ok for o in res.outcomes):
                             raise RuntimeError(f"{key}: Exp. 5 round not executed ({res.outcomes})")
                         fin = res.finality
-                        fin_ms, _ = fin.result()
+                        fin_ms, fin_gas = fin.result()
                         records = s.p.records[-omega:]
                         s.p.index_records(records)
                         rai = s.p.pending_anchor[-1]
-                        rai_ms, _ = rai.result()
+                        rai_ms, rai_gas = rai.result()
                         out.row(
                             experiment=x["id"],
                             system=key,
@@ -78,8 +78,13 @@ def run(cfg, out):
                             checkpoints=s.p.last_exec["batches"],
                             finalize_tx_bytes=getattr(fin, "tx_bytes", ""),
                             finalize_ms=fin_ms,
+                            # gas is resolved with every receipt (evaluation/anchor.py); without it the
+                            # text cannot say whether this chain is transaction-bound or byte/gas-bound,
+                            # which is what Exp. 5's comparison with the baselines turns on
+                            finalize_gas=fin_gas if fin_gas is not None else "",
                             rai_tx_bytes=getattr(rai, "tx_bytes", ""),
                             rai_ms=rai_ms,
+                            rai_gas=rai_gas if rai_gas is not None else "",
                         )
                     out.log.info(f"  {key:28s} validators={n_val} |Omega_e|={omega} x {x['samples_per_point']}")
                 s.teardown()

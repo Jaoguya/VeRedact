@@ -217,8 +217,10 @@ def _exp05(rows, cfg):
             "checkpoints": _stats(r.get("checkpoints") for r in rs),
             "finalize_tx_bytes": _stats(r.get("finalize_tx_bytes") for r in rs),
             "finalize_ms": _stats(r.get("finalize_ms") for r in rs),
+            "finalize_gas": _stats(r.get("finalize_gas") for r in rs),
             "rai_tx_bytes": _stats(r.get("rai_tx_bytes") for r in rs),
             "rai_ms": _stats(r.get("rai_ms") for r in rs),
+            "rai_gas": _stats(r.get("rai_gas") for r in rs),
         }
         for k, rs in _group(rows, "validators", "affected_batches").items()
     }
