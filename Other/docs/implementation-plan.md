@@ -127,7 +127,7 @@ predictions are **lower bounds** if P1 lands, and Exp. 3's sharing claim stays w
 | Exp. | One panel | Config / code |
 |---|---|---|
 | 1 | finalized **valid** redactions/s vs offered load, 25–1,000 req/s | `fault_fraction` 0.20, new `fault_kinds: [stale, absent]` in `data/dataset.py`; metrics `valid_throughput_per_s`, `invalid_accepted` in `evaluation/summaries.py`; variants move to a table |
-| 2 | complete authorization per request vs committee size n ∈ {4,7,10,16,32,48,64} at m = 64 | plot `auth_complete_per_request_ms`; `systems:` drops `veredact-re-zk`; `Other/docs/experiments.md` §2–3 drop it too |
+| 2 | complete authorization per request vs committee size n ∈ {4,7,10,16,32,48,64} at m = 64 | plot `auth_with_net_per_request_ms` (crypto + committee network time, fairness fix option 1, 2026-11-08; crypto alone `auth_complete_per_request_ms` for the text); `systems:` drops `veredact-re-zk`; `Other/docs/experiments.md` §2–3 drop it too |
 | 3 | end-to-end audit cost (generation + verification) vs n_Q | `reporting/figures.py` `fig_exp3`; the other two views become a text table |
 | 4 | auditor verification vs n_Q with S13-per-block at equal granularity | already coded on `8-exp4-analysis` (adapter, registry, config, figure, 3 tests) |
 | 5 | PBN anchoring transactions per finalized redaction vs offered load | `systems:` gains the four baselines; a rate loop; `affected_batches` → {1, 8, 32, 64, 128}; new row columns (see S6) |
