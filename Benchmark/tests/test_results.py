@@ -468,6 +468,32 @@ def test_exp4_reuses_the_exp3_history(tmp_path, monkeypatch):
     assert all(p["status"] == "ok" and p["false_rejection_rate"] == 0 for p in m["points"].values())
 
 
+def test_exp4_s13_per_block_runs_on_s13s_history(tmp_path):
+    """#8: S13-per-block audits S13's own history (same history_id) and decides per block: under every fault
+    class it rejects all tampered records, and it keeps valid records of untouched blocks where S13's aggregate
+    Audit keeps none."""
+    c = _cfg(tmp_path, "exp04_verification_time")
+    c["experiment"]["systems"], c["experiment"]["n_Q"], c["experiment"]["samples_per_point"] = (
+        ["S13", "S13-per-block"],
+        [100],
+        1,
+    )
+    RUNNERS["exp04_verification_time"](c, RunWriter(c))
+    m = {
+        k: json.loads((tmp_path / "exp04_verification_time" / k / "smoke" / "metrics.json").read_text())
+        for k in c["experiment"]["systems"]
+    }
+    hid = {k: {p["history_id"] for p in m[k]["points"].values()} for k in m}
+    assert hid["S13"] == hid["S13-per-block"] and len(hid["S13"]) == 1
+    faults = [k for k in m["S13-per-block"]["points"] if "fault_kind=none" not in k]
+    assert faults
+    for k in faults:
+        per_block, whole = m["S13-per-block"]["points"][k], m["S13"]["points"][k]
+        assert per_block["status"] == "ok" and per_block["detection_rate"] == 1.0
+        assert per_block["valid_acceptance_rate"] >= whole["valid_acceptance_rate"]
+    assert any(m["S13-per-block"]["points"][k]["valid_acceptance_rate"] > 0 for k in faults)
+
+
 def test_exp3_history_not_kept_when_exp4_does_not_follow(tmp_path):
     from veredact_bench.evaluation.experiments import exp03_audit_efficiency as exp03
 

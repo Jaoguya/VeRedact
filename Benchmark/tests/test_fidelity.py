@@ -112,6 +112,16 @@ def test_audits_detect_tampering_with_their_own_granularity(cfg, ds):
         s.teardown()
 
 
+def test_s13_per_block_variant_is_registered_on_s13s_history(cfg, ds):
+    """S13-per-block (#8) is S13 with the paper's Query phase per block: made by the registry and, in Exp. 3/4,
+    run on S13's own history (HISTORY_OF), never on a history of its own."""
+    from veredact_bench.evaluation.experiments.exp03_audit_efficiency import HISTORY_OF
+
+    s = make(cfg, "S13-per-block")
+    assert s.key == "S13-per-block" and s.per_block
+    assert HISTORY_OF["S13-per-block"] == "S13"
+
+
 def test_s13_reused_audit_response_gives_the_same_decision(cfg, ds):
     """Exp. 4 verifies S13's response again instead of rebuilding it: same decisions, tampering still caught."""
     s = open_system(cfg, "S13", ds)

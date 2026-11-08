@@ -24,8 +24,9 @@ from veredact_bench.methods.scheme import AuditQuery, NotSupported
 # KEEP is set by the runner when exp04_verification_time follows in the same run.
 SHARED: dict = {}
 KEEP = False
-# audit-only variants: same Phases 3-5 as VeRedact-PQ, so they reuse its history (built or loaded once)
-HISTORY_OF = {"veredact-shared-evidence": "veredact", "veredact-per-record": "veredact"}
+# audit-only variants reuse their scheme's history (built or loaded once): VeRedact-PQ's Phases 3-5, and S13's
+# redactions for S13-per-block (same scheme, audited with the paper's Query phase per block)
+HISTORY_OF = {"veredact-shared-evidence": "veredact", "veredact-per-record": "veredact", "S13-per-block": "S13"}
 
 
 def _history_key(key, rpb, counts) -> tuple:
