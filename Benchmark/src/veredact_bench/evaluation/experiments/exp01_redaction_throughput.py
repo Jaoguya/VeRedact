@@ -88,6 +88,9 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
     )
     out.dataset(ds.dataset_id)
     s = open_system(cfg, key, ds)
+    # #9 (Fig. 7): the point's PBN load = anchoring transactions submitted after setup (count, bytes, gas)
+    anc = getattr(s, "anchor", None)
+    tx0, rc0 = (len(getattr(anc, "txlog", [])), len(anc.receipts)) if anc is not None else (0, 0)
     lock, admit, validated, revalq = RWLock(), queue.Queue(), queue.Queue(), queue.Queue()
     stamp = {r.seq: {} for r in ds.trace}
     batch_no = [0]  # executor-side batch counter (rows of one batch share batch_id / batch_adaptations)
@@ -303,6 +306,15 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             raise RuntimeError(f"{key} rate={rate} s={zipf_s}: prover host(s) {remote.lost} lost during the point")
     if sys_cpus:
         os.sched_setaffinity(0, sum(cpus.physical_cores(), []))  # setup of the next point uses every core
+    pbn_load = {"anchor_tx": "", "anchor_tx_bytes": "", "anchor_gas": ""}
+    if anc is not None:
+        txs = getattr(anc, "txlog", [])[tx0:]
+        gas = [g for _, _, g in anc.receipts[rc0:]]
+        pbn_load = {
+            "anchor_tx": len(txs),
+            "anchor_tx_bytes": sum(b for _, b in txs if b is not None),
+            "anchor_gas": sum(gas) if gas and None not in gas else "",  # in-process ledger: no gas
+        }
     s.teardown()
 
     # rows + decisions over the measurement cohort: valid requests whose ARRIVAL falls in the window
@@ -357,6 +369,7 @@ def run_point(cfg, key, rate, zipf_s, out, sweep):
             finality_ledger_ms=st.get("finality_ledger_ms", ""),
             latency_ms=(st["final"] - st["submit"]) * 1000 if "final" in st else "",
             cutoff_s=cutoff,
+            **pbn_load,  # the point's anchoring transactions, bytes and gas (same value in every row of the point)
             setup_s=s.setup_s,
             **capability_fields(s),
         )

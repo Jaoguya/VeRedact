@@ -56,33 +56,94 @@ def test_paper_artifacts_show_only_the_paper_schemes(monkeypatch):
 
 
 def test_blockchain_overhead_figure(monkeypatch, tmp_path):
-    """Fig. 7 (VeRedact-optimize.tex): (a) finalization and RAI-checkpoint transaction size vs |Omega_e| at the
-    default validator count; (b) finalization latency vs |Omega_e|, one line per validator count. No gas."""
+    """#9 redesign: Fig. 7 is one panel, PBN anchoring transactions per finalized redaction vs arrival rate, one
+    line per system, read from Exp. 1's points (the same workload; each point counts its own anchoring)."""
     from veredact_bench.reporting import figures, style
 
-    def stat(x):
-        return {"n": 3, "median": x}
-
     def fake(exp, tier):
-        pts = {
-            f"validators={n}|affected_batches={o}": {
-                "finalize_tx_bytes": stat(4000.0 * o),
-                "rai_tx_bytes": stat(300.0),
-                "finalize_ms": stat(2000.0 + n),
+        assert exp == "exp01_redaction_throughput"
+        per = {"veredact": 0.02, "S1": 1.0, "S27": 1.0}
+        return {
+            k: {
+                "points": {
+                    f"sweep=rate|rate_rps={r}|zipf_s=0.8": {"anchor_tx_per_finalized": v, "finalized_all": 9}
+                    for r in (25, 100)
+                }
             }
-            for n in (4, 7)
-            for o in (1, 8)
+            for k, v in per.items()
         }
-        return {"veredact": {"points": pts}}
 
     monkeypatch.setattr(figures, "_all_metrics", fake)
     monkeypatch.setattr(figures, "OUT", tmp_path)
-    monkeypatch.setattr(figures, "load", lambda tier, exp: {"ledger": {"validators": 7}})
+    monkeypatch.setattr(figures, "load", lambda tier, exp: {"experiment": {"rates": [25, 100]}})
     drawn = {}
-    monkeypatch.setattr(figures, "_save", lambda fig, name, w: drawn.update({name: [len(a.lines) for a in fig.axes]}))
+    save = lambda fig, name, w: drawn.update({name: [[list(ln.get_ydata()) for ln in a.lines] for a in fig.axes]})
+    monkeypatch.setattr(figures, "_save", save)
     style.apply()
     figures.fig_exp5("smoke", [])
-    assert drawn["exp5_blockchain_overhead"] == [2, 2]
+    (lines,) = drawn["exp5_blockchain_overhead"]
+    assert sorted(lines) == [[0.02, 0.02], [1.0, 1.0], [1.0, 1.0]]
+
+
+def test_anchor_logs_every_submitted_transaction_size():
+    """#9: every anchor keeps (op, size) of each submitted transaction, so Exp. 1 can count a point's PBN load."""
+    from veredact_bench.evaluation.anchor import InProcessAnchor
+
+    a = InProcessAnchor()
+    a.submit("baseline_redaction", commit=b"x" * 32)
+    a.submit("rai_checkpoint", epoch=1, cp=b"y" * 32)
+    assert a.txlog == [("baseline_redaction", 32), ("rai_checkpoint", 64)]
+
+
+def test_exp1_point_records_its_anchoring_load(tmp_path):
+    """#9: each Exp. 1 point records the anchoring transactions (count, bytes, gas) submitted after setup; a
+    baseline writes one ledger transaction per executed redaction."""
+    import csv
+
+    from veredact_bench.evaluation.experiments.exp01_redaction_throughput import run_point
+
+    cfg = _cfg(tmp_path, "exp01_redaction_throughput")
+    cfg["experiment"].update(warmup_s=0, duration_s=1, drain_s=2, requester_cores=0, fault_fraction=0.0)
+    out = RunWriter(cfg)
+    assert out.begin("S27")
+    run_point(cfg, "S27", 20, 0.8, out, "rate")
+    out.end()
+    with open(tmp_path / "exp01_redaction_throughput" / "S27" / "smoke" / "rows.csv") as f:
+        rows = list(csv.DictReader(f))
+    finalized = sum(r["status"] == "finalized" for r in rows)
+    assert finalized and {r["anchor_tx"] for r in rows} == {str(finalized)}
+    assert int(rows[0]["anchor_tx_bytes"]) > 0
+
+
+def test_exp1_anchoring_load_per_finalized_redaction():
+    """#9: metrics.json divides a point's anchoring transactions, bytes and gas by its finalized redactions (any
+    request the scheme executed, valid or not: each one occupied the ledger)."""
+    from veredact_bench.evaluation.summaries import _exp01
+
+    def row(seq, fault, status):
+        return dict(
+            sweep="rate",
+            rate_rps=100,
+            zipf_s=0.8,
+            seq=seq,
+            in_window=1,
+            fault=fault,
+            status=status,
+            batch_id=1,
+            batch_adaptations=1,
+            submit_s=20.0,
+            latency_ms=1_000 if status == "finalized" else "",
+            arrival_s=20.0,
+            anchor_tx=2,
+            anchor_tx_bytes=8000,
+            anchor_gas=600,
+        )
+
+    rows = [row(1, "", "finalized"), row(2, "", "finalized"), row(3, "stale", "finalized"), row(4, "", "rejected")]
+    (pt,) = _exp01(rows, {"experiment": {"duration_s": 60, "warmup_s": 10}}).values()
+    assert pt["finalized_all"] == 3
+    assert abs(pt["anchor_tx_per_finalized"] - 2 / 3) < 1e-9
+    assert abs(pt["anchor_bytes_per_finalized"] - 8000 / 3) < 1e-9 and abs(pt["anchor_gas_per_finalized"] - 200) < 1e-9
 
 
 def test_exp1_adaptations_count_every_finalized_redaction():

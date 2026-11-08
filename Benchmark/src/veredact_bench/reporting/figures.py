@@ -10,8 +10,8 @@ Schemes [1], [13], [27], [34] and LETA where they run. Fig. 5 at VeRedact-PQ's d
           schemes without a batch protocol drawn dashed
   Fig. 5  one panel (#7): end-to-end audit cost per query (generation + verification) vs returned records
   Fig. 6  (a) verification vs PQZK escalation fraction, (b) breakdown, (c) rejection / acceptance per fault class
-  Fig. 7  (a) finalization / RAI-checkpoint transaction size, (b) finalization latency per validator count,
-          both vs affected batches |Omega_e| (VeRedact-optimize.tex: no gas)
+  Fig. 7  one panel (#9): PBN anchoring transactions per finalized redaction vs arrival rate, every system,
+          from Exp. 1's points; bytes, gas and the |Omega_e| sweep go to the text
 No other figure is drawn: only what the manuscript shows.
 """
 
@@ -292,31 +292,32 @@ def fig_exp4(tier, written):
 
 
 def fig_exp5(tier, written):
-    """(a) size of the redaction-finalization transaction (Phase 5) and of the RAI-checkpoint transaction (Phase 6,
-    dashed) vs |Omega_e| at the default validator count; (b) submission -> QBFT finalization latency of the
-    finalization transaction vs |Omega_e|, one line per validator count."""
-    ms = metrics("exp05_blockchain_overhead", tier)
-    if "veredact" not in ms:
+    """One panel (#9 redesign): PBN anchoring transactions per finalized redaction vs arrival rate, one line per
+    system. Read from Exp. 1's points: the same workload, each point counting the anchoring transactions it
+    submitted after setup. Bytes and gas per redaction (Exp. 1 metrics) and the |Omega_e| sweep of the
+    finalization transaction (Exp. 5 metrics) go to the text."""
+    ms = metrics("exp01_redaction_throughput", tier)
+    if not ms:
         return
-    v0 = float(load(tier, "exp05_blockchain_overhead")["ledger"]["validators"])
-    pts = _points(ms["veredact"])
-    fig, (a, b) = _panels(2, height_in=2.1)
-    _, col, _, mk = style.METHODS["veredact"]
-    base = sorted((k[1], v) for k, v in pts.items() if k[0] == v0)
-    for f, ls, lab in (("finalize_tx_bytes", "-", "redaction finalization"), ("rai_tx_bytes", "--", "RAI checkpoint")):
-        series = [(x, v[f]["median"] / 1024) for x, v in base if v[f].get("n")]
-        if series:
-            a.plot(*zip(*series), color=col, linestyle=ls, marker=mk, label=lab)
-    shades = ("#56B4E9", "#0072B2", "#003F63", "#000000")
-    for i, n in enumerate(sorted({k[0] for k in pts})):
-        series = [(k[1], v["finalize_ms"]["median"] / 1000) for k, v in sorted(pts.items()) if k[0] == n]
-        b.plot(*zip(*series), color=shades[i % len(shades)], marker=mk, label=f"{int(n)} validators")
-    a.set(xscale="log", xlabel="Affected batches $|\\Omega_e|$", ylabel="Transaction size (KiB)")
-    b.set(xscale="log", xlabel="Affected batches $|\\Omega_e|$", ylabel="Finalization latency (s)")
-    _tag(a, "a")
-    _tag(b, "b")
-    a.legend(frameon=False)
-    b.legend(frameon=False)
+    want = set(load(tier, "exp01_redaction_throughput")["experiment"]["rates"])
+    fig, (a,) = _panels(1, height_in=2.6)
+    f = "anchor_tx_per_finalized"
+    for key, m in ms.items():
+        rate = sorted((k[1], v) for k, v in _points(m).items() if k[0] == "rate" and k[1] in want)
+        ok = [(x, v[f]) for x, v in rate if v.get(f) is not None and v.get("finalized_all")]
+        if ok:
+            style.line(a, key, [x for x, _ in ok], [y for _, y in ok])
+    a.set(
+        xscale="log",
+        yscale="log",
+        xlabel="Arrival rate (req/s)",
+        ylabel="Anchoring transactions\nper finalized redaction",
+    )
+    a.set_xticks(sorted(want))
+    a.xaxis.set_minor_locator(ticker.NullLocator())
+    a.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
+    a.fixed_xticks = True
+    _legend(a, outside=True)
     _save(fig, "exp5_blockchain_overhead", written)
 
 

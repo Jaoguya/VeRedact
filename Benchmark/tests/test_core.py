@@ -50,6 +50,12 @@ def test_exp2_config_follows_the_redesign():
     assert c["veredact"]["reference_batch"] in x["batch_sizes"] and 1 in x["batch_sizes"]
 
 
+def test_exp5_config_covers_the_operating_range():
+    """#9 redesign: the |Omega_e| sweep (text table) covers the 32-75 batches per round Exp. 1 produces."""
+    x = load("experiment", "exp05_blockchain_overhead")["experiment"]
+    assert x["affected_batches"] == [1, 8, 32, 64, 128]
+
+
 def test_merkle_proofs_and_bimc():
     leaves = [os.urandom(32) for _ in range(37)]
     t = MerkleTree(leaves)

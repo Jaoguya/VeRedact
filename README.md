@@ -26,7 +26,7 @@ One command per paper artifact (`TIER=experiment` for the paper's numbers):
 | Fig. 4 authorization latency | `make eval EXP=exp02_authorization_latency` then `make figures` | `Result/Pdf/exp2_authorization_latency.pdf` |
 | Fig. 5 audit efficiency | `make eval EXP=exp03_audit_efficiency` then `make figures` | `Result/Pdf/exp3_audit_efficiency.pdf` |
 | Fig. 6 verification time | `make eval EXP=exp04_verification_time` then `make figures` | `Result/Pdf/exp4_verification_time.pdf` |
-| Fig. 7 blockchain finalization overhead | `make eval EXP=exp05_blockchain_overhead` then `make figures` | `Result/Pdf/exp5_blockchain_overhead.pdf` |
+| Fig. 7 blockchain finalization overhead | `make eval EXP=exp01_redaction_throughput` (the figure counts each point's anchoring, #9) and `make eval EXP=exp05_blockchain_overhead` (text table), then `make figures` | `Result/Pdf/exp5_blockchain_overhead.pdf` |
 | Each baseline's own published figures | `make paper-runs` | `Benchmark/results/reproduction/<S id>/*.csv` |
 
 A finished (experiment, method, tier) is skipped on re-run; `make eval ... FORCE=--force` re-runs it.

@@ -5,7 +5,9 @@ For each validator count (experiment.validators) and number of affected transact
 batches (CORA/SFMR: one checkpoint A_b' per affected batch), then the round's records are indexed in RAI.
 Measured per round: the size of the submitted redaction-finalization transaction (Phase 5: the |Omega_e| updated
 checkpoints and the SA-RLI state, committed atomically) and the time from its submission to QBFT finalization;
-likewise for the RAI checkpoint anchoring CP_{e_A}^A (Phase 6). No gas: the PBN is permissioned.
+likewise for the RAI checkpoint anchoring CP_{e_A}^A (Phase 6), with the gas of both transactions.
+#9 redesign: these rows feed the text table; Fig. 7 (anchoring transactions per finalized redaction, every
+system) is drawn from Exp. 1's points, which record their own anchoring load (anchor_tx, _bytes, _gas).
 Besu backend: the QBFT network is restarted with each validator count (deploy/besu/start_besu_network.sh,
 VRPQ_VALIDATORS) and left at ledger.validators afterwards. In-process ledger (smoke): the count is recorded only
 and the size is the anchored payload's length (no signed transaction exists).

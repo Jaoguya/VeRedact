@@ -42,6 +42,8 @@ class _Metered:
         if op.startswith("baseline_redaction"):
             self.base_count += 1  # BaselineRedactionLog record id = submission order (one sender, ordered nonces)
         fut = self._submit(op, **fields)
+        # (op, size of the submitted transaction): Exp. 1 counts each point's PBN load from it (#9)
+        self.__dict__.setdefault("txlog", []).append((op, getattr(fut, "tx_bytes", None)))
         fut.add_done_callback(lambda f, op=op: f.exception() is None and self.receipts.append((op, *f.result())))
         return fut
 

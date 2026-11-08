@@ -53,6 +53,7 @@ def _exp01(rows, cfg):
         win = [r for r in rs if str(r["in_window"]) == "1" and not r.get("fault")]
         bad = [r for r in rs if str(r["in_window"]) == "1" and r.get("fault")]  # injected invalid requests (#5)
         bad_ok = sum(r["status"] == "finalized" for r in bad)
+        executed = sum(r["status"] == "finalized" for r in rs)  # any request the scheme executed and finalized
         fin = [r for r in win if r["status"] == "finalized"]
         # Fig. 3(c) counts PQCH adaptations over EVERY finalized redaction of the point (warm-up included): the
         # count does not depend on arrival time, and a scheme saturated at zipf_rate (S13, S34 at the
@@ -86,6 +87,10 @@ def _exp01(rows, cfg):
             "invalid_offered": len(bad),
             "invalid_accepted": bad_ok,
             "invalid_accepted_rate": M.rate(bad_ok, len(bad)) if bad else None,
+            # #9 (Fig. 7): the point's PBN load per finalized redaction. Every executed request counts, valid or
+            # not (each occupied the ledger); the totals are the same in every row of the point
+            "finalized_all": executed,
+            **_pbn_load(rs[0], executed),
             # end-to-end (arrival -> finalized) over the window's arrivals; unfinished = lower bound (_e2e_latency_ms)
             "latency_ms": _stats(e2e) | ({"p95_ci95": M.bootstrap_ci95_halfwidth(e2e, 95)} if e2e else {}),
             "latency_censored_fraction": M.rate(censored, len(e2e)),
@@ -99,6 +104,15 @@ def _exp01(rows, cfg):
             "affected_batches_per_1000": _per_round_k(rounds, "batch_batches", len(done)),  # |Omega_e|
             "frontier_nodes_per_1000": _per_round_k(rounds, "batch_frontier", len(done)),  # F_e
         }
+    return out
+
+
+def _pbn_load(r, n_executed: int) -> dict:
+    """Anchoring transactions, bytes and gas of one Exp. 1 point per finalized redaction (None if not recorded)."""
+    out = {}
+    for col, name in (("anchor_tx", "tx"), ("anchor_tx_bytes", "bytes"), ("anchor_gas", "gas")):
+        v = _num(r.get(col))
+        out[f"anchor_{name}_per_finalized"] = v / n_executed if v is not None and n_executed else None
     return out
 
 
