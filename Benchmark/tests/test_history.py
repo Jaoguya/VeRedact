@@ -104,6 +104,12 @@ def test_veredact_auditor_reads_the_anchored_checkpoints(cfg, ds):
     acc = _audit(s)
     assert not all(acc.values()) and any(acc.values())
     a._cps[(b, v)] = mr
+    d = a._cpd[(b, v)]
+    a._cpd[(b, v)] = b"" * 32  # P3: the chain holds another checkpoint digest h_b^CP: those records are rejected
+    acc = _audit(s)
+    assert not all(acc.values()) and any(acc.values())
+    a._cpd[(b, v)] = d
+    assert all(_audit(s).values())
     s.teardown()
 
 
@@ -127,7 +133,7 @@ def test_besu_checkpoint_read_from_anchoring_blocks_equals_full_scan(cfg):
     full = {}
     for lo in range(a._from_block, a.w3.eth.block_number + 1, 5000):
         for e in a.reg.events.CheckpointAnchored.get_logs(from_block=lo, to_block=lo + 4999):
-            full[(int(e.args.b), int(e.args.vb))] = bytes(e.args.mr)
+            full[(int(e.args.b), int(e.args.vb))] = (bytes(e.args.mr), bytes(e.args.cpDigest))
     assert any(v for _, v in keys) and a.read("checkpoint_history", keys=keys) == {k: full[k] for k in keys}
     assert all(_audit(s).values()) and not all(_audit(s, tamper={0: "modified"}).values())
     s.teardown()

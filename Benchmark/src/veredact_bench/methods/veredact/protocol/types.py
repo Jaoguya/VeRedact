@@ -43,6 +43,17 @@ class Checkpoint:  # A_b
     # h_b^snap = H(enc(State_b)): the snapshot half of h_i^st, so a request can be checked against an
     # earlier anchored checkpoint of its batch without recomputing it (FreshLeaf, condition 3)
     snap: bytes = b""
+    # P3: h_b^CP = H_V(CP || b || CH_b || MR_b || H(r_b) || R_RLI || v_RLI || e || v_b || ts_b), anchored on the PBN
+    # beside MR_b; the auditor recomputes it from the fields and compares it with the chain
+    digest: bytes = b""
+    # P4 (RoundCheckpoint): a checkpoint finalized in Phase 5 has no signature of its own (sigma = b""); the
+    # checkpoint authority signs R_e^CP, the Merkle root of the round's digests, once. Phase 2 checkpoints keep
+    # their own sigma and no round fields.
+    round_bid: bytes = b""
+    round_root: bytes = b""
+    round_sigma: bytes = b""
+    round_path: list = field(default_factory=list)  # Pi_b^CP: h_b^CP under R_e^CP
+    round_index: int = -1
 
 
 @dataclass

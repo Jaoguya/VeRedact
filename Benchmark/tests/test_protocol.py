@@ -464,3 +464,75 @@ def test_saver_verifies_each_window_signature_once_per_query(audited):
         assert all(accepted.values()) and nodes["win"] == len(recs)
     finally:
         s.p.audit_mode = "saver"
+
+
+# ---------------------------------------------------------------- P3 + P4: anchored digest, one round signature
+def _round(cfg, ds, nb=3):
+    """One authorization round that redacts one transaction in each of nb distinct batches."""
+    s = open_system(cfg, "veredact", ds)
+    reqs = [request_for(ds, s, b) for b in range(nb)]
+    auths = [validated(s, r) for r in reqs]
+    res = s.redact(auths)
+    assert all(o.ok for o in res.outcomes)
+    return s, reqs
+
+
+def test_round_checkpoint_is_signed_once_for_every_affected_batch(cfg, ds):
+    """P4 (#9 RoundCheckpoint): the finalized A_b' of a round carry no signature of their own; the checkpoint
+    authority signs the Merkle root of their digests h_b^CP once, and each digest is a member of that root."""
+    from veredact_bench.methods.veredact.ds.merkle import verify_proof
+
+    s, reqs = _round(cfg, ds)
+    L, c = s.ledger, s.crypto
+    cps = [L.checkpoints[L.txs[r.tid].b] for r in reqs]
+    assert all(cp.sigma == b"" and cp.v_b == 1 for cp in cps)
+    assert len({(cp.round_root, cp.round_sigma) for cp in cps}) == 1
+    cp0 = cps[0]
+    assert c.verify(L.cp.pk, c.HV("CP-ROUND", cp0.round_bid, cp0.round_root, cp0.v_RLI), cp0.round_sigma)
+    for cp in cps:
+        assert cp.digest == L.checkpoint_digest(cp)
+        assert verify_proof(cp.round_root, cp.digest, cp.round_index, cp.round_path)
+    s.teardown()
+
+
+def test_finalization_transaction_carries_one_signature_and_the_digests(cfg, ds):
+    """P4: the Phase 5 finalization transaction carries the round root and ONE signature (not one per batch),
+    and P3: the digest h_b^CP of every new checkpoint, which the chain stores beside MR_b'."""
+    s, reqs = _round(cfg, ds)
+    s.p.flush_anchors()
+    op, f = next((op, f) for op, f in s.anchor.oplog if op == "redaction_finalization")
+    assert "sigs" not in f and isinstance(f["round_sig"], bytes) and len(f["digests"]) == len(f["batches"]) == 3
+    chain = s.anchor.read("checkpoint_history", keys={(b, v) for b, v in zip(f["batches"], f["vbs"])})
+    assert all(chain[(b, v)] == (s.ledger.checkpoints[b].MR, s.ledger.checkpoints[b].digest) for b, v in chain)
+    s.teardown()
+
+
+def test_audit_checks_the_checkpoint_against_its_anchored_digest(audited):
+    """P3: the response carries the checkpoint fields but no checkpoint signature; the auditor recomputes h_b^CP
+    and compares it with the chain. An altered field fails, only for the records of that checkpoint."""
+    s = audited
+    recs = s.p.records[:16]
+    s.p.vcs.clear()
+    accepted, _ = audit(s, recs)
+    assert all(accepted.values())
+    bad = copy.copy(recs[2])
+    bad.pbrp = dict(bad.pbrp, cp=dataclasses.replace(bad.pbrp["cp"], ts=bad.pbrp["cp"].ts + 1))
+    s.p.vcs.clear()
+    accepted, _ = audit(s, recs[:2] + [bad] + recs[3:])
+    assert not accepted[bad.RID] and all(ok for rid, ok in accepted.items() if rid != bad.RID)
+
+
+def test_registry_contract_takes_one_round_signature_and_stores_the_digest():
+    """The Solidity contract matches the protocol (compiled with the pinned solc; skipped without py-solc-x)."""
+    solcx = pytest.importorskip("solcx")
+    from veredact_bench.utils.config import REPO_ROOT
+
+    solcx.install_solc("0.8.24")
+    src = str(REPO_ROOT / "contracts" / "VeRedactRegistry.sol")
+    out = solcx.compile_files([src], output_values=["abi"], solc_version="0.8.24")
+    abi = next(v["abi"] for k, v in out.items() if k.endswith(":VeRedactRegistry"))
+    fin = next(x for x in abi if x.get("name") == "finalizeRedaction")
+    assert [i["type"] for i in fin["inputs"]] == ["bytes32", "uint256[]", "tuple[]", "bytes32", "bytes"]
+    assert "cpDigest" in {c["name"] for c in fin["inputs"][2]["components"]}
+    ev = next(x for x in abi if x.get("type") == "event" and x["name"] == "CheckpointAnchored")
+    assert [i["name"] for i in ev["inputs"]] == ["b", "vb", "mr", "cpDigest"]

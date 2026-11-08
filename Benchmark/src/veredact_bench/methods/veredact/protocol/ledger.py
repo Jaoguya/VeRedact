@@ -147,7 +147,9 @@ class Ledger:
         for b in range(len(self.batches)):
             if b not in self.checkpoints:
                 self.checkpoints[b] = cp = self._checkpoint(b, R)
-                self.pending_setup.append(self.anchor.submit("batch_checkpoint", b=b, mr=cp.MR, rli=R, sig=cp.sigma))
+                self.pending_setup.append(
+                    self.anchor.submit("batch_checkpoint", b=b, mr=cp.MR, rli=R, sig=cp.sigma, digest=cp.digest)
+                )
         for f in self.pending_setup:  # setup finishes only when everything is on the ledger
             f.result()
         self.pending_setup = []
@@ -156,7 +158,9 @@ class Ledger:
         tau = self.c.PRF(self.K_idx, tx.TID)
         self.rli.put(tau, self.c.H(tau, tx.Tag, tx.b, tx.pos, tx.PID, tx.e_i, tx.I, tx.D))
 
-    def _checkpoint(self, b: int, R_RLI: bytes) -> Checkpoint:
+    def _checkpoint(self, b: int, R_RLI: bytes, sign: bool = True) -> Checkpoint:
+        """A_b. sign=True (Phase 2): the checkpoint authority signs this checkpoint; sign=False (Phase 5): it is
+        signed as part of its round (round_checkpoint, P4)."""
         bt = self.batches[b]
         ts = int(time.time())
         r_digest = self.c.H(bt.r.tobytes())  # H(r_b): hashed once here, never again per audited record
@@ -172,11 +176,27 @@ class Ledger:
             self.e,
             bt.v,
             ts,
-            self.c.sign(self.cp.sk, msg),
+            self.c.sign(self.cp.sk, msg) if sign else b"",
             r_digest,
             snap,
         )
+        cp.digest = self.checkpoint_digest(cp)
         # every anchored snapshot of this batch, newest last: FreshLeaf accepts a request validated
         # against any of the last k (the window itself is applied by VeRedactPQ, which holds k)
         self.snaps.setdefault(b, []).append((bt.v, snap))
         return cp
+
+    def checkpoint_digest(self, cp: Checkpoint) -> bytes:
+        """h_b^CP (P3): what the PBN anchors for (b, v_b) beside MR_b, and what an auditor recomputes."""
+        return self.c.HV("CP", cp.b, cp.CH, cp.MR, cp.r_digest, cp.R_RLI, cp.v_RLI, cp.e, cp.v_b, cp.ts)
+
+    def round_checkpoint(self, BID: bytes, cps: list[Checkpoint]) -> tuple[bytes, bytes]:
+        """P4 (RoundCheckpoint): the round is finalized atomically, so the checkpoint authority signs the Merkle root
+        R_e^CP of its checkpoints' digests ONCE: sigma_e^CP = Sign(sk_CP, H_V(CP-ROUND || BID || R_e^CP || v_RLI'))."""
+        tree = MerkleTree([cp.digest for cp in cps])
+        self.c.counts["T_H"] += tree.hash_ops[0]
+        sigma = self.c.sign(self.cp.sk, self.c.HV("CP-ROUND", BID, tree.root, cps[0].v_RLI))
+        for i, cp in enumerate(cps):
+            cp.round_bid, cp.round_root, cp.round_sigma = BID, tree.root, sigma
+            cp.round_path, cp.round_index = tree.proof(i), i
+        return tree.root, sigma

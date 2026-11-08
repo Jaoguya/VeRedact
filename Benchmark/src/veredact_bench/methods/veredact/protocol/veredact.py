@@ -503,10 +503,11 @@ class VeRedactPQ:
             return []
         R = L.rli.finalize()
         c.counts["T_H"] += L.rli.last_hash_ops
-        for b in {p[0] for p in prepared}:
-            L.checkpoints[b] = L._checkpoint(b, R)
-        # one anchored checkpoint per root transition (|Omega_e| with BIMC), finalized atomically
         touched = [p[0] for p in prepared]
+        for b in touched:  # Phase 5 checkpoints are signed as one round (P4), not one by one
+            L.checkpoints[b] = L._checkpoint(b, R, sign=False)
+        round_root, round_sig = L.round_checkpoint(auth.BID, [L.checkpoints[b] for b in touched])
+        # one anchored checkpoint per root transition (|Omega_e| with BIMC), finalized atomically
         self._deferred.append(
             (
                 "redaction_finalization",
@@ -516,7 +517,11 @@ class VeRedactPQ:
                     # MR_b' of each transition, as the auditor reads it
                     "mrs": [L.checkpoints[b].MR for b in touched],
                     "vbs": [L.checkpoints[b].v_b for b in touched],
-                    "sigs": [L.checkpoints[b].sigma for b in touched],
+                    # P3: h_b^CP of each new checkpoint, stored on the chain beside MR_b'
+                    "digests": [L.checkpoints[b].digest for b in touched],
+                    # P4: one checkpoint-authority signature for the whole round (validators verify it once)
+                    "round_root": round_root,
+                    "round_sig": round_sig,
                 },
                 True,
             )
@@ -613,7 +618,7 @@ class VeRedactPQ:
         rec_bytes = len(records) * 32 * 8 + sum(16 + 32 * len(a.path) for a in att)
         rec_bytes += windows * (32 + L.c.sig.sig_size)
         trans_bytes = 32 * 2 + 32 * 4  # Theta_b, Xi_b, (MR_b, MR_b', CH_b, r_b' digest)
-        cp_bytes = 8 * 4 + 32 * 3 + L.c.sig.sig_size  # A_b' fields + sigma_b'
+        cp_bytes = 8 * 4 + 32 * 4  # A_b' fields + h_b^CP; no checkpoint signature (P3: the chain is the authority)
         if self.audit_mode == "per_record":  # Per-Record: individual paths + complete evidence for every record
             paths = sum(
                 len(L.rai.shards[s].tree.proof(p)) + len(L.rai.global_tree.proof(s))
@@ -738,9 +743,10 @@ class VeRedactPQ:
                 "trans", chi[rr.RID], lambda rr=rr, auth=auth: self._verify_transition_node(rr, auth, pqch[rr.RID])
             )
             t3 = time.perf_counter()
-            mr_chain = anchored.get((p["b"], rr.v_b_new))  # MR_b' as anchored on the PBN, read in THIS audit
-            chi_cp = c.HV("VERIFY-CTX", "cp", cp.b, cp.MR, cp.v_b, cp.sigma, cp.v_RLI, mr_chain, v_cp, cp_A)
-            ok &= node("cp", chi_cp, lambda rr=rr, mr_chain=mr_chain: self._verify_checkpoint_node(rr, mr_chain))
+            # (MR_b', h_b^CP) as anchored on the PBN, read in THIS audit
+            mr_chain, d_chain = anchored.get((p["b"], rr.v_b_new), (None, None))
+            chi_cp = c.HV("VERIFY-CTX", "cp", cp.b, cp.MR, cp.v_b, cp.digest, cp.v_RLI, mr_chain, d_chain, v_cp, cp_A)
+            ok &= node("cp", chi_cp, lambda rr=rr, m=mr_chain, d=d_chain: self._verify_checkpoint_node(rr, m, d))
             t4 = time.perf_counter()
             if rr.RID in deep:  # dependency-selective escalation: x_i, pi_i^PQ for this request only
                 nodes["zk"] += 1
@@ -848,12 +854,17 @@ class VeRedactPQ:
         xi = c.HV("EXEC-EVIDENCE", theta, cp.CH, cp.v_b, cp.R_RLI, cp.v_RLI)
         return set(p["positions"]) <= authorized and theta == p["theta"] and xi == p["xi"] and pqch_ok
 
-    def _verify_checkpoint_node(self, rr, mr_chain) -> bool:
-        """The checkpoint authority's PQ signature on the finalized A_b' and its MR_b' as anchored on the PBN."""
-        L, c = self.L, self.c
+    def _verify_checkpoint_node(self, rr, mr_chain, d_chain) -> bool:
+        """P3: the finalized A_b' against the PBN. Its digest h_b^CP, recomputed from the returned fields, must equal
+        the digest anchored for (b, v_b'), and its MR_b' the anchored MR_b'. No checkpoint signature is checked
+        here: the validators verified the round signature sigma_e^CP once before anchoring (P4)."""
         cp, p = rr.pbrp["cp"], rr.pbrp
-        msg = c.H(cp.b, cp.CH, cp.MR, cp.r_digest, cp.R_RLI, cp.v_RLI, cp.e, cp.v_b, cp.ts)
-        return cp.MR == p["MR_new"] == mr_chain and cp.v_b == rr.v_b_new and c.verify(L.cp.pk, msg, cp.sigma)
+        self.c.counts["T_H"] += 1
+        return (
+            cp.MR == p["MR_new"] == mr_chain
+            and cp.v_b == rr.v_b_new
+            and self.L.checkpoint_digest(cp) == cp.digest == d_chain
+        )
 
 
 def _raw(x) -> bytes:
