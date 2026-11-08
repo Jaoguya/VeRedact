@@ -157,13 +157,15 @@ the rerun investigate every difference rather than tuning it away.
 
 | Exp. | Metric | 3 Nov | predicted after |
 |---|---|---:|---:|
-| 2 | complete authorization per request, n = 7, m = 64 | 1.457 ms | 1.27 ms (S1+S2+P2), **0.63 ms** with P5 |
-| 2 | committee size where Scheme [1] crosses us | n ≈ 30 | n ≈ 10–13 with P5 |
+| 2 | complete authorization per request (crypto), n = 7, m = 64 | 1.457 ms | 1.27 ms (S1+S2+P2), **0.63 ms** with P5; the committee term drops to the slowest member + serial approval checks (fairness fix) |
+| 2 | Fig. 4 line: crypto + committee network time, n = 7, m = 64 | — (not recorded) | VeRedact-PQ ≈ crypto + 10/64 ≈ 0.16 ms; Scheme [1] ≈ its crypto + 10 ms: **below Scheme [1] at every n by ≈ the 10 ms delay** (set by `message_delay_ms`; we win only while one round costs more than our crypto gap, ≈ 0.9 ms on 3 Nov) |
+| 2 | committee size where Scheme [1] crosses us, crypto alone | n ≈ 30 | **superseded** (fairness fix): Scheme [1]'s t node checks now cost one member, so its crypto no longer grows with t; likely no crossing on crypto alone (text table) |
 | 3 | auditor verification, n_Q = 10^4 | 14,561 ms | ~2,350 ms (S3+S4+P2+P3), **+8,100 ms if P6 lands** |
 | 3 | response size, n_Q = 10^4 | 67.1 MB | ~11.6 MB |
 | 5 | finalization transaction at \|Ω_e\| = 32 | 119,120 B | **19,086 B** |
 | 5 | on-chain bytes per redaction | 1,860 B | **304 B** |
-| 1 | throughput above 250 req/s | falls to ~110/s | rises then plateaus (P1) |
+| 1 | VeRedact-PQ throughput above 250 req/s | falls to ~110/s | rises then plateaus (P1) |
+| 1 | Scheme [27] / [1] valid throughput at saturation | ~137–148 /s / ~60 /s | [27] ≈ 126/s (chain-bound, executes stale); [1] ≈ 54/s per #5, **may rise** now that its node checks run in parallel and its committee rounds are pipelined (`baseline_inflight`) |
 
 Confidence: highest for the Exp. 5 figures (the ABI model already reproduces every measured point exactly);
 lowest for S4's 4× batching factor, which alone moves Exp. 3's total between ~1.9 s and ~5 s.
