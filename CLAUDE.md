@@ -1,6 +1,6 @@
 # VeRedact-PQ — instructions for agents
 
-Team (GitHub): **jaoguya** (repo owner, AWS approver), **Ppdfd**, **yewza101**, **PopRangsimann**. You work
+Team (GitHub): **jaoguya** (repo owner), **Ppdfd**, **yewza101**, **PopRangsimann**. You work
 for one of them, your **owner**; ask for their GitHub username once if you do not know it.
 
 Read before working: `README.md` (latest full-run results, caveats, how to check them), `Other/docs/experiments.md`
@@ -10,9 +10,9 @@ on the board https://github.com/users/Ppdfd/projects/1 (Todo · In progress · B
 ## Guardrails
 
 - **AWS**: any action that creates, starts, stops, changes or deletes something on AWS runs only after
-  **jaoguya** has written a yes for that exact action as a comment on its issue. Check it with
-  `gh issue view <n> --comments`: the comment's author is `jaoguya` and it names the action. One yes covers one
-  action. Without it, add the label `needs-aws` and ask jaoguya on the issue.
+  a team member (jaoguya, Ppdfd, yewza101 or PopRangsimann) has written a yes for that exact action as a comment
+  on its issue. Check it with `gh issue view <n> --comments`: the comment's author is one of them and it names the
+  action. One yes covers one action. Without it, add the label `needs-aws` and ask the team on the issue.
 - **Honest numbers**: report and plot only values read from full-run results files (`metrics.json`). Smoke runs
   check code paths; their numbers are never results.
 - **Fair baselines**: baselines follow their papers. A PR that changes

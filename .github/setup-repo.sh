@@ -5,7 +5,7 @@ REPO=Jaoguya/VeRedact
 
 label() { gh label create "$1" --repo "$REPO" --color "$2" --description "$3" --force; }
 label blocked     B60205 "Waiting on an answer; see the latest comment"
-label needs-aws   FBCA04 "Needs jaoguya's yes (issue comment) before any AWS action"
+label needs-aws   FBCA04 "Needs a team member's yes (issue comment) before any AWS action"
 label manuscript  5319E7 "Changes Overleaf/"
 label baseline    C5DEF5 "Changes a baseline implementation"
 for e in 1 2 3 4 5; do label "exp$e" 1D76DB "Experiment $e"; done

@@ -20,7 +20,7 @@ body:
     id: aws
     attributes:
       label: Needs AWS?
-      description: If yes, jaoguya must approve each AWS action as a comment on this issue.
+      description: If yes, a team member must approve each AWS action as a comment on this issue.
       options:
         - "No"
         - "Yes"
