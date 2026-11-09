@@ -8,4 +8,4 @@ Closes #
 - [ ] Changes a baseline (`methods/baselines/`)? Paper section cited here: 
 - [ ] Any numbers or figures in this PR come from a full run (release tag: `run-...`), not a smoke run
 - [ ] Changes `Overleaf/`? Section and reason stated above
-- [ ] No AWS action taken without jaoguya's yes on the issue
+- [ ] Every AWS action had its owner's yes and is logged on its issue
