@@ -9,10 +9,11 @@ instance_type = "r7i.4xlarge"    # veredact-bench only (collects, draws); the ru
 volume_gb = 100
 # Ubuntu 24.04 LTS, resolved at launch from the public SSM parameter (no hard-coded AMI id)
 ami_ssm_parameter = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
-key_name = "veredact-bench"      # EC2 key pair; created by provision_ec2.sh if missing (saved to ~/.ssh/)
+key_name = "veredact-ppdfd"      # EC2 key pair; created by provision_ec2.sh if missing (saved to ~/.ssh/)
+                                 #   (veredact-bench until 2026-11-09: its .pem is only on jaoguya's laptop, #13)
 ssh_user = "ubuntu"
 ssh_cidr = "auto"                # "auto" = your current public IP/32 only
-name_tag = "veredact-bench"
+name_tag = "veredact-bench-ppdfd"  # server + security groups (veredact-bench until 2026-11-09, #13)
 
 [repo]
 url = "https://github.com/Jaoguya/VeRedact.git"

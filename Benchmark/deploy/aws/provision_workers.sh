@@ -37,6 +37,7 @@ launch() {   # launch <count>: ids of <count> workers in the first subnet (zone 
             --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" --subnet-id "$SN" \
             --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$AWS_VOLUME_GB,VolumeType=gp3}" \
             --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
+            "ResourceType=volume,Tags=[{Key=Name,Value=$NAME}]" \
             --query 'Instances[].InstanceId' --output text) && { echo "$SN: $ids" >&2; echo "$ids"; return; }
     echo "no capacity for $1 x $RUN_WORKER_TYPE in $SN" >&2
   done

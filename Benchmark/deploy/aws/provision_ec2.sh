@@ -47,6 +47,7 @@ if [[ -z "$IID" || "$IID" == None ]]; then
           --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" \
           --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$AWS_VOLUME_GB,VolumeType=gp3}" \
           --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$AWS_NAME_TAG}]" \
+          "ResourceType=volume,Tags=[{Key=Name,Value=$AWS_NAME_TAG}]" \
           --query 'Instances[0].InstanceId' --output text)
 else
   run "${A[@]}" ec2 start-instances --instance-ids "$IID" >/dev/null || true

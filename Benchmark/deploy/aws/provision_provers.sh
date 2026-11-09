@@ -52,6 +52,7 @@ for POOL in "${POOLS[@]}"; do
            --key-name "$AWS_KEY_NAME" --security-group-ids "$SG" --subnet-id "$SUBNET" \
            --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$VOL,VolumeType=gp3,DeleteOnTermination=true}" \
            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
+           "ResourceType=volume,Tags=[{Key=Name,Value=$NAME}]" \
            --query 'Instances[].InstanceId' --output text) || { id=""; break; }
     IIDS="$IIDS $id"
   done
