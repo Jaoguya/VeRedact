@@ -153,9 +153,9 @@ def _saturated(ax, key, xs):
 
 
 def _rate_axis(ax, rates):
-    """x axis of Figs. 3 and 7: the offered load, a tick at every configured rate. Close rates (750, 1000) sit
+    """x axis of Figs. 3 and 7: the arrival rate, a tick at every configured rate. Close rates (750, 1000) sit
     near each other on the log axis, so the labels are tilted to stay readable."""
-    ax.set_xlabel("Offered load (requests/s)")
+    ax.set_xlabel("Arrival rate (req/s)")
     ax.set_xticks(sorted(rates))
     ax.xaxis.set_minor_locator(ticker.NullLocator())
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
@@ -183,7 +183,7 @@ def fig_exp1(tier, written):
             ys = [v["throughput_per_s"] for v in vs]
             style.line(a, key, [x for x, _ in ok], ys, yerr=_ci(m, vs, "throughput_per_s_ci95"))
         _saturated(a, key, [x for x, v in rate if not v["completed_in_window"]])
-    a.set(xscale="log", yscale="log", ylabel="Throughput\n(valid redactions finalized/s)")
+    a.set(xscale="log", yscale="log", ylabel="Valid redactions\nfinalized per second")
     _rate_axis(a, want)
     a.sci_y = True  # 10^x labels: one decade per tick, schemes stay apart
     if any(ln.get_marker() == "x" for ln in a.lines):  # explain the x only when one is drawn
