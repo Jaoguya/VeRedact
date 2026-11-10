@@ -9,10 +9,11 @@ on the board https://github.com/users/Ppdfd/projects/1 (Todo · In progress · B
 
 ## Guardrails
 
-- **AWS**: any action that creates, starts, stops, changes or deletes something on AWS runs only after
-  a team member (jaoguya, Ppdfd, yewza101 or PopRangsimann) has written a yes for that exact action as a comment
-  on its issue. Check it with `gh issue view <n> --comments`: the comment's author is one of them and it names the
-  action. One yes covers one action. Without it, add the label `needs-aws` and ask the team on the issue.
+- **AWS**: any action that creates, starts, stops, changes or deletes something on AWS runs only after a yes for
+  that exact action, with its estimated cost shown: your **owner** says yes in chat, or a team member (jaoguya,
+  Ppdfd, yewza101 or PopRangsimann) writes a yes naming the action as a comment on its issue (check with
+  `gh issue view <n> --comments`). One yes covers one action. Then post on its issue what you did: resource IDs,
+  start and stop times, cost. Without a yes, add the label `needs-aws` and ask your owner or the team on the issue.
 - **Honest numbers**: report and plot only values read from full-run results files (`metrics.json`). Smoke runs
   check code paths; their numbers are never results.
 - **Fair baselines**: baselines follow their papers. A PR that changes

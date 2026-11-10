@@ -45,7 +45,8 @@ TIER=smoke Benchmark/deploy/aws/provision_workers.sh 13 && TIER=smoke Benchmark/
 Benchmark/deploy/aws/provision_workers.sh 13     # the full run ("start full run")
 Benchmark/deploy/aws/launch_reps.sh 3            # prover first, then every part, detached; each worker powers off
 Benchmark/deploy/aws/collect_reps.sh 3           # results to veredact-bench: coverage, aggregate_reps.py, tables, figures
-Benchmark/deploy/aws/teardown_workers.sh         # workers, provers, image
+                                                 #   (each worker it starts is stopped again right after its copy)
+Benchmark/deploy/aws/teardown_workers.sh         # workers, provers, image: the same day (stopped disks ~US$3.4/day)
 ```
 
 The laptop may sleep during a launch: workers and provers bootstrap detached on the host and the laptop only polls

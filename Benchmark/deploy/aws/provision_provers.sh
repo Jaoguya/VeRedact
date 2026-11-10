@@ -30,9 +30,14 @@ SG=$(retry "${A[@]}" ec2 describe-security-groups --filters "Name=group-name,Val
 if [[ "$SG" == None ]]; then
   SG=$("${A[@]}" ec2 create-security-group --group-name "$NAME" --description "VeRedact requester provers" \
          --query GroupId --output text)
-  "${A[@]}" ec2 authorize-security-group-ingress --group-id "$SG" \
-    --ip-permissions "IpProtocol=tcp,FromPort=$PORT,ToPort=$PORT,UserIdGroupPairs=[{GroupId=$SYS_SG}]" >/dev/null
 fi
+# every launch: the group may predate the system's current security group (#13, 10 Nov: it allowed only the old
+# veredact-bench group, so worker 1 timed out on port 7700); an existing identical rule is fine
+"${A[@]}" ec2 authorize-security-group-ingress --group-id "$SG" \
+  --ip-permissions "IpProtocol=tcp,FromPort=$PORT,ToPort=$PORT,UserIdGroupPairs=[{GroupId=$SYS_SG}]" >/dev/null 2>&1 || true
+"${A[@]}" ec2 describe-security-groups --group-ids "$SG" --output text \
+  --query "SecurityGroups[0].IpPermissions[?FromPort==\`$PORT\`].UserIdGroupPairs[].GroupId" | grep -qw "$SYS_SG" \
+  || { echo "port $PORT is not open from $SYS_SG on $SG"; exit 1; }
 "${A[@]}" ec2 authorize-security-group-ingress --group-id "$SG" --protocol tcp --port 22 --cidr "$CIDR" >/dev/null 2>&1 || true
 
 echo "[2/5] launch one of ${POOLS[*]} (same subnet as the system under test)"

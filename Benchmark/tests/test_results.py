@@ -340,7 +340,7 @@ def test_exp3_figure_is_one_panel_of_end_to_end_cost(monkeypatch):
     style.apply()
     figures.fig_exp3("smoke", [])
     (lines,) = drawn["exp3_audit_efficiency"]
-    assert lines == [[640, 6400]] * 3  # every system at records_per_batch = 64
+    assert lines == [[640, 6400]] * 2  # every drawn system at records_per_batch = 64; the ablation is text-only
 
 
 def test_exp4_detection_rate_undefined_when_nothing_injected():

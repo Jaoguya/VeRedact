@@ -20,7 +20,7 @@ body:
     id: aws
     attributes:
       label: Needs AWS?
-      description: If yes, a team member must approve each AWS action as a comment on this issue.
+      description: If yes, each AWS action needs the agent's owner's yes in chat or a team member's yes comment on this issue; what was done is logged here.
       options:
         - "No"
         - "Yes"

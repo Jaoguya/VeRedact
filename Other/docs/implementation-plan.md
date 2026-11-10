@@ -119,7 +119,7 @@ predictions are **lower bounds** if P1 lands, and Exp. 3's sharing claim stays w
 9. P5                      credential token         (only if the team accepts the privacy trade)
 10. Experiment redesigns   §4 below
 11. Manuscript merge       one PR
-12. Rerun                  AWS, one team member's yes per action
+12. Rerun                  AWS, one yes per action (owner in chat or team member on the issue)
 ```
 
 ## 4. Experiment redesigns (after the ✅ on each lane's step 2)
@@ -185,8 +185,9 @@ Per-experiment rerun estimates from the 3 Nov logs (m7i.4xlarge, us-east-2, USD 
 | Exp. 3 (Scheme [13] re-run too) | ~2.4 h | ~7.2 h | ~USD 5.8 (8.7 capped) |
 | Exp. 5 (baselines added) | ~0.4 h | ~1.2 h | ~USD 1.0 (1.5 capped) |
 
-Exp. 1 and Exp. 4 estimates belong to #5 and #8. Every AWS action needs a team member's yes as a comment naming that
-action, on its issue (`CLAUDE.md` § Guardrails). A contract change (P3/P4) means `build_image.sh` first.
+Exp. 1 and Exp. 4 estimates belong to #5 and #8. Every AWS action needs one yes naming that action, from the
+agent's owner in chat or a team member
+as a comment on its issue (`CLAUDE.md` § Guardrails). A contract change (P3/P4) means `build_image.sh` first.
 
 ## 8. Verifying the work
 

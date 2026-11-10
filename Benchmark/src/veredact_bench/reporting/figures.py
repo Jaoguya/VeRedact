@@ -8,7 +8,8 @@ Schemes [1], [13], [27], [34] and LETA where they run. Fig. 5 at VeRedact-PQ's d
   Fig. 3  one panel (#5): finalized valid redactions/s vs arrival rate, 20 % invalid (stale, absent) requests
   Fig. 4  one panel (#6): complete authorization per request vs committee size n at m = reference_batch;
           schemes without a batch protocol drawn dashed
-  Fig. 5  one panel (#7): end-to-end audit cost per query (generation + verification) vs returned records
+  Fig. 5  one panel (#7): end-to-end audit cost per query (generation + verification) vs returned records;
+          VeRedact-PQ and the baselines only, the SAVER ablations (Shared-Evidence, Per-Record) go to the text
   Fig. 6  (a) verification vs PQZK escalation fraction, (b) breakdown, (c) rejection / acceptance per fault class
   Fig. 7  one panel (#9): PBN anchoring transactions per finalized redaction vs arrival rate, every system,
           from Exp. 1's points; bytes, gas and the |Omega_e| sweep go to the text
@@ -151,6 +152,20 @@ def _saturated(ax, key, xs):
         )
 
 
+def _rate_axis(ax, rates):
+    """x axis of Figs. 3 and 7: the arrival rate, a tick at every configured rate. Close rates (750, 1000) sit
+    near each other on the log axis, so the labels are tilted to stay readable."""
+    ax.set_xlabel("Arrival rate (req/s)")
+    ax.set_xticks(sorted(rates))
+    ax.xaxis.set_minor_locator(ticker.NullLocator())
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
+    ax.tick_params(axis="x", labelrotation=45)
+    for lab in ax.get_xticklabels():
+        lab.set_horizontalalignment("right")
+        lab.set_rotation_mode("anchor")
+    ax.fixed_xticks = True
+
+
 def fig_exp1(tier, written):
     """One panel (#5 redesign): finalized VALID redactions/s vs offered load, one line per system, on the 20 %
     invalid workload. p95 latency, accepted invalid requests and the skew sweep (PQCH adaptations, frontier per
@@ -168,11 +183,8 @@ def fig_exp1(tier, written):
             ys = [v["throughput_per_s"] for v in vs]
             style.line(a, key, [x for x, _ in ok], ys, yerr=_ci(m, vs, "throughput_per_s_ci95"))
         _saturated(a, key, [x for x, v in rate if not v["completed_in_window"]])
-    a.set(xscale="log", yscale="log", xlabel="Arrival rate (req/s)", ylabel="Valid redactions\nfinalized per second")
-    a.set_xticks(sorted(want))  # ticks at the configured rates
-    a.xaxis.set_minor_locator(ticker.NullLocator())
-    a.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
-    a.fixed_xticks = True
+    a.set(xscale="log", yscale="log", ylabel="Valid redactions\nfinalized per second")
+    _rate_axis(a, want)
     a.sci_y = True  # 10^x labels: one decade per tick, schemes stay apart
     if any(ln.get_marker() == "x" for ln in a.lines):  # explain the x only when one is drawn
         a.set_title(r"$\times$ = nothing finalized during the window", loc="right", fontsize=style.FONT_PT - 1)
@@ -223,8 +235,11 @@ def fig_exp2(tier, written):
     _save(fig, "exp2_authorization_latency", written)
 
 
+EXP3_TEXT_ONLY = ("veredact-shared-evidence", "veredact-per-record")  # SAVER ablations: run, but reported in the text
+
+
 def fig_exp3(tier, written):
-    ms = metrics("exp03_audit_efficiency", tier)
+    ms = {k: m for k, m in metrics("exp03_audit_efficiency", tier).items() if k not in EXP3_TEXT_ONLY}
     if not ms:
         return
     cfg = load(tier, "exp03_audit_efficiency")
@@ -313,16 +328,8 @@ def fig_exp5(tier, written):
         ok = [(x, v[f]) for x, v in rate if v.get(f) is not None and v.get("finalized_all")]
         if ok:
             style.line(a, key, [x for x, _ in ok], [y for _, y in ok])
-    a.set(
-        xscale="log",
-        yscale="log",
-        xlabel="Arrival rate (req/s)",
-        ylabel="Anchoring transactions\nper finalized redaction",
-    )
-    a.set_xticks(sorted(want))
-    a.xaxis.set_minor_locator(ticker.NullLocator())
-    a.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
-    a.fixed_xticks = True
+    a.set(xscale="log", yscale="log", ylabel="Anchoring transactions\nper finalized redaction")
+    _rate_axis(a, want)
     _legend(a, outside=True)
     _save(fig, "exp5_blockchain_overhead", written)
 
