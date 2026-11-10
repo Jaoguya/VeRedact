@@ -3,6 +3,7 @@ Phase 3 state binding (validate), CORA selection, SFMR execution (execute), SAVE
 
 import copy
 import dataclasses
+import platform
 
 import pytest
 
@@ -524,6 +525,10 @@ def test_audit_checks_the_checkpoint_against_its_anchored_digest(audited):
 
 def test_registry_contract_takes_one_round_signature_and_stores_the_digest():
     """The Solidity contract matches the protocol (compiled with the pinned solc; skipped without py-solc-x)."""
+    if platform.machine().lower() in ("aarch64", "arm64") and platform.system() == "Linux":
+        # py-solc-x downloads an x86_64 solc 0.8.24, which cannot run on the arm64 prover host (#13, 9 Nov:
+        # the c8g prover bootstrap failed on this test). The prover never compiles contracts; x86 hosts run it.
+        pytest.skip("no solc 0.8.24 binary for linux-aarch64 (py-solc-x)")
     solcx = pytest.importorskip("solcx")
     from veredact_bench.utils.config import REPO_ROOT
 
