@@ -8,7 +8,8 @@ Schemes [1], [13], [27], [34] and LETA where they run. Fig. 5 at VeRedact-PQ's d
   Fig. 3  one panel (#5): finalized valid redactions/s vs arrival rate, 20 % invalid (stale, absent) requests
   Fig. 4  one panel (#6): complete authorization per request vs committee size n at m = reference_batch;
           schemes without a batch protocol drawn dashed
-  Fig. 5  one panel (#7): end-to-end audit cost per query (generation + verification) vs returned records
+  Fig. 5  one panel (#7): end-to-end audit cost per query (generation + verification) vs returned records;
+          VeRedact-PQ and the baselines only, the SAVER ablations (Shared-Evidence, Per-Record) go to the text
   Fig. 6  (a) verification vs PQZK escalation fraction, (b) breakdown, (c) rejection / acceptance per fault class
   Fig. 7  one panel (#9): PBN anchoring transactions per finalized redaction vs arrival rate, every system,
           from Exp. 1's points; bytes, gas and the |Omega_e| sweep go to the text
@@ -223,8 +224,11 @@ def fig_exp2(tier, written):
     _save(fig, "exp2_authorization_latency", written)
 
 
+EXP3_TEXT_ONLY = ("veredact-shared-evidence", "veredact-per-record")  # SAVER ablations: run, but reported in the text
+
+
 def fig_exp3(tier, written):
-    ms = metrics("exp03_audit_efficiency", tier)
+    ms = {k: m for k, m in metrics("exp03_audit_efficiency", tier).items() if k not in EXP3_TEXT_ONLY}
     if not ms:
         return
     cfg = load(tier, "exp03_audit_efficiency")
