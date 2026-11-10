@@ -34,7 +34,8 @@ The experiment tier refuses to run without Besu and the liboqs ML-DSA-65 backend
 
 **The paper's full run** is split over AWS workers in us-east-2, one machine per experiment and run (hybrid plan:
 Exp. 2–5 in 3 runs, Exp. 0 and 1 once); see [Results](#results-full-run-of-3-nov-2026) and `Other/docs/aws-runbook.md`.
-Every AWS action needs the agent's owner's yes for that action, logged on its issue (`CLAUDE.md`):
+Every AWS action needs a yes for that action, from the agent's owner in chat or a team member on its issue, and
+is logged on its issue (`CLAUDE.md`):
 
 ```bash
 Benchmark/deploy/aws/build_image.sh                       # prebuilt worker image of the committed code

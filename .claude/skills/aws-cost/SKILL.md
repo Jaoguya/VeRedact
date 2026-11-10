@@ -26,7 +26,8 @@ If an option touches what is measured, say so in it.
 - **Idle**: hard cap on every run (~1.5x estimate); one boot per check (>= 30 min each); no load in timed phases.
 
 ## Propose and report
-- 2-4 options, recommended first: time, cost, effect on measurement. Your owner decides, with a yes in chat (one yes, one action); log it on the issue.
+- 2-4 options, recommended first: time, cost, effect on measurement. Your owner decides with a yes in chat, or any
+  team member with a yes comment on the issue (one yes, one action); log what was done on the issue.
 - Cost: this project's usage types only (the account bills others too); billed (Cost Explorer lags ~1 day) vs
   estimated. Rates (on demand): veredact-bench r7i.4xlarge ~US$1.28/h (Singapore); us-east-2 workers m7i.4xlarge
   US$0.806/h, prover c8g.48xlarge US$7.63/h. Budget: US$50.
