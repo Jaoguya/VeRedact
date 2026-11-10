@@ -186,8 +186,8 @@ Per-experiment rerun estimates from the 3 Nov logs (m7i.4xlarge, us-east-2, USD 
 | Exp. 5 (baselines added) | ~0.4 h | ~1.2 h | ~USD 1.0 (1.5 capped) |
 
 Exp. 1 and Exp. 4 estimates belong to #5 and #8. Every AWS action needs one yes naming that action, from the
-agent's owner in chat or a team member
-as a comment on its issue (`CLAUDE.md` § Guardrails). A contract change (P3/P4) means `build_image.sh` first.
+agent's owner in chat or a team member as a comment on its issue (`CLAUDE.md` § Guardrails). A contract change
+(P3/P4) means `build_image.sh` first.
 
 ## 8. Verifying the work
 
