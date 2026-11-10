@@ -152,6 +152,20 @@ def _saturated(ax, key, xs):
         )
 
 
+def _rate_axis(ax, rates):
+    """x axis of Figs. 3 and 7: the offered load, a tick at every configured rate. Close rates (750, 1000) sit
+    near each other on the log axis, so the labels are tilted to stay readable."""
+    ax.set_xlabel("Offered load (requests/s)")
+    ax.set_xticks(sorted(rates))
+    ax.xaxis.set_minor_locator(ticker.NullLocator())
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
+    ax.tick_params(axis="x", labelrotation=45)
+    for lab in ax.get_xticklabels():
+        lab.set_horizontalalignment("right")
+        lab.set_rotation_mode("anchor")
+    ax.fixed_xticks = True
+
+
 def fig_exp1(tier, written):
     """One panel (#5 redesign): finalized VALID redactions/s vs offered load, one line per system, on the 20 %
     invalid workload. p95 latency, accepted invalid requests and the skew sweep (PQCH adaptations, frontier per
@@ -169,11 +183,8 @@ def fig_exp1(tier, written):
             ys = [v["throughput_per_s"] for v in vs]
             style.line(a, key, [x for x, _ in ok], ys, yerr=_ci(m, vs, "throughput_per_s_ci95"))
         _saturated(a, key, [x for x, v in rate if not v["completed_in_window"]])
-    a.set(xscale="log", yscale="log", xlabel="Arrival rate (req/s)", ylabel="Valid redactions\nfinalized per second")
-    a.set_xticks(sorted(want))  # ticks at the configured rates
-    a.xaxis.set_minor_locator(ticker.NullLocator())
-    a.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
-    a.fixed_xticks = True
+    a.set(xscale="log", yscale="log", ylabel="Throughput\n(valid redactions finalized/s)")
+    _rate_axis(a, want)
     a.sci_y = True  # 10^x labels: one decade per tick, schemes stay apart
     if any(ln.get_marker() == "x" for ln in a.lines):  # explain the x only when one is drawn
         a.set_title(r"$\times$ = nothing finalized during the window", loc="right", fontsize=style.FONT_PT - 1)
@@ -317,16 +328,8 @@ def fig_exp5(tier, written):
         ok = [(x, v[f]) for x, v in rate if v.get(f) is not None and v.get("finalized_all")]
         if ok:
             style.line(a, key, [x for x, _ in ok], [y for _, y in ok])
-    a.set(
-        xscale="log",
-        yscale="log",
-        xlabel="Arrival rate (req/s)",
-        ylabel="Anchoring transactions\nper finalized redaction",
-    )
-    a.set_xticks(sorted(want))
-    a.xaxis.set_minor_locator(ticker.NullLocator())
-    a.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
-    a.fixed_xticks = True
+    a.set(xscale="log", yscale="log", ylabel="Anchoring transactions\nper finalized redaction")
+    _rate_axis(a, want)
     _legend(a, outside=True)
     _save(fig, "exp5_blockchain_overhead", written)
 
