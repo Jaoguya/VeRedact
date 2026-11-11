@@ -49,8 +49,8 @@ def _run(cfg, out):
             for d in x["deep_fractions"] if escalates else [0.0]:
                 yield dict(query=AuditQuery(n, deep_fraction=d, reuse_response=True), d=d, kind="", f=0.0)
             def faulty(kind, f, d=0.0):
-                def make(sample):
-                    rng = random.Random(f"{cfg['meta']['seed']}/{n}/{sample}")
+                def make(draw):  # draw: the sample number
+                    rng = random.Random(f"{cfg['meta']['seed']}/{n}/{draw}")
                     idx = rng.sample(range(n), round(f * n))
                     # reuse_response: Exp. 4 times the auditor; a scheme with a slow response generation (S13)
                     # verifies a cached response again when the same positions come back
