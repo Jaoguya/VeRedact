@@ -376,6 +376,21 @@ def test_exp4_chain_reads_reported_apart():
     assert old["verify_noread_ms"] == {"n": 0}
 
 
+def test_exp4_stale_fallback_counted_apart():
+    """#35: a stale fault that fell back to a claimed older version number is not mixed into the replay rate."""
+    import pytest
+
+    from veredact_bench.evaluation.summaries import _exp04
+
+    row = dict(n_Q=10, deep_fraction=0.0, fault_kind="stale", inject_fraction=0.1, status="ok", verify_ms=1.0)
+    row |= dict(injected=4, detected=3, false_rejections=0, injected_stale_version=1, detected_stale_version=1)
+    (pt,) = _exp04([row], {}).values()
+    assert pt["injected_stale_version"] == 1 and pt["detection_rate_stale_version"] == 1.0
+    assert pt["detection_rate_replayed"] == pytest.approx(2 / 3) and pt["detection_rate"] == 0.75
+    (plain,) = _exp04([row | dict(injected_stale_version=0, detected_stale_version=0)], {}).values()
+    assert "detection_rate_replayed" not in plain
+
+
 def test_exp2_complete_authorization_counts_both_steps():
     """Fig. 4: per request = per-request step + batch step / m; per batch = m per-request steps + batch step."""
     from veredact_bench.evaluation.summaries import _exp02

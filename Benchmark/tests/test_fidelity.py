@@ -119,6 +119,25 @@ def test_s1_one_redaction_per_block(cfg, ds):
     s.teardown()
 
 
+def test_veredact_store_faults_give_a_verdict_per_record_and_are_undone(cfg, ds):
+    """#35 plumbing only (no detection rate asserted): forged_approval and forged_proof are injected into the
+    auditor's evidence stores, every returned record still gets a verdict, the result names the records the fault
+    reaches, and the genuine entries are back afterwards."""
+    s = open_system(cfg, "veredact", ds)
+    build_history(s, ds.trace, cfg["veredact"]["reference_batch"])
+    s.index_records()
+    n = 4
+    for kind in ("forged_approval", "forged_proof"):
+        res = s.audit(AuditQuery(n, deep=True, tamper={1: kind}))
+        assert set(res.accepted) == set(range(n)) and all(isinstance(v, bool) for v in res.accepted.values())
+        assert res.tampered[1] == kind and set(res.tampered.values()) == {kind}
+        if kind == "forged_approval":  # a shared node: every returned record of the batch depends on it
+            bid = s.p.records[1].BID
+            assert set(res.tampered) == {i for i in range(n) if s.p.records[i].BID == bid}
+        assert all(s.audit(AuditQuery(n, deep=True)).accepted.values()), kind
+    s.teardown()
+
+
 def test_audits_detect_tampering_with_their_own_granularity(cfg, ds):
     for key in ("veredact", "S1", "S13"):
         s = open_system(cfg, key, ds)

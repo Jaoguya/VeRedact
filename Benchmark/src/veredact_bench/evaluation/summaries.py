@@ -224,6 +224,20 @@ def _exp03(rows, cfg):
 _EXP4_BREAKDOWN = ("response_ms", "rai_mp_ms", "attest_ms", "committee_ms", "state_ms", "cp_ms", "zk_ms")
 
 
+def _stale_split(ok, injected):
+    """A stale fault that fell back to a claimed older version number, apart from a replayed genuine transition."""
+    fb = sum(int(_num(r.get("injected_stale_version")) or 0) for r in ok)
+    if not fb:
+        return {}
+    det = sum(int(_num(r.get("detected_stale_version")) or 0) for r in ok)
+    rep = injected - fb
+    return {
+        "injected_stale_version": fb,
+        "detection_rate_stale_version": M.rate(det, fb),
+        "detection_rate_replayed": M.rate(sum(int(r["detected"]) for r in ok) - det, rep) if rep else None,
+    }
+
+
 def _exp04(rows, cfg):
     out = {}
     for k, rs in _group(rows, "n_Q", "deep_fraction", "fault_kind", "inject_fraction").items():
@@ -246,6 +260,7 @@ def _exp04(rows, cfg):
             # None when nothing was injected (f * n_Q rounds to 0, e.g. 1% of 10 records): 0.0 would read as "missed"
             "injected": injected,
             "detection_rate": M.rate(sum(int(r["detected"]) for r in ok), injected) if injected else None,
+            **_stale_split(ok, injected),
             "false_rejection_rate": M.rate(sum(int(r["false_rejections"]) for r in ok), valid),
             "valid_acceptance_rate": 1 - M.rate(sum(int(r["false_rejections"]) for r in ok), valid) if valid else None,
         }
