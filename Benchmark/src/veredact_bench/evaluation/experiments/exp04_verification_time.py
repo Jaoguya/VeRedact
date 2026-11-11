@@ -48,6 +48,7 @@ def _run(cfg, out):
         def specs(s, n, escalates=escalates):
             for d in x["deep_fractions"] if escalates else [0.0]:
                 yield dict(query=AuditQuery(n, deep_fraction=d, reuse_response=True), d=d, kind="", f=0.0)
+
             def faulty(kind, f, d=0.0):
                 def make(draw):  # draw: the sample number
                     rng = random.Random(f"{cfg['meta']['seed']}/{n}/{draw}")
