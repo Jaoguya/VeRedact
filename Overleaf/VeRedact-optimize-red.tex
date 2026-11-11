@@ -3542,7 +3542,13 @@ Schemes~\cite{ref1} and~\cite{ref13}\textcolor{e4}{. For
 Scheme~\cite{ref13}, both of its procedures are evaluated: its Audit,
 which returns one aggregate decision for the whole query, and its Query,
 applied once per distinct block of the result, which is the granularity
-closest to per-record decisions.}
+closest to per-record decisions.} \textcolor{e4}{Its Audit outputs a
+single T/F and does not specify how the auditor proceeds after an F. An
+auditor that must identify the invalid records therefore runs its Query
+on every block of the result once the Audit has failed; we evaluate this
+combination as a third procedure, Audit followed on F by Query, and time
+both steps. The combination rule is ours; both procedures are those of
+Scheme~\cite{ref13}.}
 
 To evaluate evidence integrity, \textbf{[1\%--10\%]} of returned
 records are independently subjected to three fault classes:
@@ -3575,7 +3581,36 @@ record of a query that contains one invalid record, and its Query rejects
 every record of the affected block. VeRedact-PQ and Scheme~\cite{ref1}
 decide each record separately, so an invalid record does not invalidate
 records whose dependencies remain valid. The rejection and acceptance
-rates per system and fault class are \textbf{[TBD]}.}
+rates per system and fault class are \textbf{[TBD]}.
+
+The constant Audit time therefore holds only while every returned record
+is valid. Once a query contains an invalid record, the Audit's F
+identifies none of them, and locating them costs Scheme~\cite{ref13} its
+Audit plus one Query per block of the result
+(Table~\ref{tab:exp4_faults}); even then, valid records that share a
+block with an invalid one are rejected. Without faults,
+Scheme~\cite{ref13}'s Audit is faster than VeRedact-PQ at every $n_Q$
+(Fig.~\ref{fig:exp4_verify}).}
+
+\begin{table}[t]\color{e4}
+\centering
+\caption{Verification Time with 1\% Tampered Records (ms)}
+\label{tab:exp4_faults}
+\scriptsize
+\renewcommand{\arraystretch}{1.08}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{rcccc}
+\hline
+$n_Q$ & VeRedact-PQ & Scheme~\cite{ref1} & Scheme~\cite{ref13} & Valid records \\
+ & & & Audit $\rightarrow$ Query & rejected, \cite{ref13} \\
+\hline
+$10$    & [TBD] & [TBD] & [TBD] & [TBD] \\
+$10^2$  & [TBD] & [TBD] & [TBD] & [TBD] \\
+$10^3$  & [TBD] & [TBD] & [TBD] & [TBD] \\
+$10^4$  & [TBD] & [TBD] & [TBD] & [TBD] \\
+\hline
+\end{tabular}
+\end{table}
 
 \begin{table}[t]\color{e4}
 \centering

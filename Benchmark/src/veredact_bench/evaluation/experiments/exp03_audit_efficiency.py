@@ -25,8 +25,14 @@ from veredact_bench.methods.scheme import AuditQuery, NotSupported
 SHARED: dict = {}
 KEEP = False
 # audit-only variants reuse their scheme's history (built or loaded once): VeRedact-PQ's Phases 3-5, and S13's
-# redactions for S13-per-block (same scheme, audited with the paper's Query phase per block)
-HISTORY_OF = {"veredact-shared-evidence": "veredact", "veredact-per-record": "veredact", "S13-per-block": "S13"}
+# redactions for S13-per-block and S13-fallback (same scheme, audited with the paper's Query phase per block, alone
+# or after a failed Audit)
+HISTORY_OF = {
+    "veredact-shared-evidence": "veredact",
+    "veredact-per-record": "veredact",
+    "S13-per-block": "S13",
+    "S13-fallback": "S13",
+}
 
 
 def _history_key(key, rpb, counts) -> tuple:

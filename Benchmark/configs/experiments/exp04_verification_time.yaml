@@ -2,7 +2,8 @@
 experiment:
   id: exp04_verification_time
   paper: [fig:exp4_verify]
-  systems: [veredact, S13, S13-per-block, S1]  # S13-per-block: S13's Query phase once per block (#8)
+  systems: [veredact, S13, S13-per-block, S13-fallback, S1]  # S13-per-block: S13's Query phase once per block (#8);
+                                     #   S13-fallback: its Audit, then Query per block when the Audit says F (#35)
   n_Q: [10, 100, 1000, 10000]   # [DERIVED] manuscript 10..10^4 (author 2026-10-24: follow VeRedact-optimize.tex)
   deep_fractions: [0.0, 0.01, 0.05, 0.10, 0.25, 1.0]  # [DERIVED] manuscript d_Q / n_Q (VeRedact-PQ only)
   inject_fractions: [0.01, 0.05, 0.10]       # [DERIVED] manuscript [1%-10%], one fault class at a time

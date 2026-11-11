@@ -1,7 +1,7 @@
 # S13 — Zhang et al. [13], EAQ-VRBC
 
 Paper: `Reference/S13_Zhang2025_EAQ-VRBC/` · construction: `Benchmark/src/veredact_bench/methods/baselines/s13_eaq_vrbc/construction.py` ·
-adapter: `adapter.py` (`EAQVRBCScheme`, keys `S13` and `S13-per-block`) · own evaluation: `reproduce.py` (Figs. 4–9).
+adapter: `adapter.py` (`EAQVRBCScheme`, keys `S13`, `S13-per-block` and `S13-fallback`) · own evaluation: `reproduce.py` (Figs. 4–9).
 The manuscript calls it "VRBC [13]".
 
 ## Role per experiment
@@ -11,7 +11,7 @@ The manuscript calls it "VRBC [13]".
 | 1 | ✓ | per-request block-level redaction by the System Manager (Update phase) |
 | 2 | ✗ | no per-request authorization protocol: authority = trapdoor possession (`auth_cost` = 0 operations). Excluded from `exp2.systems` rather than shown as a meaningless 0 ms bar |
 | 3 | ✓ | Audit phase: challenge → aggregated tags + aggregated non-membership witness (Alg. 2, NI-SimPoE) |
-| 4 | ✓ | `S13`: AuditVerify (Alg. 3), **one decision for the whole challenged set**. `S13-per-block` (#8): the paper's **Query** phase once per distinct block of the result, **one decision per block** — S13's finest output granularity, compared with VeRedact-PQ's per-record decisions |
+| 4 | ✓ | `S13`: AuditVerify (Alg. 3), **one decision for the whole challenged set**. `S13-per-block` (#8): the paper's **Query** phase once per distinct block of the result, **one decision per block** — S13's finest output granularity, compared with VeRedact-PQ's per-record decisions. `S13-fallback` (#35): the Audit, and only if it returns F, the Query once per block; timed as both |
 | 5 | ✗ | Exp. 5 measures VeRedact-PQ's own anchoring only; this scheme's per-redaction ledger write is part of its Exp. 1 |
 
 ## Boundaries
@@ -50,4 +50,5 @@ The Query phase enters the comparison only as `S13-per-block` in Exp. 4 (per-blo
 - [x] rejects a nonexistent target
 - [x] a tampered record makes the whole query fail (aggregate decision), no false accept
 - [x] `S13-per-block`: a tampered record rejects exactly the records of its own block (`test_per_block_query_decides_each_block`)
+- [x] `S13-fallback`: a clean query costs the Audit alone; a tampered one gets the per-block decisions, timed as Audit + Query (`test_fallback_runs_query_per_block_only_after_a_failed_audit`)
 - [x] Alg. 2/3 verify for honest sets; non-membership fails for revoked tags (`Benchmark/tests/baselines/test_s13_eaq_vrbc.py`)
