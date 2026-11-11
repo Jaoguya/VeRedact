@@ -437,15 +437,34 @@ def test_exp2_figure_is_one_panel_of_complete_cost_vs_committee_size(monkeypatch
         drawn[name] = [
             [(ln.get_linestyle(), list(ln.get_xdata()), list(ln.get_ydata())) for ln in a.lines] for a in fig.axes
         ]
+        drawn["ticks"] = [t.get_text() for t in fig.axes[0].get_xticklabels()]
 
     monkeypatch.setattr(figures, "_save", save)
     style.apply()
     figures.fig_exp2("smoke", [])
     (lines,) = drawn["exp2_authorization_latency"]
     assert len(lines) == 3
-    assert all(xs == [4, 7, 64] for _, xs, _ in lines)
+    assert all(xs == [0, 1, 2] for _, xs, _ in lines)  # #40: one equal step per measured n
+    assert drawn["ticks"] == ["4", "7", "64"]  # labelled with the real n
     assert sorted(ys[0] for _, _, ys in lines) == [68, 68, 68]  # m = 64 at n = 4
     assert sorted(ls for ls, _, _ in lines) == ["-", "-", "--"]  # S1 has no batch protocol: dashed
+
+
+def test_category_axis_spaces_values_equally_with_horizontal_labels():
+    """#40: Figs. 3, 4 and 7 put each measured value one equal step apart, labelled with the real value, horizontal,
+    with a margin so end markers are not clipped; _measured_xticks keeps the ticks."""
+    import matplotlib.pyplot as plt
+
+    from veredact_bench.reporting import figures
+
+    fig, ax = plt.subplots()
+    pos = figures._category_axis(ax, {1000, 25, 750, 50}, "Arrival rate (req/s)")
+    assert pos == {25: 0, 50: 1, 750: 2, 1000: 3}
+    figures._measured_xticks(fig)
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["25", "50", "750", "1000"]
+    assert all(t.get_rotation() == 0 for t in ax.get_xticklabels())
+    assert ax.get_xlim() == (-0.4, 3.4) and ax.get_xscale() == "linear"
+    plt.close(fig)
 
 
 def test_exp2_s99_amortized_is_its_batch_protocol(tmp_path):

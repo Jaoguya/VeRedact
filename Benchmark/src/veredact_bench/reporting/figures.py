@@ -135,12 +135,13 @@ def _legend(ax, keys=(), outside=False):
 
 def _saturated(ax, key, xs):
     """Rates where a scheme finalized nothing inside the window: a hollow x on the bottom edge
-    (a zero cannot be drawn on a log axis, and silently dropping it would hide the result)."""
+    (a zero cannot be drawn on a log axis, and silently dropping it would hide the result). xs are axis
+    positions (_category_axis)."""
     if xs:
         _, col, _, _ = style.METHODS[key]
-        f = 1 + 0.06 * (style.PAPER_METHODS.index(key) - 2)  # log-x offset per scheme: coinciding x stay distinct
+        dx = 0.06 * (style.PAPER_METHODS.index(key) - 2)  # x offset per scheme: coinciding x stay distinct
         ax.plot(
-            [x * f for x in xs],
+            [x + dx for x in xs],
             [0.0] * len(xs),
             transform=ax.get_xaxis_transform(),
             linestyle="none",
@@ -152,18 +153,18 @@ def _saturated(ax, key, xs):
         )
 
 
-def _rate_axis(ax, rates):
-    """x axis of Figs. 3 and 7: the arrival rate, a tick at every configured rate. Close rates (750, 1000) sit
-    near each other on the log axis, so the labels are tilted to stay readable."""
-    ax.set_xlabel("Arrival rate (req/s)")
-    ax.set_xticks(sorted(rates))
+def _category_axis(ax, values, xlabel) -> dict:
+    """x axis of Figs. 3, 4 and 7 (#40): every measured value one equal step apart, labelled with its real value,
+    horizontal. Returns {value: position}; every artist of the panel (lines, error bars, saturation x, dashed
+    no-batching lines) is drawn at these positions, so a point keeps its own position even when a scheme has no
+    value at another one. The axis is NOT to scale: the slope between two points carries no numeric meaning."""
+    vals = sorted(values)
+    ax.set_xlabel(xlabel)
+    ax.set_xticks(range(len(vals)), [f"{v:g}" for v in vals])
     ax.xaxis.set_minor_locator(ticker.NullLocator())
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
-    ax.tick_params(axis="x", labelrotation=45)
-    for lab in ax.get_xticklabels():
-        lab.set_horizontalalignment("right")
-        lab.set_rotation_mode("anchor")
-    ax.fixed_xticks = True
+    ax.set_xlim(-0.4, len(vals) - 0.6)  # end markers and error bars are not clipped
+    ax.fixed_xticks = True  # _measured_xticks keeps these ticks
+    return {v: i for i, v in enumerate(vals)}
 
 
 def fig_exp1(tier, written):
@@ -175,16 +176,16 @@ def fig_exp1(tier, written):
         return
     want = set(load(tier, "exp01_redaction_throughput")["experiment"]["rates"])  # rows of dropped rates: not drawn
     fig, (a,) = _panels(1, height_in=2.6)
+    pos = _category_axis(a, want, "Arrival rate (req/s)")
     for key, m in ms.items():
         rate = sorted((k[1], v) for k, v in _points(m).items() if k[0] == "rate" and k[1] in want)
         ok = [(x, v) for x, v in rate if v["completed_in_window"]]
         if ok:
             vs = [v for _, v in ok]
             ys = [v["throughput_per_s"] for v in vs]
-            style.line(a, key, [x for x, _ in ok], ys, yerr=_ci(m, vs, "throughput_per_s_ci95"))
-        _saturated(a, key, [x for x, v in rate if not v["completed_in_window"]])
-    a.set(xscale="log", yscale="log", ylabel="Valid redactions\nfinalized per second")
-    _rate_axis(a, want)
+            style.line(a, key, [pos[x] for x, _ in ok], ys, yerr=_ci(m, vs, "throughput_per_s_ci95"))
+        _saturated(a, key, [pos[x] for x, v in rate if not v["completed_in_window"]])
+    a.set(yscale="log", ylabel="Valid redactions\nfinalized per second")
     a.sci_y = True  # 10^x labels: one decade per tick, schemes stay apart
     if any(ln.get_marker() == "x" for ln in a.lines):  # explain the x only when one is drawn
         a.set_title(r"$\times$ = nothing finalized during the window", loc="right", fontsize=style.FONT_PT - 1)
@@ -212,6 +213,8 @@ def fig_exp2(tier, written):
         else max(sizes, default=1.0)
     )
     fig, (a,) = _panels(1, height_in=2.6)
+    xlabel = "Committee size $n$ ($t=\\lfloor 2n/3\\rfloor+1$)"
+    pos = _category_axis(a, {k[0] for m in ms.values() for k in _points(m)}, xlabel)  # the measured n
     # #6 + fairness fix (option 1, author 2026-11-08): crypto + committee network time; crypto alone stays in
     # metrics.json (auth_complete_per_request_ms) for the text
     f = "auth_with_net_per_request_ms"
@@ -223,13 +226,8 @@ def fig_exp2(tier, written):
         batched = any(v.get("phase4_batch_ms", {}).get("n") for v in pts.values())
         draw = style.line if batched else _flat  # no batch protocol: m own authorizations, drawn dashed
         vs = [v for _, v in series]
-        draw(a, key, [x for x, _ in series], [v[f]["median"] for v in vs], yerr=_ci(m, vs, f, "ci95_halfwidth"))
-    a.set(
-        xscale="log",
-        yscale="log",
-        xlabel="Committee size $n$ ($t=\\lfloor 2n/3\\rfloor+1$)",
-        ylabel=f"Authorization per request\n(crypto + network, ms, $m$={int(m0)})",
-    )
+        draw(a, key, [pos[x] for x, _ in series], [v[f]["median"] for v in vs], yerr=_ci(m, vs, f, "ci95_halfwidth"))
+    a.set(yscale="log", ylabel=f"Authorization per request\n(crypto + network, ms, $m$={int(m0)})")
     a.sci_y = True
     _legend(a, outside=True)
     _save(fig, "exp2_authorization_latency", written)
@@ -322,14 +320,14 @@ def fig_exp5(tier, written):
         return
     want = set(load(tier, "exp01_redaction_throughput")["experiment"]["rates"])
     fig, (a,) = _panels(1, height_in=2.6)
+    pos = _category_axis(a, want, "Arrival rate (req/s)")
     f = "anchor_tx_per_finalized"
     for key, m in ms.items():
         rate = sorted((k[1], v) for k, v in _points(m).items() if k[0] == "rate" and k[1] in want)
         ok = [(x, v[f]) for x, v in rate if v.get(f) is not None and v.get("finalized_all")]
         if ok:
-            style.line(a, key, [x for x, _ in ok], [y for _, y in ok])
-    a.set(xscale="log", yscale="log", ylabel="Anchoring transactions\nper finalized redaction")
-    _rate_axis(a, want)
+            style.line(a, key, [pos[x] for x, _ in ok], [y for _, y in ok])
+    a.set(yscale="log", ylabel="Anchoring transactions\nper finalized redaction")
     _legend(a, outside=True)
     _save(fig, "exp5_blockchain_overhead", written)
 
