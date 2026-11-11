@@ -177,14 +177,16 @@ class VeRedactScheme(Scheme):
         t1 = time.perf_counter()
         accepted = self.p.verify_audit(resp, Q, deep=deep)
         t2 = time.perf_counter()
+        bd = dict(self.p.last_breakdown)
         return AuditResult(
             "redaction provenance (authorization + state transition)",
             (t1 - t0) * 1000,
             (t2 - t1) * 1000,
             resp.nbytes,
             {i: accepted[r.RID] for i, r in enumerate(recs)},
-            dict(self.p.last_breakdown),
+            bd,
             dict(self.p.last_nodes),
+            read_ms=bd.pop("read_ms", 0.0),
         )
 
     def _tamper(self, rr, kind, rng):

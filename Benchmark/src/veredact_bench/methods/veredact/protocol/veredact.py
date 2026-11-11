@@ -679,10 +679,13 @@ class VeRedactPQ:
         self.last_breakdown, self.last_nodes = bd, nodes
         t0 = time.perf_counter()
         e, R_cp, v_cp, ts_cp, cp_A = self.rai_checkpoint
-        # the selected RAI checkpoint is the one ANCHORED on the PBN, read from the chain
+        # the selected RAI checkpoint is the one ANCHORED on the PBN, read from the chain; read_ms (#35) is the
+        # chain-read share of response_ms and state_ms, so every scheme's reads can be reported apart
+        cp_chain = L.anchor.read("rai_checkpoint", epoch=e)
+        bd["read_ms"] = (time.perf_counter() - t0) * 1000
         ok_resp = (
             body["Q"] == Q
-            and L.anchor.read("rai_checkpoint", epoch=e) == cp_A
+            and cp_chain == cp_A
             and (body["R_RAI"], body["v_A"]) == (R_cp, v_cp)
             and c.HV("RAI-CP", e, R_cp, v_cp, ts_cp) == cp_A
             and c.verify(L.audit_svc.pk, c.H(body["Q"], len(body["records"]), body["R_RAI"], body["v_A"]), resp.sigma)
@@ -704,7 +707,9 @@ class VeRedactPQ:
         bd["rai_mp_ms"] = (time.perf_counter() - t0) * 1000
         t0 = time.perf_counter()  # finalized checkpoint references (b, v_b') -> MR_b' as anchored: one read
         anchored = L.anchor.read("checkpoint_history", keys={(rr.pbrp["b"], rr.v_b_new) for rr in resp.records})
-        bd["state_ms"] += (time.perf_counter() - t0) * 1000
+        dt = (time.perf_counter() - t0) * 1000
+        bd["state_ms"] += dt
+        bd["read_ms"] += dt
         t0 = time.perf_counter()  # every transition's PQCH check as one matrix product, timed into state_ms
         chi, pqch = self._pqch_batch(resp.records, mode)
         bd["state_ms"] += (time.perf_counter() - t0) * 1000
@@ -719,6 +724,7 @@ class VeRedactPQ:
             return ok
 
         result = {}
+        pos_of = {}  # BID -> {RID: pos_B}, built once per batch (#35: two list scans per record were half of attest)
         for rr in resp.records:
             p, vr = rr.pbrp, rr.pbrp["vr"]
             auth, cp = self.auths[rr.BID], rr.pbrp["cp"]
@@ -736,7 +742,12 @@ class VeRedactPQ:
             ok &= c.HV("AUTH-LEAF", vr.RID, vr.C_VR, vr.alpha) == p["eta"]
             # a request that is not a member of the authorization batch it claims (e.g. evidence substituted from
             # another batch, #8 change 3) is rejected, never an exception that aborts the whole audit
-            pos_B = auth.members.index(vr) if vr in auth.members else None
+            if rr.BID not in pos_of:
+                pos_of[rr.BID] = {m.RID: i for i, m in enumerate(auth.members)}
+            pos_B = pos_of[rr.BID].get(vr.RID)
+            # same RID, other content: not a member (the full comparison the list scan made, once)
+            if pos_B is not None and auth.members[pos_B] is not vr and auth.members[pos_B] != vr:
+                pos_B = None
             ok &= pos_B is not None and verify_proof(auth.R_VR, p["eta"], pos_B, p["MP_B"])
             c.counts["T_H"] += len(p["MP_B"]) + 1
             ok &= self.att_verify(vr, win_seen, nodes)  # routine: the VPS decision alpha_i (AttVerify)

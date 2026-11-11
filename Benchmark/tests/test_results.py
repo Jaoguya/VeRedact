@@ -363,6 +363,19 @@ def test_exp4_detection_rate_undefined_when_nothing_injected():
     assert pt["detection_rate"] is None and pt["injected"] == 0 and pt["false_rejection_rate"] == 0.0
 
 
+def test_exp4_chain_reads_reported_apart():
+    """#35: verify_noread_ms = verify_ms - read_ms per row; rows from before #35 (no read_ms) get no such value."""
+    from veredact_bench.evaluation.summaries import _exp04
+
+    base = dict(n_Q=10, deep_fraction=0.0, fault_kind="none", inject_fraction=0.0, status="ok", injected=0)
+    base |= dict(detected=0, false_rejections=0, verify_ms=50.0)
+    (pt,) = _exp04([base | dict(read_ms=40.0)], {}).values()
+    assert pt["verify_ms"]["median"] == 50.0 and pt["read_ms"]["median"] == 40.0
+    assert pt["verify_noread_ms"]["median"] == 10.0
+    (old,) = _exp04([base], {}).values()
+    assert old["verify_noread_ms"] == {"n": 0}
+
+
 def test_exp2_complete_authorization_counts_both_steps():
     """Fig. 4: per request = per-request step + batch step / m; per batch = m per-request steps + batch step."""
     from veredact_bench.evaluation.summaries import _exp02

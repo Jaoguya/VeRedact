@@ -60,6 +60,7 @@ def _run(cfg, out):
                 inject_fraction=spec["f"],
                 injected=len(t),
                 verify_ms=res.verify_ms,
+                read_ms=res.read_ms,  # chain reads inside verify_ms; S13's paper names none (#35)
                 retrieval_ms=res.retrieval_ms,
                 detected=sum(1 for i in t if not acc.get(i, False)),
                 false_rejections=sum(1 for i, ok in acc.items() if not ok and i not in t),

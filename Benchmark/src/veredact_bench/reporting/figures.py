@@ -288,11 +288,17 @@ def fig_exp4(tier, written):
     if not ms:
         return
     fig, (a,) = _panels(1, height_in=2.4)
+    # #35: chain reads are excluded for every system (verify_noread_ms; the reads and the total go to the text).
+    # Results written before #35 have no read split: then every system is drawn with verify_ms, never a mix
+    oks = [v for m in ms.values() for v in _points(m).values() if v.get("status") == "ok"]
+    split = all((v.get("verify_noread_ms") or {}).get("n") for v in oks)
+    f = "verify_noread_ms" if split else "verify_ms"
+    ylabel = "Auditor verification, chain reads excluded (ms)" if split else "Auditor verification (ms)"
     for key, m in ms.items():
         pts = {k: v for k, v in _points(m).items() if v.get("status") == "ok" and k[2] == "none"}
         levels = sorted({k[1] for k in pts})
         for d in [levels[0], levels[-1]] if len(levels) > 1 else levels:
-            ok = sorted((k[0], v) for k, v in pts.items() if k[1] == d and (v.get("verify_ms") or {}).get("n"))
+            ok = sorted((k[0], v) for k, v in pts.items() if k[1] == d and (v.get(f) or {}).get("n"))
             if not ok:
                 continue
             deep = d > 0
@@ -301,12 +307,12 @@ def fig_exp4(tier, written):
                 a,
                 key,
                 [n for n, _ in ok],
-                [v["verify_ms"]["median"] for _, v in ok],
+                [v[f]["median"] for _, v in ok],
                 suffix=suffix,
-                yerr=_ci(m, [v for _, v in ok], "verify_ms", "ci95_halfwidth"),
+                yerr=_ci(m, [v for _, v in ok], f, "ci95_halfwidth"),
                 linestyle="--" if deep else None,
             )
-    a.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel="Auditor verification (ms)")
+    a.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel=ylabel)
     a.sci_y = True
     _legend(a, outside=True)
     _save(fig, "exp4_verification_time", written)

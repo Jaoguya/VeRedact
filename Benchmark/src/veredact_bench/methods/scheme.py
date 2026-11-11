@@ -138,6 +138,7 @@ class AuditResult:
     accepted: dict  # seq -> bool (per-record decision)
     breakdown: dict = field(default_factory=dict)  # verify_ms split by step, where the scheme reports one
     verified_nodes: dict = field(default_factory=dict)  # VeRedact-PQ: cryptographically verified evidence nodes
+    read_ms: float = 0.0  # chain reads inside verify_ms (#35); 0 where the scheme's paper names no read
 
 
 # ----------------------------------------------------------------------------------------- the contract

@@ -237,6 +237,11 @@ def _exp04(rows, cfg):
             "status": "ok",
             "history_id": rs[0].get("history_id"),
             "verify_ms": _stats(r["verify_ms"] for r in ok),
+            # #35: chain reads apart; rows written before #35 carry no read_ms and get neither field
+            "read_ms": _stats(r.get("read_ms") for r in ok),
+            "verify_noread_ms": _stats(
+                _num(r["verify_ms"]) - _num(r["read_ms"]) for r in ok if _num(r.get("read_ms")) is not None
+            ),
             **{f"verify_{b}": _stats(r.get(f"verify_{b}") for r in ok) for b in _EXP4_BREAKDOWN},
             # None when nothing was injected (f * n_Q rounds to 0, e.g. 1% of 10 records): 0.0 would read as "missed"
             "injected": injected,
