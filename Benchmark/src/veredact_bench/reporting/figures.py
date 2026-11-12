@@ -289,6 +289,8 @@ def fig_exp4(tier, written):
         return
     fig, (a,) = _panels(1, height_in=2.4)
     for key, m in ms.items():
+        if key == "S13-fallback":  # with no faults its Audit says T and it IS the S13 line; fault cases go to the text
+            continue
         pts = {k: v for k, v in _points(m).items() if v.get("status") == "ok" and k[2] == "none"}
         levels = sorted({k[1] for k in pts})
         for d in [levels[0], levels[-1]] if len(levels) > 1 else levels:

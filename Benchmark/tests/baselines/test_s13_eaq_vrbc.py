@@ -82,7 +82,7 @@ def test_per_block_query_decides_each_block():
     cfg = copy.deepcopy(load("smoke"))
     cfg["dataset"]["base_transactions"] = 1024  # test fixture size, not an experiment parameter
     ds = build_dataset(cfg, n_requests=40)
-    s = EAQVRBCScheme(cfg, per_block=True)
+    s = EAQVRBCScheme(cfg, variant="per-block")
     s.setup(ds)
     for r in ds.trace:
         s.redact([s.authorize(r)])
@@ -99,4 +99,39 @@ def test_per_block_query_decides_each_block():
         assert "per block" in bad.semantics
     again = s.audit(AuditQuery(n))  # the tampered tag was restored after the audit
     assert all(again.accepted.values())
+    s.teardown()
+
+
+def test_fallback_runs_query_per_block_only_after_a_failed_audit():
+    """S13-fallback (#35): the paper's Audit first (one T/F); on F, its Query once per block. A clean query costs
+    the Audit alone and every record is accepted; a tampered one gets the per-block decisions and is timed as
+    Audit + Query, both parts reported."""
+    import copy
+
+    from veredact_bench.data.dataset import build_dataset
+    from veredact_bench.methods.baselines.s13_eaq_vrbc.adapter import EAQVRBCScheme
+    from veredact_bench.methods.scheme import AuditQuery
+    from veredact_bench.utils.config import load
+
+    cfg = copy.deepcopy(load("smoke"))
+    cfg["dataset"]["base_transactions"] = 1024  # test fixture size, not an experiment parameter
+    ds = build_dataset(cfg, n_requests=40)
+    s = EAQVRBCScheme(cfg, variant="fallback")
+    assert s.key == "S13-fallback" and s.fallback and not s.per_block
+    s.setup(ds)
+    for r in ds.trace:
+        s.redact([s.authorize(r)])
+    s.index_records()
+    n = 12
+    blocks = [s.redacted[i][1] for i in range(n)]
+    assert len(set(blocks)) > 1
+    for reuse in (False, True):
+        clean = s.audit(AuditQuery(n, reuse_response=reuse))
+        assert all(clean.accepted.values()) and not clean.breakdown  # Audit said T: no Query
+        bad = s.audit(AuditQuery(n, tamper={1: "modified"}, reuse_response=reuse))
+        assert bad.accepted == {i: blocks[i] != blocks[1] for i in range(n)}
+        b = bad.breakdown
+        assert b["audit_ms"] > 0 and b["query_ms"] > 0
+        assert abs(bad.verify_ms - (b["audit_ms"] + b["query_ms"])) < 1e-9
+    assert all(s.audit(AuditQuery(n)).accepted.values())  # tags restored after both parts
     s.teardown()

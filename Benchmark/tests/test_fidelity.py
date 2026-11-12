@@ -175,6 +175,9 @@ def test_s13_per_block_variant_is_registered_on_s13s_history(cfg, ds):
     s = make(cfg, "S13-per-block")
     assert s.key == "S13-per-block" and s.per_block
     assert HISTORY_OF["S13-per-block"] == "S13"
+    s = make(cfg, "S13-fallback")  # #35: Audit, then Query per block on F
+    assert s.key == "S13-fallback" and s.fallback and not s.per_block
+    assert HISTORY_OF["S13-fallback"] == "S13"
 
 
 def test_s13_reused_audit_response_gives_the_same_decision(cfg, ds):

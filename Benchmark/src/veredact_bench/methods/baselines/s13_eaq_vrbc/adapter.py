@@ -43,19 +43,28 @@ from veredact_bench.utils.log import get_logger
 class EAQVRBCScheme(Scheme):
     key = "S13"
 
-    def __init__(self, cfg: dict, per_block: bool = False):
+    def __init__(self, cfg: dict, variant: str = ""):
         self.cfg, self.b = cfg, cfg["baselines"]["S13"]
-        self.per_block = False
-        if per_block:
-            self.set_variant("per-block")
+        self.per_block = self.fallback = False
+        if variant:
+            self.set_variant(variant)
 
     def set_variant(self, name: str) -> None:
-        """'per-block' (system key S13-per-block, Exp. 4): audits use the paper's Query phase once per distinct
-        block instead of one aggregated Audit, so the TPA gets one decision per block. Exp. 3/4 open S13's own
-        history and switch it here (exp03_audit_efficiency.HISTORY_OF)."""
-        if name != "per-block":
+        """Exp. 3/4 open S13's own history and switch it here (exp03_audit_efficiency.HISTORY_OF).
+
+        'per-block' (system key S13-per-block): audits use the paper's Query phase once per distinct block instead
+        of one aggregated Audit, so the TPA gets one decision per block.
+        'fallback' (system key S13-fallback, #35): the paper's Audit first; only if it returns F, its Query once per
+        distinct block. The paper's Audit outputs one bit, T/F (Zhang et al., Sec. Audit, `S13_fulltext.md:133`), and
+        says nothing about what the TPA does after an F; its Query decides one block (`S13_fulltext.md:131`). An
+        auditor that must know which records are bad runs both: the rule "on F, Query per block" is ours, both
+        steps are the paper's, and both are timed."""
+        if name == "per-block":
+            self.per_block, self.key = True, "S13-per-block"
+        elif name == "fallback":
+            self.fallback, self.key = True, "S13-fallback"
+        else:
             raise ValueError(f"S13 has no variant {name!r}")
-        self.per_block, self.key = True, "S13-per-block"
 
     def capabilities(self) -> Capabilities:
         return Capabilities(
@@ -169,6 +178,21 @@ class EAQVRBCScheme(Scheme):
     def audit(self, query: AuditQuery) -> AuditResult:
         if self.per_block:
             return self._audit_per_block(query)
+        whole = self._audit_whole(query)
+        if not self.fallback or all(whole.accepted.values()):
+            return whole
+        blocks = self._audit_per_block(query)  # S13-fallback: the Audit said F, so Query each block
+        return AuditResult(
+            "ledger integrity + version freshness (Audit; on F, the paper's Query once per block)",
+            whole.retrieval_ms + blocks.retrieval_ms,
+            whole.verify_ms + blocks.verify_ms,
+            whole.evidence_bytes + blocks.evidence_bytes,
+            blocks.accepted,
+            breakdown={"audit_ms": whole.verify_ms, "query_ms": blocks.verify_ms},
+        )
+
+    def _audit_whole(self, query: AuditQuery) -> AuditResult:
+        """The paper's Audit (Challenge, ProofGen, Verify): one T/F for every challenged block of the query."""
         blocks = sorted({s for _, s in self.redacted[: query.records]})
         chal = [(i, int.from_bytes(os.urandom(8), "big") + 1) for i in blocks]
         saved = self._corrupt(query.tamper)
