@@ -112,6 +112,8 @@ def query_rows(cfg, out, key, rpb, s, counts, ds, n_q_axis, extra=lambda s, n: [
         k = cfg["experiment"].get("samples_override", {}).get(key, {}).get(str(n), k)  # S13 at 10^4 (Exp. 3)
         for spec in extra(s, n):
             for sample in range(k):  # queries per point in this run
+                if "make" in spec:  # Exp. 4: the query (its fault positions) is drawn per sample
+                    spec = spec | {"query": spec["make"](sample)}
                 try:
                     res = s.audit(spec["query"])
                 except NotSupported as e:

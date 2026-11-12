@@ -262,6 +262,7 @@ class ImprovedDCHScheme(Scheme):
         # redaction record, then integrity and membership per record
         acc_ok = self.anchor.read("latest_acc") == chain_digest(self._acc_bytes())
         commits = self.anchor.read("commits", ids=[self.rec_id[b] for b, _, _, _ in evidence])
+        read_ms = (time.perf_counter() - t1) * 1000  # the two chain reads, reported apart (#35)
         accepted = {}
         for i, (b, msg, r, wit) in enumerate(evidence):
             ok = (
@@ -274,7 +275,12 @@ class ImprovedDCHScheme(Scheme):
         t2 = time.perf_counter()
         nbytes = sum(len(m) + 48 + self.N.bit_length() // 8 for _, m, _, _ in evidence)
         return AuditResult(
-            "block consistency: redacted-or-not (Jia Sec. III-C4)", (t1 - t0) * 1000, (t2 - t1) * 1000, nbytes, accepted
+            "block consistency: redacted-or-not (Jia Sec. III-C4)",
+            (t1 - t0) * 1000,
+            (t2 - t1) * 1000,
+            nbytes,
+            accepted,
+            read_ms=read_ms,
         )
 
     def teardown(self) -> None:

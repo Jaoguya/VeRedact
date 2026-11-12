@@ -165,30 +165,71 @@ class VeRedactScheme(Scheme):
     def audit(self, query: AuditQuery) -> AuditResult:
         recs = self.p.records[: query.records]
         rng = random.Random(self.cfg["meta"]["seed"])
+        applied, restore = dict(query.tamper), []
         if query.tamper:  # Exp. 4 fault injection on copies of the returned records
-            recs = [self._tamper(r, query.tamper.get(i), rng) for i, r in enumerate(recs)]
+            self._tamper_store(recs, query.tamper, applied, restore)
+            recs = [self._tamper(r, query.tamper.get(i), rng, applied, i) for i, r in enumerate(recs)]
         Q, sigma_Q = self.p.make_query("authorization+state", len(recs))  # auditor signs Q_j^A (untimed)
         # d_Q requests escalated to PQZK verification (seeded); deep = every request
         k = round(query.deep_fraction * len(recs))
         deep = True if query.deep else {r.RID for r in random.Random(self.cfg["meta"]["seed"] + 1).sample(recs, k)}
         self.p.vcs.clear()  # one fresh auditor per query: SAVER reuse is measured within the query
-        t0 = time.perf_counter()
-        resp = self.p.audit(recs, Q, sigma_Q)
-        t1 = time.perf_counter()
-        accepted = self.p.verify_audit(resp, Q, deep=deep)
-        t2 = time.perf_counter()
+        try:
+            t0 = time.perf_counter()
+            resp = self.p.audit(recs, Q, sigma_Q)
+            t1 = time.perf_counter()
+            accepted = self.p.verify_audit(resp, Q, deep=deep)
+            t2 = time.perf_counter()
+        finally:
+            for store, k, genuine in restore:  # the auditor's evidence stores back to the genuine entries
+                store[k] = genuine
+        bd = dict(self.p.last_breakdown)
         return AuditResult(
             "redaction provenance (authorization + state transition)",
             (t1 - t0) * 1000,
             (t2 - t1) * 1000,
             resp.nbytes,
             {i: accepted[r.RID] for i, r in enumerate(recs)},
-            dict(self.p.last_breakdown),
+            bd,
             dict(self.p.last_nodes),
+            read_ms=bd.pop("read_ms", 0.0),
+            tampered=applied if query.tamper else None,
         )
 
-    def _tamper(self, rr, kind, rng):
-        if not kind:
+    def _tamper_store(self, recs, tamper, applied, restore):
+        """Exp. 4 faults on evidence the auditor resolves by id instead of reading it from the record (untimed;
+        audit() puts the genuine entries back).
+        forged_approval: one committee approval of the record's authorization batch is a valid signature by a key
+            outside the committee. The authorization node is shared, so every returned record of that batch
+            depends on forged evidence: all of them count as tampered.
+        forged_proof: another request's genuine PQZK proof stands in for this request's. Routine verification
+            never opens the proof; only a record escalated to PQZK verification (d_Q) can reject it."""
+        import dataclasses
+
+        p = self.p
+        bids = {recs[i].BID for i, k in tamper.items() if k == "forged_approval"}
+        for bid in bids:
+            auth = p.auths[bid]
+            k0, _ = auth.approvals[0]
+            forged = [(k0, p.c.sign(p.L.audit_svc.sk, auth.C_B)), *auth.approvals[1:]]
+            restore.append((p.auths, bid, auth))
+            p.auths[bid] = dataclasses.replace(auth, approvals=forged)
+        if bids:
+            applied.update({i: "forged_approval" for i, r in enumerate(recs) if r.BID in bids})
+        swaps = {}  # chosen on the genuine store first, so no record gets its own proof back through a chain
+        for i, k in tamper.items():
+            if k == "forged_proof":
+                rid = recs[i].RID
+                other = next((o.RID for o in p.records if o.RID != rid), None)
+                if other is None:
+                    raise ValueError("forged_proof needs a second record in the history")
+                swaps[rid] = p.evidence[other]["proof"]
+        for rid, proof in swaps.items():
+            restore.append((p.evidence, rid, p.evidence[rid]))
+            p.evidence[rid] = dict(p.evidence[rid], proof=proof)
+
+    def _tamper(self, rr, kind, rng, applied, i):
+        if kind in (None, "", "forged_approval", "forged_proof"):  # store faults: see _tamper_store
             return rr
         import copy
 
@@ -216,8 +257,9 @@ class VeRedactScheme(Scheme):
                 for k in ("v_b", "v_b_new", "MR", "MR_new", "r", "r_new", "theta", "xi", "positions", "cp"):
                     r.pbrp[k] = old.pbrp[k]
                 r.v_b, r.v_b_new = old.v_b, old.v_b_new
-            else:  # the batch has no earlier transition in this history: an older version number is claimed
-                r.v_b_new -= 1
+            else:  # the batch has no earlier transition in this history: an older version number is claimed,
+                r.v_b_new -= 1  # a different and easier fault, so it is counted apart (stale_version)
+                applied[i] = "stale_version"
         return r
 
     def set_variant(self, variant: str) -> None:

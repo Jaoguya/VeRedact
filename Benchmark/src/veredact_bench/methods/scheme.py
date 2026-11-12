@@ -138,6 +138,10 @@ class AuditResult:
     accepted: dict  # seq -> bool (per-record decision)
     breakdown: dict = field(default_factory=dict)  # verify_ms split by step, where the scheme reports one
     verified_nodes: dict = field(default_factory=dict)  # VeRedact-PQ: cryptographically verified evidence nodes
+    read_ms: float = 0.0  # chain reads inside verify_ms (#35); 0 where the scheme's paper names no read
+    # Exp. 4: seq -> the fault actually applied, where it differs from the query's tamper map (a fault on a shared
+    # node invalidates every record that depends on it; a stale fault may fall back to a claimed older version)
+    tampered: dict | None = None
 
 
 # ----------------------------------------------------------------------------------------- the contract
