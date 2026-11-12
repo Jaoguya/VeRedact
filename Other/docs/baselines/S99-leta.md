@@ -10,7 +10,7 @@ The only post-quantum comparison scheme. It authenticates; it does not redact.
 |---|---|---|
 | 0 | yes | T_m (NTT product), Sign + ZKP (Eqs. 6-8), ZKP verify (Eqs. 14-15), aggregation of m0 signatures incl. VPD-Tree (Eqs. 9-12), aggregate verification (Eq. 13); m0 = `veredact.reference_batch` |
 | 1 | no | no redaction |
-| 2 | yes | per request: PL identity check (Sec. IV-B4c); per batch: VPD-Tree + aggregation (PL) + Eq. 13 (TEC), amortized / m like VeRedact-PQ Phase 4; no committee, flat in n |
+| 2 | yes | per request: PL identity check (Sec. IV-B4c); per batch: VPD-Tree + aggregation (PL) + Eq. 13 (TEC), amortized / m like VeRedact-PQ Phase 4; no committee, flat in n; one PL → RSU → TEC message round per batch (Sec. IV-C1 f) as network time, same delay as a committee round (#37 A1) |
 | 3, 4 | no | no audit protocol (`NotSupported`) |
 | 5 | no | no on-chain step defined by the comparison |
 
@@ -25,6 +25,7 @@ The only post-quantum comparison scheme. It authenticates; it does not redact.
 | AggVerify | Eq. 13 only, c_i not recomputed | as written | S99 |
 | language | Python on an M3 laptop | Python + NumPy (VeRedact-PQ's ML-DSA runs in liboqs C) | against S99 |
 | signing in Exp. 2 | vehicle side | requester side, untimed (as VeRedact-PQ's sign + prove) | neither |
+| network in Exp. 2 | vehicles → PL (Sec. IV-C1 a), then PL → RSU → TEC (Sec. IV-C1 f) | only PL → RSU → TEC counted: one round per batch, `committee.message_delay_ms` (#37 A1); the vehicles' messages are requester side, untimed | S99 (one round not counted) |
 
 ## Fidelity checklist (tests)
 

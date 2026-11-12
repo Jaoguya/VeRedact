@@ -3196,7 +3196,10 @@ Quantum Safe \texttt{liboqs} library. $H$, $H_1$, $H_2$, $H_A$, and
 $H_V$ were implemented using domain-separated SHA3-256, while the
 SA-RLI and RAI PRFs use HMAC-SHA3-256 with 256-bit keys
 $K_{\mathrm{idx}}$ and $K_A$. PQZK was instantiated using a
-transparent hash-based STARK system \textbf{[TBD: library]},
+transparent hash-based STARK system \textcolor{e2}{(winterfell~0.13
+over a 128-bit prime field with a quadratic extension, BLAKE3-256
+commitments, blowup factor 32, 26 FRI queries and 16 grinding bits,
+i.e., at least 128-bit conjectured soundness)},
 consistent with the trapdoor-free setup assumed in Phase~1. PQCH was
 implemented using an SIS-based post-quantum chameleon-hash construction
 following~\cite{ref10,ref17}; the threshold adaptation mechanism uses

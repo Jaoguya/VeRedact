@@ -18,7 +18,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use winterfell::{
-    crypto::{hashers::Sha3_256, DefaultRandomCoin, MerkleTree, VectorCommitment},
+    crypto::{hashers::Blake3_256, DefaultRandomCoin, MerkleTree, VectorCommitment},
     math::{fields::f128::BaseElement, StarkField},
     AcceptableOptions, BatchingMethod, FieldExtension, Proof, ProofOptions, Prover,
 };
@@ -26,7 +26,9 @@ use winterfell::{
 use policy_air::{PolicyAir, PolicyProver, PublicInputs, RANGE_BITS};
 use rescue::{Hash, Rescue128};
 
-type H = Sha3_256<BaseElement>;
+// Commitment hash (Merkle trees and Fiat-Shamir coin). Blake3-256 since #37 A2: same 256-bit digest and 128-bit
+// collision resistance as SHA3-256, faster to check and to prove (configs/base.yaml pqzk).
+type H = Blake3_256<BaseElement>;
 
 fn el(x: u128) -> BaseElement {
     BaseElement::new(x)

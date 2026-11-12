@@ -489,6 +489,12 @@ def test_exp2_s99_amortized_is_its_batch_protocol(tmp_path):
     assert rows and all(r["auth_ok"] == "1" for r in rows)
     for r in rows:
         assert abs(float(r["auth_per_request_ms"]) - float(r["phase4_batch_ms"]) / int(r["batch_size"])) < 1e-9
+    # #37 A1: one PL -> RSU -> TEC message round per batch (LETA Sec. IV-C1 f), the same delay as a committee round,
+    # reported as network time and amortized over the batch like VeRedact-PQ's
+    delay = float(cfg.get("committee", {}).get("message_delay_ms", cfg["ledger"]["netem_delay_ms"]))
+    for r in rows:
+        assert float(r["phase4_batch_net_ms"]) == delay
+        assert abs(float(r["auth_net_per_request_ms"]) - delay / int(r["batch_size"])) < 1e-9
 
 
 def test_exp2_veredact_amortized_is_phase4_only(tmp_path):
