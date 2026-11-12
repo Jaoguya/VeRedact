@@ -171,7 +171,7 @@ def test_veredact_real_substituted_and_stale_evidence_are_rejected_per_record(cf
     n = max(later + 1, 4)
     assert all(s.audit(AuditQuery(n)).accepted.values())
     for kind, i in (("substituted", 1), ("stale", later)):
-        r = s._tamper(recs[i], kind, None)
+        r = s._tamper(recs[i], kind, None, {}, i)
         if kind == "stale":  # a real, older checkpoint of the same batch, not an edited number
             old = r.pbrp["cp"]
             assert r.pbrp["b"] == recs[i].pbrp["b"] and r.v_b_new < recs[i].v_b_new
