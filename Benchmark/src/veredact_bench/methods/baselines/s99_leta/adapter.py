@@ -13,6 +13,11 @@ Mapping (paper Sec. IV, one requester = one vehicle, one authorization batch = o
   audit       not defined -> NotSupported.
 No committee: the TEC verifies alone, so Exp. 2's committee_n axis does not change S99 (recorded as
 "none (single TEC verifier)").
+Network (#37 A1, fairness): the PL sends {VP identity, AggSign, T5} to the TEC through the RSU once per platoon
+(Sec. IV-C1 f) and the TEC decides (Sec. IV-C2). That is one message round per batch, counted with the same clock
+and delay as VeRedact-PQ's committee round (methods/committee.py, committee.message_delay_ms), network time apart
+from crypto. The vehicles' Sign(V_i) messages to the PL (Sec. IV-C1 a) are a second round that is NOT counted:
+in Exp. 2 the requester side stays outside the timer for every scheme, so this favours S99.
 """
 
 import hashlib
@@ -22,6 +27,7 @@ import time
 import numpy as np
 
 from veredact_bench.methods.baselines.s99_leta import construction as L
+from veredact_bench.methods.committee import CommitteeClock
 from veredact_bench.methods.scheme import (
     AuthCost,
     Authorization,
@@ -46,6 +52,8 @@ class LETAScheme(Scheme):
 
     def __init__(self, cfg: dict):
         self.cfg, self.p, self.dt = cfg, params(cfg), cfg["baselines"]["S99"]["delta_t_s"]
+        self.net = CommitteeClock.from_cfg(cfg)  # PL -> RSU -> TEC message round, same delay as every committee
+        self.last_auth_net_ms = 0.0  # network ms of the last authorize_batch (Exp. 2 reports it apart)
 
     def capabilities(self) -> Capabilities:
         return Capabilities(
@@ -102,18 +110,23 @@ class LETAScheme(Scheme):
         root = L.vpd_root([L.vpd_leaf(h["v"].pseudonym, h["sig"], h["eta"], h["t2"]) for h in hs])
         members = [(h["v"].pseudonym, h["t2"], h["sig"].mu) for h in hs]
         agg = L.aggregate(self.S, [h["sig"] for h in hs], members, root, int(time.time()))
-        # TEC: timestamp, beta, Eq. 13
-        ok = L.agg_verify(
-            self.S,
-            agg,
-            members,
-            [h["sig"].mu for h in hs],
-            [h["v"].b for h in hs],
-            [h["sig"].c for h in hs],
-            int(time.time()),
-            self.dt,
+        # PL -> RSU -> TEC (Sec. IV-C1 f), then the TEC: timestamp, beta, Eq. 13 (Sec. IV-C2): one message round
+        (ok,) = self.net.round(
+            [
+                lambda: L.agg_verify(
+                    self.S,
+                    agg,
+                    members,
+                    [h["sig"].mu for h in hs],
+                    [h["v"].b for h in hs],
+                    [h["sig"].c for h in hs],
+                    int(time.time()),
+                    self.dt,
+                )
+            ]
         )
-        return ok, (time.perf_counter() - t0) * 1000
+        credit_s, self.last_auth_net_ms = self.net.take()  # the message delay is network time, not crypto
+        return ok, (time.perf_counter() - t0 - credit_s) * 1000
 
     def redact(self, batch: list) -> RedactionResult:
         raise NotSupported("S99: LETA authenticates vehicles; its paper defines no redaction")

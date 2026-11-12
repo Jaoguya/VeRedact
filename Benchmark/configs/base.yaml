@@ -37,9 +37,12 @@ security:
     sigma_g: 3.0                # [PROPOSED] gadget sampling width >= omega(sqrt(log n)) (MP12 §4)
   pqzk:
     # [DERIVED] Manuscript: transparent hash-based STARK (Phase 1 Step 6). winterfell 0.13 (native/pqzk_stark),
-    # SHA3-256 commitments, f128 field with quadratic extension.
-    queries: 42                 # [PROPOSED] 42 queries x log2(blowup 8) = 126 bits query security +
-    blowup: 8                   #            16 bits grinding ~ 128-bit conjectured soundness (ethSTARK)
+    # Blake3-256 commitments (#37 A2; was SHA3-256: same 256-bit output and 128-bit collision resistance),
+    # f128 field with quadratic extension.
+    queries: 26                 # [PROPOSED] #37 A2: 26 queries x log2(blowup 32) = 130 bits query security +
+    blowup: 32                  #   16 bits grinding >= 128-bit conjectured soundness (ethSTARK), as before (8/42: 126).
+                                #   Rule fixed beforehand: fastest check with proving <= 1.2x the old SHA3 8/42.
+                                #   Laptop (decision aid): check 0.94 -> 0.49 ms, prove ~25 -> ~18 ms, proof ~39 -> ~32 KB
     grinding_bits: 16
     registry_depth: 15          # [DERIVED] (depth + 1) must be a power of two (AIR trace length); 2^15 slots
     attribute_levels: 8         # [PROPOSED] PrivatePolicy: attribute and policy threshold in 1..8, proven as
