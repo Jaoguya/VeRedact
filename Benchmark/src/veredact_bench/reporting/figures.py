@@ -291,7 +291,8 @@ def fig_exp4(tier, written):
     oks = [v for m in ms.values() for v in _points(m).values() if v.get("status") == "ok"]
     split = all((v.get("verify_noread_ms") or {}).get("n") for v in oks)
     f = "verify_noread_ms" if split else "verify_ms"
-    ylabel = "Auditor verification, chain reads excluded (ms)" if split else "Auditor verification (ms)"
+    # two lines: on one line the label is taller than the 2.4-inch panel and is cut off (run-2026-11-12 figure)
+    ylabel = "Auditor verification (ms)\nchain reads excluded" if split else "Auditor verification (ms)"
     for key, m in ms.items():
         if key == "S13-fallback":  # with no faults its Audit says T and it IS the S13 line; fault cases go to the text
             continue

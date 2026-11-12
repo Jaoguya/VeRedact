@@ -33,7 +33,7 @@ A finished (experiment, method, tier) is skipped on re-run; `make eval ... FORCE
 The experiment tier refuses to run without Besu and the liboqs ML-DSA-65 backend.
 
 **The paper's full run** is split over AWS workers in us-east-2, one machine per experiment and run (hybrid plan:
-Exp. 2–5 in 3 runs, Exp. 0 and 1 once); see [Results](#results-full-run-of-3-nov-2026) and `Other/docs/aws-runbook.md`.
+Exp. 2–5 in 3 runs, Exp. 0 and 1 once); see [Results](#results-full-run-of-12-nov-2026) and `Other/docs/aws-runbook.md`.
 Every AWS action needs a yes for that action, from the agent's owner in chat or a team member on its issue, and
 is logged on its issue (`CLAUDE.md`):
 
@@ -90,28 +90,28 @@ VeRedact/
 On the server the same layout lives under `/opt/veredact` (`Benchmark/` is synced there; `Result/` and
 `Overleaf/tables/` are generated there and copied back).
 
-## Results: full run of 9–10 Nov 2026
+## Results: full run of 12 Nov 2026
 
 | Item | Value |
 |:--|:--|
-| Code / image | Exp. 0, 2–5: `Benchmark/` of commit `6be9e38`, image `ami-08e910433d99b0dda`; Exp. 1: commit `0afabd3`, image `ami-0488a53cf0e92d022` (`Benchmark/` differs from `6be9e38` only by #30, a test skipped on the arm64 prover). Every image build ran the full test suite |
-| Systems | Exp. 1: VeRedact-PQ, Refs. [1], [13], [27], [34] (ablation variants dropped in #5); Exp. 4 adds Ref. [13] per block |
+| Code / image | `Benchmark/` of commit `fab96be` (#39, #41, #43, #44, #45), image `ami-069f8fecfaef1ea23` (deleted after the run). The image build ran the full test suite |
+| Systems | Exp. 1: VeRedact-PQ, Refs. [1], [13], [27], [34]; Exp. 2: VeRedact-PQ, Refs. [1], [34], [30]; Exp. 4: VeRedact-PQ, Ref. [1], Ref. [13] whole query, per block, and Audit → Query per block (`S13-fallback`) |
 | Scale | 10^5-transaction ledger, n_Q up to 10^4; Exp. 1 at 25–1,000 req/s with 20 % invalid requests |
 | Repetitions | Exp. 2–5: 3 runs × 10 samples per point (S13 at n_Q = 10^4 in Exp. 3: 3 × 2), seeds 20260929 + (r−1)·1000; Exp. 0, 1: run 1 only (Exp. 1 error bars from 6 × 10-s sub-windows and bootstrap) |
-| When | Exp. 0, 2–5: 9 Nov 2026, 17:46–23:20 UTC. Exp. 1 (10 Nov, same worker): baselines 03:31–05:28 UTC, VeRedact-PQ 06:06–06:28 UTC |
-| Coverage | `check_coverage.py --tier experiment`: 477/477, 387/387, 387/387 (runs 1–3); every part `EXIT=0` |
+| When | 12 Nov 2026, us-east-2 (13 × m7i.4xlarge + 1 × c8g.48xlarge prover): parts started 09:50 UTC, last part done 17:49 UTC |
+| Coverage | `check_coverage.py --tier experiment`: 481/481, 391/391, 391/391 (runs 1–3), 0 gaps; every part `EXIT=0` |
 
 Where: figures in `Result/`, table in `Overleaf/tables/tab_primitives.tex` (both committed); combined numbers
 `Benchmark/results/<exp>/<method>/experiment-reps/metrics.json`, per run `experiment-repNN/` (gitignored, on
-veredact-bench `/opt/veredact/Benchmark/results/`; aggregates in the GitHub release `run-2026-11-10`). In
+veredact-bench `/opt/veredact/Benchmark/results/`; aggregates in the GitHub release `run-2026-11-12`). In
 `experiment-reps`, `median` is the mean of the per-run medians, `ci95_halfwidth` Student's t over 3 runs, `p95`
 pooled over runs. Regenerate: `VRPQ_RESULTS_TIER=experiment-reps make tables figures TIER=experiment`.
 
-Caveats a reader must know: Exp. 1 did not run on 9 Nov (the arm64 prover failed its set-up test, fixed in #30)
-and ran on 10 Nov on a new worker 1 in us-east-2c, next to the prover. There it ran in two steps on the same
-machine: the four baselines first, then VeRedact-PQ alone after the worker had stopped (~40 min later). VeRedact-PQ's
-first attempt (03:27 UTC) aborted before measuring (prover port blocked by a stale security-group rule, fixed in
-#31) and its folder was rerun whole. "Missed by the block watcher" receipts (Exp. 1 baselines, Exp. 3 run 1) were
-all found by hash lookup. Exp. 1 is one run (within-run error bars); smoke numbers are never results.
+Caveats a reader must know: Fig. 6 (Exp. 4) plots `verify_noread_ms`, verification without reads of anchored values
+from the PBN, for every system; the totals (`verify_ms`) and the reads (`read_ms`) are in `metrics.json` for the text
+(Ref. [13] makes no chain read). Exp. 5's code did not change; it was rerun so that every figure comes from one
+commit. Exp. 4's figure was redrawn on the laptop from these `experiment-reps` files after its y-axis label was put
+on two lines (cut off on one). Exp. 1 is one run (within-run error bars); smoke numbers are never results. The
+previous full run is release `run-2026-11-10` (commit `0afabd3`).
 
 Status and open work: GitHub issues, on the board https://github.com/users/Ppdfd/projects/1. Older history: git log (`TASK.md` and `HANDOFF.md` until 6 Nov 2026).
