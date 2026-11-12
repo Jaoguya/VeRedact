@@ -3362,7 +3362,7 @@ as throughput.}
 \includegraphics[width=0.8\linewidth]{exp1_redaction_throughput.png}
 \caption{\textcolor{e1}{Finalized valid redactions per second versus
 request arrival rate, with 20\% invalid requests (10\% stale, 10\%
-absent).}}
+absent). The measured rates are equally spaced on the horizontal axis.}}
 \label{fig:exp1_redaction}
 \end{figure}
 
@@ -3412,7 +3412,8 @@ no comparable standalone authorization stage.
 \includegraphics[width=0.8\linewidth]{exp2_authorization_latency.png}
 \caption{\textcolor{e2}{Complete authorization cost per request,
 including committee network time, versus committee size $n$
-($m=\textbf{[64]}$, $t=\lfloor2n/3\rfloor+1$).}}
+($m=\textbf{[64]}$, $t=\lfloor2n/3\rfloor+1$). The measured sizes are
+equally spaced on the horizontal axis.}}
 \label{fig:exp2_auth}
 \end{figure}
 
@@ -3423,7 +3424,8 @@ Schemes~\cite{ref1} and~\cite{ref34} define no batch protocol and repeat
 their per-request work for every request; Scheme~\cite{ref1} also waits
 for one committee message round per request, and Scheme~\cite{ref34}'s
 work grows with its policy size. Scheme~\cite{ref39} is independent of
-$n$.}
+$n$; its leader submits the aggregate signature to its verifier once
+per batch, which is counted as one message round with the same delay.}
 
 \textcolor{e2}{Phase~3 of VeRedact-PQ includes one PQZK verification
 per request, which enforces the private policy, does not amortize, and
@@ -3433,8 +3435,15 @@ above Scheme~\cite{ref1} (Table~\ref{tab:exp2_m}); it falls below
 Scheme~\cite{ref1} only because one committee message round costs more
 than this difference, which holds at the configured \textbf{[TBD]}\,ms
 inter-node delay but not on a network with sub-millisecond round trips.
-Scheme~\cite{ref39} remains below VeRedact-PQ at every $n$; the difference is the cost of the private-policy predicate,
-the committee, and the freshness check (Table~\ref{tab:comparison}). In
+Scheme~\cite{ref39} is \textbf{[TBD: below / level with / above]}
+VeRedact-PQ \textbf{[TBD: at every $n$ / for $n\geq$~...]}; any
+remaining difference is the cost of the private-policy predicate,
+the committee, and the freshness check (Table~\ref{tab:comparison}).
+Two differences lie outside the figure: requester-side work (VeRedact-PQ's PQZK proving,
+\textbf{[TBD]}\,ms, against Scheme~\cite{ref39}'s signing) is excluded
+for every scheme, and Scheme~\cite{ref39} is implemented in Python and
+NumPy whereas the ML-DSA-65 operations of VeRedact-PQ run in C, so an
+optimized implementation of Scheme~\cite{ref39} would be faster. In
 Experiment~1, CORA formed rounds of \textbf{[TBD]} requests, i.e.,
 between the $m=32$ and $m=256$ rows of Table~\ref{tab:exp2_m}.}
 
@@ -3558,15 +3567,31 @@ from another redaction or dependency context is inserted; and
 \textbf{stale evidence}, where \textcolor{e4}{a real earlier checkpoint
 of the same batch} is replayed. \textcolor{e4}{Schemes~\cite{ref1}
 and~\cite{ref13} bind no dependency context, so each class is applied
-to them as a corruption of the record.} We measure the invalid-record
-rejection rate and valid-record acceptance rate.
+to them as a corruption of the record. For VeRedact-PQ, two further
+classes test properties of Section~IV that the baselines do not carry:
+a \textbf{forged approval}, where one committee approval of the
+record's authorization set is a valid signature under a key outside the
+committee (Threshold Authorization), and a \textbf{forged proof}, where
+another request's genuine PQZK proof replaces the record's own
+(State-Bound Request Admission). A forged approval invalidates every
+returned record of that set, so the rates count the records it reaches
+rather than the fraction selected. Routine verification does not open
+$\pi_i^{PQ}$, so a forged proof is detected only in escalated records;
+it is therefore evaluated at every $d_Q/n_Q$. Where a batch has no
+earlier checkpoint to replay, the stale fault falls back to claiming an
+older version number and is counted separately. The faulty positions are
+drawn independently for each query and are the same for every system.
+Result-set completeness (an omitted record) is not evaluated, since it
+requires the coverage evidence of Section~IV.} We measure the
+invalid-record rejection rate and valid-record acceptance rate.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\linewidth]{exp4_verification_time.png}
-\caption{\textcolor{e4}{Verification time versus $n_Q$: VeRedact-PQ
-routine ($d_Q=0$) and deep ($d_Q=n_Q$), Scheme~\cite{ref1}, and
-Scheme~\cite{ref13} per query (Audit) and per block (Query).}}
+\caption{\textcolor{e4}{Verification time versus $n_Q$, excluding reads
+of anchored values from the PBN: VeRedact-PQ routine ($d_Q=0$) and deep
+($d_Q=n_Q$), Scheme~\cite{ref1}, and Scheme~\cite{ref13} per query
+(Audit) and per block (Query).}}
 \label{fig:exp4_verify}
 \end{figure}
 
@@ -3575,13 +3600,24 @@ $C_{\mathrm{verify}}\approx C_{\mathrm{routine}}+d_QT_{ZV}$;
 \textcolor{e4}{the routine and deep lines in
 Fig.~\ref{fig:exp4_verify} bound this range, and
 Table~\ref{tab:exp4_breakdown} decomposes the routine cost.
-Scheme~\cite{ref13}'s Audit remains below every VeRedact-PQ line because
+Reads of anchored values are network round trips whose cost depends on
+the deployment rather than on the verification procedure, so they are
+reported separately for every system: VeRedact-PQ reads the anchored RAI
+checkpoint and checkpoint history, Scheme~\cite{ref1} its accumulator
+and commitments, and Scheme~\cite{ref13}'s Audit and Query read none.
+Including these reads, the verification times are \textbf{[TBD]}.
+Scheme~\cite{ref13}'s Audit is below VeRedact-PQ \textbf{[TBD: at every
+$n_Q$ / for $n_Q\geq$~...]} because
 it verifies one aggregate proof regardless of $n_Q$, but it rejects every
 record of a query that contains one invalid record, and its Query rejects
 every record of the affected block. VeRedact-PQ and Scheme~\cite{ref1}
 decide each record separately, so an invalid record does not invalidate
 records whose dependencies remain valid. The rejection and acceptance
-rates per system and fault class are \textbf{[TBD]}.
+rates per system and fault class are \textbf{[TBD]}. A forged proof
+is detected in \textbf{[TBD]} of the escalated records and in none of
+the routinely verified ones, as expected of selective verification: the
+escalation fraction $d_Q/n_Q$ sets both the deep-verification cost and
+the share of forged proofs found.
 
 The constant Audit time therefore holds only while every returned record
 is valid. Once a query contains an invalid record, the Audit's F
@@ -3589,8 +3625,8 @@ identifies none of them, and locating them costs Scheme~\cite{ref13} its
 Audit plus one Query per block of the result
 (Table~\ref{tab:exp4_faults}); even then, valid records that share a
 block with an invalid one are rejected. Without faults,
-Scheme~\cite{ref13}'s Audit is faster than VeRedact-PQ at every $n_Q$
-(Fig.~\ref{fig:exp4_verify}).}
+Scheme~\cite{ref13}'s Audit is faster than VeRedact-PQ \textbf{[TBD: at
+every $n_Q$ / for $n_Q\geq$~...]} (Fig.~\ref{fig:exp4_verify}).}
 
 \begin{table}[t]\color{e4}
 \centering
@@ -3629,6 +3665,8 @@ Committee approvals & [TBD] \\
 Transition/PQCH ($z_Q=$ [TBD]) & [TBD] \\
 Checkpoints & [TBD] \\
 \hline
+of which reads of anchored values & [TBD] \\
+\hline
 \end{tabular}
 \end{table}
 
@@ -3651,7 +3689,8 @@ finalization latency of the Phase~5 finalization transaction
 \centering
 \includegraphics[width=0.8\linewidth]{exp5_blockchain_overhead.png}
 \caption{\textcolor{e5}{PBN anchoring transactions per finalized
-redaction versus request arrival rate.}}
+redaction versus request arrival rate. The measured rates are equally
+spaced on the horizontal axis.}}
 \label{fig:exp5_blockchain}
 \end{figure}
 
