@@ -3593,11 +3593,12 @@ invalid-record rejection rate and valid-record acceptance rate.
 \includegraphics[width=0.8\linewidth]{exp4_verification_time.png}
 \caption{\textcolor{e4}{Routine verification time ($d_Q=0$) versus
 $n_Q$ when 1\% of the returned records carry modified evidence,
-excluding reads of anchored values from the PBN. Scheme~\cite{ref13} is
-shown as its Audit followed on F by its Query per block, which
-identifies the invalid records, and as its Audit alone (dotted), which
-returns one decision and rejects every valid record of the query. At
-$n_Q=10$, 1\% rounds to no tampered record.}}
+excluding reads of anchored values from the PBN, for the systems that
+identify the invalid records. Scheme~\cite{ref13} runs its Audit
+followed on F by its Query per block. Its Audit alone (55--58~ms at
+every $n_Q$) returns one decision and rejects every valid record of the
+query; it is reported in the text. At $n_Q=10$, 1\% rounds to no
+tampered record.}}
 \label{fig:exp4_verify}
 \end{figure}
 
@@ -3626,7 +3627,7 @@ transition, and checkpoint node once for all records that share it
 stays below Scheme~\cite{ref1}'s at every $n_Q$.
 Scheme~\cite{ref13}'s Audit aggregates the tags and non-membership
 witnesses of the challenged blocks into one check, so its time stays
-between 55 and 58~ms at every $n_Q$ (dotted line). That check returns one F for
+between 55 and 58~ms at every $n_Q$. That check returns one F for
 the whole query and names no invalid record, so every valid record is
 rejected with it. To identify the invalid records, the auditor runs
 Scheme~\cite{ref13}'s Query on every block of the result; each Query
