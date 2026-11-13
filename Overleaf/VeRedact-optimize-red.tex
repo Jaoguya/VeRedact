@@ -3591,83 +3591,103 @@ invalid-record rejection rate and valid-record acceptance rate.
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\linewidth]{exp4_verification_time.png}
-\caption{\textcolor{e4}{Verification time versus $n_Q$ with every
-returned record valid, excluding reads
-of anchored values from the PBN: VeRedact-PQ routine ($d_Q=0$) and deep
-($d_Q=n_Q$), Scheme~\cite{ref1}, and Scheme~\cite{ref13} per query
-(Audit) and per block (Query).}}
+\caption{\textcolor{e4}{Routine verification time ($d_Q=0$) versus
+$n_Q$ when 1\% of the returned records carry modified evidence,
+excluding reads of anchored values from the PBN. Scheme~\cite{ref13} is
+shown as its Audit followed on F by its Query per block, which
+identifies the invalid records, and as its Audit alone (dotted), which
+returns one decision and rejects every valid record of the query. At
+$n_Q=10$, 1\% rounds to no tampered record.}}
 \label{fig:exp4_verify}
 \end{figure}
 
 Verification cost follows
 $C_{\mathrm{verify}}\approx C_{\mathrm{routine}}+d_QT_{ZV}$;
-\textcolor{e4}{the routine and deep lines in
-Fig.~\ref{fig:exp4_verify} bound this range, and
-Table~\ref{tab:exp4_breakdown} decomposes the routine cost.
+\textcolor{e4}{Fig.~\ref{fig:exp4_verify} shows the routine cost,
+Table~\ref{tab:exp4_breakdown} decomposes it, and
+Table~\ref{tab:exp4_nofault} gives the routine and deep ($d_Q=n_Q$)
+costs without faults, which bound this range.
 Reads of anchored values are network round trips whose cost depends on
 the deployment rather than on the verification procedure, so they are
 reported separately for every system: VeRedact-PQ reads the anchored RAI
 checkpoint and checkpoint history, Scheme~\cite{ref1} its accumulator
 and commitments, and Scheme~\cite{ref13}'s Audit and Query read none.
 Including these reads, the verification times are \textbf{[TBD]}.
-Without faults, Scheme~\cite{ref13}'s Audit is below VeRedact-PQ for
-$n_Q\geq10^2$ (Fig.~\ref{fig:exp4_verify}; 58.4 vs.\ 62.5~ms at
-$n_Q=10^2$ and 60.2 vs.\ 5{,}262~ms at $n_Q=10^4$, while VeRedact-PQ
-needs 9.1~ms against 57.8~ms at $n_Q=10$) because
-it verifies one aggregate proof regardless of $n_Q$, but it rejects every
-record of a query that contains one invalid record, and its Query rejects
-every record of the affected block. VeRedact-PQ and Scheme~\cite{ref1}
-decide each record separately, so an invalid record does not invalidate
-records whose dependencies remain valid. VeRedact-PQ and
-Scheme~\cite{ref1} reject every invalid record and accept every valid
-one, for every fault class and fraction. Scheme~\cite{ref13}'s Audit
-also detects every fault but rejects every valid record of the query;
-its Query per block, alone or after a failed Audit, rejects 1.7\%,
-12.7\%, and 47.1\% of the valid records at 1\% faults
-($n_Q=10^2,10^3,10^4$) and 14.6\%, 48.1\%, and 88.9\% at 10\%. The
-three fault classes give Scheme~\cite{ref13} the same rates, since each
-is applied to it as one corruption of the block tag. A forged proof
+
+The curves in Fig.~\ref{fig:exp4_verify} follow from how each scheme
+reaches a decision. VeRedact-PQ and Scheme~\cite{ref1} decide each
+record separately, so a tampered record fails only its own check and
+their times stay within 2\% of those without faults
+(Table~\ref{tab:exp4_nofault}). Scheme~\cite{ref1} performs a
+chameleon-hash check and an RSA accumulator membership exponentiation
+for every record, whereas VeRedact-PQ verifies each authorization,
+transition, and checkpoint node once for all records that share it
+(Eq.~\eqref{eq:saver_cost}); its time therefore grows with $n_Q$ but
+stays below Scheme~\cite{ref1}'s at every $n_Q$.
+Scheme~\cite{ref13}'s Audit aggregates the tags and non-membership
+witnesses of the challenged blocks into one check, so its time stays
+between 55 and 58~ms at every $n_Q$ (dotted line). That check returns one F for
+the whole query and names no invalid record, so every valid record is
+rejected with it. To identify the invalid records, the auditor runs
+Scheme~\cite{ref13}'s Query on every block of the result; each Query
+verifies a non-membership witness, an identity-based tag, and a
+chameleon hash with exponentiations modulo the RSA modulus, so the cost
+grows with the number of distinct blocks the query touches and levels
+off once the query covers every block of the ledger, as at $n_Q=10^4$.
+Even then, the Query decides per block rather than per record: valid
+records that share a block with an invalid one are rejected.
+When the auditor must identify the invalid records, VeRedact-PQ
+therefore verifies 4.7--73$\times$ faster than Scheme~\cite{ref13}
+(Audit followed by Query) and 3.8--6.4$\times$ faster than
+Scheme~\cite{ref1} (Fig.~\ref{fig:exp4_verify}). It remains the fastest
+in all 36 measured settings (three fault classes, 1\%, 5\%, and 10\%
+tampered records, $n_Q=10$ to $10^4$), by 4.4--81$\times$ and
+3.3--6.6$\times$, respectively.
+
+VeRedact-PQ and Scheme~\cite{ref1} reject every invalid record and
+accept every valid one, for every fault class and fraction.
+Scheme~\cite{ref13}'s Audit also detects every fault but rejects every
+valid record of the query; its Query per block, alone or after a failed
+Audit, rejects 1.7\%, 12.7\%, and 47.1\% of the valid records at 1\%
+faults ($n_Q=10^2,10^3,10^4$) and 14.6\%, 48.1\%, and 88.9\% at 10\%.
+The three fault classes give Scheme~\cite{ref13} the same rates, since
+each is applied to it as one corruption of the block tag; stale and
+substituted evidence change the verification times of
+Fig.~\ref{fig:exp4_verify} by at most 6\% for $n_Q\geq10^2$. A forged proof
 is detected in \textbf{[TBD]} of the escalated records and in none of
 the routinely verified ones, as expected of selective verification: the
 escalation fraction $d_Q/n_Q$ sets both the deep-verification cost and
 the share of forged proofs found.
 
-The constant Audit time therefore holds only while every returned record
-is valid. Once a query contains an invalid record, the Audit's F
-identifies none of them, and locating them costs Scheme~\cite{ref13} its
-Audit plus one Query per block of the result
-(Table~\ref{tab:exp4_faults}); even then, valid records that share a
-block with an invalid one are rejected. With 1\% tampered records,
-VeRedact-PQ verifies faster than Scheme~\cite{ref13}'s Audit followed by
-Query at every $n_Q$ and faster than Scheme~\cite{ref1} at every $n_Q$
-(Table~\ref{tab:exp4_faults}).}
+Without faults, Scheme~\cite{ref13}'s Audit is below VeRedact-PQ for
+$n_Q\geq10^2$ (Table~\ref{tab:exp4_nofault}): its time does not depend
+on $n_Q$ because it verifies one aggregate proof, while VeRedact-PQ
+verifies every returned record. VeRedact-PQ is below it at $n_Q=10$.}
 
 \begin{table}[t]\color{e4}
 \centering
-\caption{Verification Time with 1\% Tampered Records (ms), Modified
-Evidence}
-\label{tab:exp4_faults}
+\caption{Verification Time Without Faults (ms)}
+\label{tab:exp4_nofault}
 \scriptsize
 \renewcommand{\arraystretch}{1.08}
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{rcccc}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{rccccc}
 \hline
-$n_Q$ & VeRedact-PQ & Scheme~\cite{ref1} & Scheme~\cite{ref13} & Valid records \\
- & & & Audit $\rightarrow$ Query & rejected, \cite{ref13} \\
+$n_Q$ & \multicolumn{2}{c}{VeRedact-PQ} & Scheme~\cite{ref1} & \multicolumn{2}{c}{Scheme~\cite{ref13}} \\
+ & routine & deep & & Audit & Query/block \\
 \hline
-$10$\rlap{$^{\dagger}$} & 9.0    & 34.6       & 58.6       & 0\%    \\
-$10^2$   & 62.0    & 333.4      & 4{,}504.8  & 1.7\%  \\
-$10^3$   & 519.3   & 3{,}321.5  & 18{,}133.0 & 12.7\% \\
-$10^4$   & 5{,}311.3 & 33{,}209.0 & 24{,}744.9 & 47.1\% \\
+$10$   & 9.1       & 17.4       & 34.8       & 57.8 & 635.0      \\
+$10^2$ & 62.5      & 122.9      & 339.3      & 58.4 & 4{,}216.1  \\
+$10^3$ & 522.9     & 1{,}039.8  & 3{,}363.7  & 58.5 & 17{,}998.9 \\
+$10^4$ & 5{,}262.3 & 10{,}556.0 & 33{,}557.6 & 60.2 & 25{,}313.3 \\
 \hline
 \end{tabular}
 
 \smallskip
 \parbox{0.95\linewidth}{\tiny Reads of anchored values excluded; mean of
-the per-run medians over three runs. VeRedact-PQ and Scheme~\cite{ref1} reject no valid
-record. Stale and substituted evidence differ from modified by at most
-6\% for $n_Q\geq10^2$. $^{\dagger}$At $n_Q=10$, 1\% rounds to no tampered
-record, so Scheme~\cite{ref13}'s Audit passes and no Query runs.}
+the per-run medians over three runs. Without faults, Scheme~\cite{ref13}'s
+Audit passes and no Query follows; the Query column runs it on every
+block.}
 \end{table}
 
 \begin{table}[t]\color{e4}

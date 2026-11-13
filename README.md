@@ -111,7 +111,7 @@ Caveats a reader must know: Fig. 6 (Exp. 4) plots `verify_noread_ms`, verificati
 from the PBN, for every system; the totals (`verify_ms`) and the reads (`read_ms`) are in `metrics.json` for the text
 (Ref. [13] makes no chain read). Exp. 5's code did not change; it was rerun so that every figure comes from one
 commit. Exp. 4's figure was redrawn on the laptop from these `experiment-reps` files after its y-axis label was put
-on two lines (cut off on one). Exp. 1 is one run (within-run error bars); smoke numbers are never results. The
+on two lines (cut off on one), and again for #47: it now shows the 1 %-tampered case (no-fault times in the text). Exp. 1 is one run (within-run error bars); smoke numbers are never results. The
 previous full run is release `run-2026-11-10` (commit `0afabd3`).
 
 Status and open work: GitHub issues, on the board https://github.com/users/Ppdfd/projects/1. Older history: git log (`TASK.md` and `HANDOFF.md` until 6 Nov 2026).
