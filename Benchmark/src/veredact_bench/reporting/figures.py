@@ -10,7 +10,8 @@ Schemes [1], [13], [27], [34] and LETA where they run. Fig. 5 at VeRedact-PQ's d
           schemes without a batch protocol drawn dashed
   Fig. 5  one panel (#7): end-to-end audit cost per query (generation + verification) vs returned records;
           VeRedact-PQ and the baselines only, the SAVER ablations (Shared-Evidence, Per-Record) go to the text
-  Fig. 6  (a) verification vs PQZK escalation fraction, (b) breakdown, (c) rejection / acceptance per fault class
+  Fig. 6  one panel (#47): routine verification vs returned records with 1 % tampered records; Scheme [13] as
+          Audit then per block, and its Audit alone (dotted); no-fault times and the rest go to the text
   Fig. 7  one panel (#9): PBN anchoring transactions per finalized redaction vs arrival rate, every system,
           from Exp. 1's points; bytes, gas and the |Omega_e| sweep go to the text
 No other figure is drawn: only what the manuscript shows.
@@ -277,11 +278,16 @@ def fig_exp3(tier, written):
     _save(fig, "exp3_audit_efficiency", written)
 
 
+EXP4_FAULT = ("modified", 0.01)  # #47: the fault case Fig. 6 shows (fault class, tampered fraction)
+
+
 def fig_exp4(tier, written):
-    """One panel (#8): auditor verification time vs returned records n_Q. VeRedact-PQ routine (d_Q = 0) and deep
-    (every request escalated to PQZK, the largest d_Q/n_Q run); Scheme [1] per record; Scheme [13] with one
-    decision per query (its Audit) and per block (its Query phase, S13-per-block). The breakdown, the
-    intermediate escalation fractions and the fault classes go to the text (tables), not to panels."""
+    """One panel (#47): auditor verification time vs returned records n_Q with 1 % of the returned records
+    tampered (modified evidence), routine verification (d_Q = 0). An auditor must then name the invalid records:
+    VeRedact-PQ and Scheme [1] decide per record; Scheme [13] runs its Audit and, on F, its Query once per block
+    (S13-fallback). Scheme [13]'s Audit alone stays drawn (dotted): it is faster for n_Q >= 10^2 but rejects
+    every valid record of the query, and it is the case VeRedact-PQ does not win. The no-fault times, the deep
+    line, S13-per-block and the other fault classes and fractions go to the text (tables)."""
     ms = metrics("exp04_verification_time", tier)
     if not ms:
         return
@@ -293,27 +299,33 @@ def fig_exp4(tier, written):
     f = "verify_noread_ms" if split else "verify_ms"
     # two lines: on one line the label is taller than the 2.4-inch panel and is cut off (run-2026-11-12 figure)
     ylabel = "Auditor verification (ms)\nchain reads excluded" if split else "Auditor verification (ms)"
+    kind, frac = EXP4_FAULT
     for key, m in ms.items():
-        if key == "S13-fallback":  # with no faults its Audit says T and it IS the S13 line; fault cases go to the text
+        if key == "S13-per-block":  # with a fault it costs what S13-fallback's Query part costs: text only
             continue
-        pts = {k: v for k, v in _points(m).items() if v.get("status") == "ok" and k[2] == "none"}
-        levels = sorted({k[1] for k in pts})
-        for d in [levels[0], levels[-1]] if len(levels) > 1 else levels:
-            ok = sorted((k[0], v) for k, v in pts.items() if k[1] == d and (v.get(f) or {}).get("n"))
-            if not ok:
-                continue
-            deep = d > 0
-            suffix = ", deep" if deep else (", whole query" if key == "S13" else "")
-            style.line(
-                a,
-                key,
-                [n for n, _ in ok],
-                [v[f]["median"] for _, v in ok],
-                suffix=suffix,
-                yerr=_ci(m, [v for _, v in ok], f, "ci95_halfwidth"),
-                linestyle="--" if deep else None,
-            )
-    a.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$", ylabel=ylabel)
+        # point key: (n_Q, deep_fraction, fault_kind, inject_fraction)
+        ok = sorted(
+            (k[0], v)
+            for k, v in _points(m).items()
+            if v.get("status") == "ok"
+            and k[1] == 0
+            and k[2] == kind
+            and math.isclose(k[3], frac)
+            and (v.get(f) or {}).get("n")
+        )
+        if not ok:
+            continue
+        audit_only = key == "S13"
+        style.line(
+            a,
+            key,
+            [n for n, _ in ok],
+            [v[f]["median"] for _, v in ok],
+            suffix=", Audit only" if audit_only else "",  # rejects every valid record: said in the caption
+            yerr=_ci(m, [v for _, v in ok], f, "ci95_halfwidth"),
+            linestyle=":" if audit_only else None,
+        )
+    a.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$ (1% tampered)", ylabel=ylabel)
     a.sci_y = True
     _legend(a, outside=True)
     _save(fig, "exp4_verification_time", written)
