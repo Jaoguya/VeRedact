@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 COLUMN_IN = 3.5  # IEEE single column
 DOUBLE_IN = 7.16  # IEEE double column
 FONT_PT = 8
+FIGSIZE_IN = (COLUMN_IN, 2.6)  # every figure, exactly: saved without a tight crop, so all have one size and scale
+LEGEND_WRAP = 18  # characters per legend-label line; longer labels wrap instead of widening the figure
 
 # Okabe & Ito (2008) palette
 _BLUE, _ORANGE, _GREEN, _VERMILION, _PURPLE = "#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7"
@@ -61,8 +63,6 @@ def apply():
             "grid.alpha": 0.3,
             "lines.linewidth": 1.2,
             "lines.markersize": 3.5,
-            "savefig.bbox": "tight",
-            "savefig.pad_inches": 0.02,
         }
     )
 

@@ -14,10 +14,13 @@ Schemes [1], [13], [27], [34] and LETA where they run. Fig. 5 at VeRedact-PQ's d
           Audit then per block: only systems that identify the invalid records; the rest goes to the text
   Fig. 7  one panel (#9): PBN anchoring transactions per finalized redaction vs arrival rate, every system,
           from Exp. 1's points; bytes, gas and the |Omega_e| sweep go to the text
-No other figure is drawn: only what the manuscript shows.
+No other figure is drawn: only what the manuscript shows. Every figure is saved at exactly style.FIGSIZE_IN
+(no tight crop), so all five have the same pixel size and the same scale under one includegraphics width; text
+that would not fit that width (legend labels) is wrapped instead of widening the figure.
 """
 
 import math
+import textwrap
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
@@ -54,9 +57,15 @@ def _points(m: dict) -> dict:
     return out
 
 
-def _panels(n: int, height_in: float = 1.9):
-    fig, axes = plt.subplots(n, 1, figsize=(style.COLUMN_IN, height_in * n), layout="constrained")
-    return fig, list(axes) if n > 1 else [axes]
+def _panel():
+    """The one panel of a figure, at the size every figure shares (style.FIGSIZE_IN)."""
+    fig, ax = plt.subplots(figsize=style.FIGSIZE_IN, layout="constrained")
+    return fig, ax
+
+
+def _wrap(text: str, width: int = style.LEGEND_WRAP) -> str:
+    """Legend label on lines of at most `width` characters; an existing line break is kept."""
+    return "\n".join("\n".join(textwrap.wrap(part, width)) or part for part in text.split("\n"))
 
 
 def _measured_xticks(fig):
@@ -128,10 +137,22 @@ def _legend(ax, keys=(), outside=False):
     if handles:
         order = [style.label(k) for k in style.PAPER_METHODS]
         pairs = sorted(zip(handles, labels), key=lambda p: order.index(p[1]) if p[1] in order else 99)
+        hs, ls = zip(*((h, _wrap(lab)) for h, lab in pairs))
         if outside:
-            ax.figure.legend(*zip(*pairs), loc="outside upper center", ncol=3, frameon=False)
+            _legend_above(ax.figure, hs, ls)
         else:
-            ax.legend(*zip(*pairs), frameon=False, ncol=2)
+            ax.legend(hs, ls, frameon=False, ncol=2)
+
+
+def _legend_above(fig, handles, labels):
+    """Legend above the panel in as many columns as fit the figure width (the figure is never widened for it:
+    a legend wider than the figure was what made Fig. 4 come out larger, hence smaller in print, than the rest)."""
+    for ncol in range(min(4, len(labels)), 0, -1):
+        leg = fig.legend(handles, labels, loc="outside upper center", ncol=ncol, frameon=False, columnspacing=1.0)
+        fig.draw_without_rendering()
+        if ncol == 1 or leg.get_window_extent().width <= fig.bbox.width:
+            return
+        leg.remove()
 
 
 def _saturated(ax, key, xs):
@@ -176,7 +197,7 @@ def fig_exp1(tier, written):
     if not ms:
         return
     want = set(load(tier, "exp01_redaction_throughput")["experiment"]["rates"])  # rows of dropped rates: not drawn
-    fig, (a,) = _panels(1, height_in=2.6)
+    fig, a = _panel()
     pos = _category_axis(a, want, "Arrival rate (req/s)")
     for key, m in ms.items():
         rate = sorted((k[1], v) for k, v in _points(m).items() if k[0] == "rate" and k[1] in want)
@@ -196,7 +217,7 @@ def fig_exp1(tier, written):
 
 def _flat(ax, key, xs, ys, yerr=None):
     """A scheme without a batch protocol: measured at every x, drawn dashed (its cost does not depend on x)."""
-    style.line(ax, key, xs, ys, suffix=" (no batching)", yerr=yerr, linestyle="--")
+    style.line(ax, key, xs, ys, suffix="\n(no batching)", yerr=yerr, linestyle="--")
 
 
 def fig_exp2(tier, written):
@@ -213,7 +234,7 @@ def fig_exp2(tier, written):
         if cfg["veredact"]["reference_batch"] in sizes
         else max(sizes, default=1.0)
     )
-    fig, (a,) = _panels(1, height_in=2.6)
+    fig, a = _panel()
     xlabel = "Committee size $n$ ($t=\\lfloor 2n/3\\rfloor+1$)"
     pos = _category_axis(a, {k[0] for m in ms.values() for k in _points(m)}, xlabel)  # the measured n
     # #6 + fairness fix (option 1, author 2026-11-08): crypto + committee network time; crypto alone stays in
@@ -242,7 +263,7 @@ def fig_exp3(tier, written):
     if not ms:
         return
     cfg = load(tier, "exp03_audit_efficiency")
-    fig, (a,) = _panels(1, height_in=2.6)
+    fig, a = _panel()
     for key, m in ms.items():
         by_rpb = defaultdict(list)
         for k, v in _points(m).items():
@@ -292,13 +313,13 @@ def fig_exp4(tier, written):
     ms = metrics("exp04_verification_time", tier)
     if not ms:
         return
-    fig, (a,) = _panels(1, height_in=2.4)
+    fig, a = _panel()
     # #35: chain reads are excluded for every system (verify_noread_ms; the reads and the total go to the text).
     # Results written before #35 have no read split: then every system is drawn with verify_ms, never a mix
     oks = [v for m in ms.values() for v in _points(m).values() if v.get("status") == "ok"]
     split = all((v.get("verify_noread_ms") or {}).get("n") for v in oks)
     f = "verify_noread_ms" if split else "verify_ms"
-    # two lines: on one line the label is taller than the 2.4-inch panel and is cut off (run-2026-11-12 figure)
+    # two lines: on one line the label is taller than the panel and is cut off (run-2026-11-12 figure)
     ylabel = "Auditor verification (ms)\nchain reads excluded" if split else "Auditor verification (ms)"
     kind, frac = EXP4_FAULT
     for key, m in ms.items():
@@ -325,7 +346,8 @@ def fig_exp4(tier, written):
         )
     a.set(xscale="log", yscale="log", xlabel="Returned records $n_Q$ (1% tampered)", ylabel=ylabel)
     a.sci_y = True
-    a.legend(frameon=False, loc="lower right")  # three systems fit in the empty corner
+    hs, ls = a.get_legend_handles_labels()
+    a.legend(hs, [_wrap(lab) for lab in ls], frameon=False, loc="lower right")  # fits in the empty corner
     _save(fig, "exp4_verification_time", written)
 
 
@@ -338,7 +360,7 @@ def fig_exp5(tier, written):
     if not ms:
         return
     want = set(load(tier, "exp01_redaction_throughput")["experiment"]["rates"])
-    fig, (a,) = _panels(1, height_in=2.6)
+    fig, a = _panel()
     pos = _category_axis(a, want, "Arrival rate (req/s)")
     f = "anchor_tx_per_finalized"
     for key, m in ms.items():
