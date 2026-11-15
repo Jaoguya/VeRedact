@@ -1,0 +1,2974 @@
+    \documentclass[lettersize,journal]{IEEEtran}
+    
+    % ---- Unicode sanitization (IMPORTANT) ----
+    \DeclareUnicodeCharacter{202A}{}
+    \DeclareUnicodeCharacter{202C}{}
+    \DeclareUnicodeCharacter{200E}{}
+    \DeclareUnicodeCharacter{200F}{}
+    
+    % ---- Math & theorem support ----
+    \usepackage{amsmath,amssymb,amsfonts}
+    \usepackage{amsthm}
+    \usepackage{bm}
+    \usepackage{algorithm}
+    \usepackage{algpseudocode}
+    
+    \newtheorem{theorem}{Theorem}
+    \newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+    \newtheorem{definition}{Definition}
+    \newtheorem{game}{Game}
+    
+    % ---- Algorithms ----
+    
+    % ---- Figures & tables ----
+    \usepackage{graphicx}
+    \graphicspath{{./}{Experiment/}}
+    \usepackage{subcaption}
+    \usepackage{booktabs}
+    \usepackage{tabularx}
+    \usepackage{multirow}
+    \usepackage{array}
+    \usepackage{adjustbox}
+    
+    \usepackage{pifont}
+    \newcommand{\cmark}{\ding{51}} % checkmark
+    \newcommand{\xmark}{\ding{55}} % cross mark
+    
+    % ---- Text & formatting ----
+    \usepackage{cite}
+    \usepackage{textcomp}
+    \usepackage{url}
+    \usepackage{verbatim}
+    \usepackage{stfloats}
+    \usepackage{enumitem}
+    \usepackage{setspace}
+    \usepackage{xcolor}
+    \usepackage{listings}
+    \usepackage{makecell}
+
+    \usepackage{placeins}
+    
+    % ---- References ----
+    \usepackage[capitalize]{cleveref}
+    
+    \hyphenation{op-tical net-works semi-conduc-tor IEEE-Xplore}
+    
+    % updated with editorial comments 8/9/2021
+    
+    \begin{document}
+    
+    \title{VeRedact-PQ: Scalable Post-Quantum Redaction with Multi-Party Authorization and Verifiable Auditing for Permissioned Blockchains}
+    
+    %}
+    %
+    %\thanks{
+    %Corresponding author: 
+    %Somchart Fugkeaw
+    %(e-mail: [somchart@siit.tu.ac.th]
+    
+    
+    %\IEEEpubid{0000--0000/00\$00.00~\copyright~2021 IEEE}
+    % Remember, if you use this you must call \IEEEpubidadjcol in the second
+    % column for its text to clear the IEEEpubid mark.
+    
+    \author{
+    \IEEEauthorblockN{Rangsimann Sattayarom, Ratchanon Wongwitutai, Natthawat Tungsriworakan, \\
+    Tagrid Chongkolrattanapond, Somchart Fugkeaw\\}
+    \IEEEauthorblockA{Sirindhorn International Institute of Technology, Thammasat University, Thailand\\
+    6622771747@g.siit.tu.ac.th, 
+    6622780268@g.siit.tu.ac.th,
+    6622772364@g.siit.tu.ac.th,
+    6622781175@g.siit.tu.ac.th,
+    somchart@siit.tu.ac.th}
+    }
+    
+    \maketitle
+
+\begin{abstract}
+
+Redactable permissioned blockchains enable controlled modification of
+committed transactions, but existing approaches face challenges in
+distributed authorization, post-quantum security, verifiable
+accountability, and scalability under high redaction workloads.
+Processing each redaction independently can repeatedly incur
+policy-validation, committee, authenticated-state update, and audit
+costs. This paper proposes \emph{VeRedact-PQ}, a scalable post-quantum
+framework for policy-bound redaction and verifiable auditing in
+permissioned blockchains. VeRedact-PQ combines state-bound
+post-quantum zero-knowledge validation with threshold committee
+authorization and distributed post-quantum chameleon-hash adaptation.
+Its Cost- and Overlap-Aware Redaction Aggregation (CORA) identifies
+validated requests that can share execution work, while Shared-Frontier
+Merkle Redaction (SFMR) exploits this locality through shared Merkle
+processing and batch-level chameleon-hash adaptation. Policy-Bound
+Batch Redaction Proofs (PBRP) bind request validation and committee
+authorization to the finalized state transition, preserving
+request-level accountability under shared execution. For auditing, a
+sharded authenticated redaction index and State-Aware Verification
+Evidence Reuse (SAVER) organize evidence as state-bound dependencies,
+allowing common authorization, transition, and checkpoint evidence to
+be verified once under matching contexts while selectively escalating
+challenged requests to independent post-quantum zero-knowledge
+verification. On a 7-validator Hyperledger Besu testbed, VeRedact-PQ
+sustains more valid redactions than every baseline from 250 requests/s
+while accepting no invalid request, keeps its per-request authorization
+cost nearly constant as the committee grows to 64 members, and verifies
+$10^4$ audit records about six times faster than a decentralized
+chameleon-hash baseline (5.3 vs.\ 33.6~s). A lattice-based batch
+authentication scheme remains cheaper for authorization, and an
+aggregate audit proof is faster when no record is invalid, but neither
+establishes who authorized a redaction or which record is invalid.
+
+\end{abstract}
+
+\begin{IEEEkeywords}
+Permissioned Blockchain, Redactable Blockchain, Post-Quantum Security,
+Post-Quantum Chameleon Hash, Verifiable Redaction, Privacy-Preserving
+Auditing, Scalable Redaction.
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Permissioned blockchains provide a shared and auditable ledger for
+multi-organization environments without requiring complete mutual
+trust~\cite{ref7}. Their integrity relies on cryptographic immutability:
+once a transaction is committed, unauthorized modification becomes
+detectable. Strict immutability, however, can conflict with legitimate
+requirements such as correcting erroneous records, removing sensitive
+information for privacy or regulatory compliance, and updating obsolete
+data~\cite{ref9,ref21,ref22,ref38}. The challenge is therefore not
+simply how to modify blockchain data, but how to ensure that each
+modification is \emph{policy-compliant, jointly authorized,
+state-consistent, and auditable} without sacrificing scalability.
+
+Consider a consortium blockchain receiving hundreds of compliance-driven
+redaction requests across different transaction batches. Some requesters
+may prove eligibility using private credentials. Even after validation,
+processing requests independently repeats committee approvals, Merkle
+updates, and chameleon-hash adaptations. Naive batching, however, risks
+executing stale or unauthorized requests under authorization intended
+for valid ones. Later, an auditor examining many redactions may again
+verify identical authorization, transition, and checkpoint evidence.
+Scalable redaction therefore requires safe sharing of cryptographic work
+across \emph{validation, authorization, execution, and verification}
+without expanding redaction authority.
+
+Chameleon hashes are widely used to modify committed data while
+preserving blockchain linkage~\cite{ref1,ref2,ref6}. Subsequent schemes
+have extended this approach to support fine-grained access
+control~\cite{ref8,ref15}, decentralized trapdoor
+management~\cite{ref3,ref19}, dynamic updates~\cite{ref5,ref16},
+threshold redaction~\cite{ref27}, and traceable or publicly auditable
+redaction~\cite{ref33,ref34,ref35}. Nevertheless, preserving a ledger
+commitment does not prove that a modification was authorized for the
+particular requester, operation, policy, and current state. Because an
+authorized collision intentionally preserves ledger consistency, chain
+verification alone cannot establish \emph{why} a redaction was allowed
+or whether the authorized request matches the modified state.
+
+Privacy and long-term security introduce further requirements.
+Policy-hiding schemes conceal redaction
+policies~\cite{ref4,ref18,ref31,ref34}, and verifiable designs support
+auditing~\cite{ref13,ref20,ref33}. However, authorization may depend on
+private credentials that should not be disclosed, and auditors should
+be able to verify redactions without access to sensitive transaction
+content. Quantum-resistant chameleon hashes have also been
+studied~\cite{ref10,ref11,ref17,ref37}; however, protecting only the
+chameleon hash is insufficient if authentication, policy verification,
+committee approval, or auditing remains vulnerable to quantum
+adversaries.
+
+Scalability must therefore be addressed jointly with authorization and
+verifiability. Prior work has considered scalable
+redaction~\cite{ref14,ref21,ref26}, efficient data-structure
+updates~\cite{ref23}, and lightweight verification~\cite{ref20}.
+However, these approaches still process requests individually, and
+conventional batching does not consider whether requests affect the same
+transaction batches or share Merkle paths. Similarly, independent
+auditing repeatedly verifies evidence common to multiple redactions.
+The key problem is therefore to
+\emph{identify, preserve, and safely reuse cryptographic sharing}
+throughout the redaction lifecycle while retaining request-level
+authorization and state binding.
+
+To address this problem, we propose \emph{VeRedact-PQ}, a scalable
+post-quantum and verifiable redaction framework for permissioned
+blockchains. Its main contributions are:
+
+\begin{itemize}
+
+\item \textbf{State-Bound Post-Quantum Redaction.}
+We design an end-to-end PQ redaction path that combines PQ requester
+authentication, state-bound PQZK private-policy verification,
+$t$-of-$n$ PQ committee authorization, and distributed Post-Quantum
+Chameleon Hash (PQCH) adaptation. The \emph{Redaction-Aware Dual
+Commitment (RADC)} separates immutable transaction-policy context from
+mutable content state.
+
+\item \textbf{Cost- and Overlap-Aware Redaction Aggregation (CORA).}
+We propose CORA, which groups validated requests by their affected
+batches and shared Merkle frontiers. A bounded waiting time prevents
+indefinite delay, and locality never determines authorization
+eligibility.
+
+\item \textbf{Shared-Frontier Merkle Redaction (SFMR).}
+We develop SFMR, which executes authorized modifications that share
+Merkle structure with one distributed PQCH adaptation per affected
+batch. The \emph{Policy-Bound Batch Redaction Proof (PBRP)} keeps each
+request individually verifiable under coalesced execution.
+
+\item \textbf{State-Aware Verification Evidence Reuse (SAVER).}
+We introduce SAVER, which verifies shared authorization, transition, and
+checkpoint evidence once per authenticated state context and allows
+challenged requests to escalate selectively to independent PQZK
+verification.
+
+\end{itemize}
+\section{Related Work}
+   \begin{table*}[t]
+\centering
+\caption{Comparison of VeRedact-PQ with Representative Redactable
+Blockchain Schemes}
+\label{tab:comparison}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{4.0pt}
+\begin{tabular}{lcccccc}
+\hline
+\textbf{Scheme} &
+\textbf{PQ} &
+\textbf{Threshold} &
+\textbf{Policy-Bound} &
+\textbf{Cost/Overlap-} &
+\textbf{State-Bound} &
+\textbf{Reusable} \\
+&
+\textbf{Security} &
+\textbf{Authorization} &
+\textbf{Authorization} &
+\textbf{Aware Redaction} &
+\textbf{Execution} &
+\textbf{Auditing} \\
+\hline
+
+Scheme~\cite{ref1}
+& $\times$ & $\checkmark$ & $\times$ & $\times$
+& $\times$ & $\times$ \\
+
+Scheme~\cite{ref5}
+& $\times$ & $\triangle$ & $\checkmark$ & $\times$
+& $\triangle$ & $\times$ \\
+
+Scheme~\cite{ref13}
+& $\times$ & $\times$ & $\times$ & $\times$
+& $\triangle$ & $\triangle$ \\
+
+Scheme~\cite{ref14}
+& $\times$ & $\times$ & $\triangle$ & $\triangle$
+& $\triangle$ & $\times$ \\
+
+Scheme~\cite{ref15}
+& $\times$ & $\checkmark$ & $\checkmark$ & $\times$
+& $\triangle$ & $\times$ \\
+
+Scheme~\cite{ref17}
+& $\checkmark$ & $\times$ & $\triangle$ & $\times$
+& $\times$ & $\times$ \\
+
+Scheme~\cite{ref20}
+& $\times$ & $\triangle$ & $\checkmark$ & $\triangle$
+& $\triangle$ & $\triangle$ \\
+
+Scheme~\cite{ref27}
+& $\times$ & $\checkmark$ & $\times$ & $\times$
+& $\triangle$ & $\times$ \\
+
+Scheme~\cite{ref33}
+& $\times$ & $\triangle$ & $\checkmark$ & $\triangle$
+& $\triangle$ & $\triangle$ \\
+
+Scheme~\cite{ref34}
+& $\times$ & $\checkmark$ & $\checkmark$ & $\times$
+& $\triangle$ & $\times$ \\
+
+Scheme~\cite{ref39}
+& $\checkmark$ & $\times$ & $\times$ & $\times$
+& $\times$ & $\times$ \\
+
+\hline
+\textbf{VeRedact-PQ}
+& $\checkmark$ & $\checkmark$ & $\checkmark$
+& $\checkmark$ & $\checkmark$ & $\checkmark$ \\
+\hline
+
+\multicolumn{7}{l}{
+\footnotesize $\checkmark$: Supported;
+$\triangle$: Partially supported;
+$\times$: Not supported. Scheme~\cite{ref39} is a
+post-quantum batch authentication scheme without redaction.}
+\end{tabular}
+\end{table*}
+\noindent\textbf{Distributed and scalable redaction.}
+Redactable blockchains commonly employ chameleon hashes to modify
+committed data while preserving blockchain consistency~\cite{ref9}.
+Subsequent studies extended this model to consortium
+blockchains~\cite{ref2} and to decentralized redaction through
+distributed chameleon hashes and trapdoor
+management~\cite{ref1,ref3,ref6,ref19}. Multi-party chameleon
+hashing~\cite{ref12} and robust threshold redaction~\cite{ref27}
+further reduce dependence on a single redaction authority, while
+dynamic and controlled constructions~\cite{ref5,ref16,ref36} support
+evolving redaction requirements. Scalability has been addressed through
+efficient update mechanisms, lightweight storage, specialized Merkle
+structures, and application-oriented
+designs~\cite{ref14,ref20,ref21,ref23,ref26}. However, these works
+typically optimize a single layer, whereas high-volume redaction incurs
+combined costs from target lookup, request validation, committee
+authorization, authenticated state updates, and chameleon-hash
+adaptation. VeRedact-PQ reduces these costs jointly.
+
+\noindent\textbf{Policy-controlled, private, and verifiable redaction.}
+Fine-grained redaction has been developed using attribute- and
+policy-based mechanisms~\cite{ref8,ref15}, while policy-hiding
+constructions restrict the disclosure of sensitive authorization
+information~\cite{ref4,ref18,ref24,ref31,ref34}. Other schemes
+strengthen traceability and accountability~\cite{ref25,ref28,ref29,ref32,ref35},
+and verifiable redaction has been studied through integrity auditing,
+lightweight verification, and publicly auditable
+architectures~\cite{ref13,ref20,ref33}. Despite these advances, policy
+validation, multi-party authorization, redaction execution, and
+auditing are often treated as separate functions. VeRedact-PQ instead
+binds them at the request level through state-bound validation,
+batch-bound committee authorization, and PBRP.
+
+\noindent\textbf{Post-quantum redactable blockchains.}
+Post-quantum redactable blockchain research has primarily focused on the
+chameleon-hash primitive, including quantum-resistant
+key-exposure-free chameleon hashing~\cite{ref11}, lattice-based
+redactable blockchains~\cite{ref10}, quantum-resistant redaction with
+trapdoor updates~\cite{ref17}, and lattice-based policy- or
+identity-oriented chameleon hashes~\cite{ref18,ref37}. However, a
+quantum-resistant chameleon hash alone does not provide an end-to-end
+post-quantum workflow if authentication, authorization, or auditing
+still relies on classical mechanisms. VeRedact-PQ therefore extends
+post-quantum protection across the complete redaction path
+(Table~\ref{tab:comparison}).
+
+ \section{Our Proposed VeRedact-PQ Scheme}
+
+This section presents the system model, threat model, and protocol of
+VeRedact-PQ.
+
+\subsection{System Model}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\linewidth]{VeRedact-PQ System Model.png}
+\caption{System model of the proposed VeRedact-PQ framework}
+\label{fig:system_model}
+\end{figure}
+
+As illustrated in Fig.~\ref{fig:system_model}, VeRedact-PQ considers a
+permissioned blockchain operated by mutually accountable consortium
+organizations, and separates request validation, threshold
+authorization, redaction execution, and auditing among the following
+entities.
+
+\textbf{1) Data Owner (DO):}
+The DO generates and signs transactions, each with an identifier, data
+type, timestamp, and redaction policy. A DO may also request redactions
+when the applicable policy permits.
+
+\textbf{2) Authorized Requester (AR):}
+The AR is an authenticated entity that submits a PQ-signed redaction
+request together with the evidence required by the applicable public and
+private policy conditions.
+
+\textbf{3) Redaction Committee (RC):}
+The RC, denoted $\mathcal{C}_e$, consists of the $n$ consortium members
+of authorization epoch $e$. At least $t$ members must approve a
+redaction batch, and the members hold shares of the PQCH trapdoor;
+consequently, fewer than $t$ members cannot exercise the redaction
+capability.
+
+\textbf{4) Validation and Policy Service (VPS):}
+The VPS authenticates requesters, resolves the authenticated transaction
+state, evaluates public policy conditions, and verifies state-bound PQZK
+proofs. Validated requests receive PQ-signed attestations, which also
+fix their admission times, and enter the pending queue $\mathcal{Q}_e$.
+
+\textbf{5) Permissioned Blockchain Network (PBN):}
+The PBN comprises the consortium nodes executing the permissioned
+consensus protocol. It maintains transaction, policy, PQCH, index, and
+checkpoint commitments, whereas large objects such as PQZK proofs and
+PBRP evidence are retained off-ledger with their digests anchored
+on-chain. A \emph{checkpoint authority} signs finalized checkpoints, and
+an \emph{audit service} maintains the Redaction Audit Index (RAI) and
+signs audit responses.
+
+\textbf{6) Auditor (AU):}
+The AU is an authorized verifier that checks completed redactions at
+the required verification depth without access to sensitive transaction
+content.
+\subsection{Threat Model}
+\label{subsec:threat}
+
+VeRedact-PQ considers malicious or compromised participants and
+quantum-capable adversaries.
+
+\textbf{1) Malicious Requester:}
+A requester may submit unauthorized, malformed, conflicting, or
+replayed requests, or reuse evidence from another state. Requests are
+therefore PQ-authenticated and validated against the applicable policy
+and authenticated state before CORA processing.
+
+\textbf{2) Malicious Committee Members:}
+Committee members may collude to authorize invalid redactions or misuse
+PQCH shares. We assume that fewer than $t$ members of $\mathcal{C}_e$,
+and fewer than $t$ contemporaneously valid shares within each resharing
+interval, are compromised, and that obsolete shares are securely erased.
+
+\textbf{3) Malicious Blockchain or Service Participant:}
+A compromised node or service may alter, omit, inject, or replay
+evidence. We assume that the PBN satisfies its consensus
+fault-tolerance condition; authenticated roots, PQ signatures, PQCH
+commitments, and finalized checkpoints make inconsistent evidence
+detectable. Result-set completeness is claimed only when coverage
+evidence is provided.
+
+\textbf{4) Authorization and Execution Manipulation:}
+An adversary may substitute requests after CORA selection or execute
+unauthorized positions. The commitments $R_e^{VR}$, $\Gamma_e$, and
+$\Theta_b$ bind authorization to its execution context, and Phase~5
+enforces
+\begin{equation}
+\mathcal{P}_b^{exec}\subseteq\mathcal{P}_b^{auth}
+\label{eq:subset}
+\end{equation}
+so that stale requests may be withheld, but unauthorized positions
+cannot be added.
+
+\textbf{5) Verification-Reuse Adversary:}
+An adversary may attempt to reuse SAVER results under a different state.
+The context $\chi(v)$ binds each verified result to its content and
+authenticated state context.
+
+\textbf{6) Privacy-Curious Auditor:}
+An auditor may attempt to infer information beyond its authorized
+scope. PQZK hides private credentials, and query-scoped evidence limits
+disclosure; access-pattern privacy and confidentiality against PBN
+nodes are outside the scope of this work.
+
+\textbf{7) Quantum-Capable Adversary:}
+The security-critical redaction path relies on PQ signatures, PQZK,
+PQCH, and quantum-resistant hash and PRF assumptions, whereas the
+underlying consensus and platform credentials are not required to be
+post-quantum.
+
+\subsection{System Process}
+
+VeRedact-PQ operates through six sequential phases covering system
+initialization, transaction commitment, request validation, authorization,
+redaction execution, and post-redaction auditing.
+
+    
+    \subsubsection*{\textbf{Phase 1: System Initialization}}
+
+This phase initializes the cryptographic parameters, registered
+entities, redaction policies, and distributed redaction authority of
+VeRedact-PQ. Let $\lambda$ denote the security parameter and $e$ the
+current authorization epoch.
+
+\textbf{Step 1: Global Parameter Setup.}
+Given $1^\lambda$, the consortium initializes the cryptographic
+primitives and publishes
+\begin{equation}
+\begin{aligned}
+PP=(&\lambda,H,H_1,H_2,H_A,H_V,\mathsf{PQCH},\\
+&\mathsf{PQSIG},\mathsf{PQZK},\mathsf{Merkle},\mathsf{PRF})
+\end{aligned}
+\end{equation}
+where $H$ is a post-quantum-secure hash function;
+$H_1$, $H_2$, $H_A$, and $H_V$ are domain-separated instances of
+$H$; $\mathsf{PQCH}$ is a post-quantum chameleon-hash scheme;
+$\mathsf{PQSIG}$ is a post-quantum signature scheme;
+$\mathsf{PQZK}$ is a post-quantum zero-knowledge proof system;
+$\mathsf{Merkle}$ is an authenticated Merkle-tree construction; and
+$\mathsf{PRF}$ is a quantum-secure pseudorandom function.
+The additional domain $H_V$ is reserved for authenticated
+verification-evidence commitments used by the state-aware verification
+protocol in Phase~6.
+
+\textbf{Step 2: Entity Registration and Key Generation.}
+Each registered entity $U_i$, including data owners, authorized
+requesters, committee members, the Validation and Policy Service
+(VPS), PBN checkpoint and audit services, and auditors, generates
+\begin{equation}
+(pk_i,sk_i)\leftarrow
+\mathsf{PQSIG.KeyGen}(1^\lambda)
+\end{equation}
+The tuple $(ID_i,Role_i,pk_i)$ is recorded in the consortium membership
+registry, while $sk_i$ remains private. In particular, the VPS uses
+$(pk_V,sk_V)$ for validation attestations; the checkpoint authority uses
+$(pk_{\mathrm{CP}},sk_{\mathrm{CP}})$ for checkpoint signatures; and the
+audit service uses $(pk_A,sk_A)$ for authenticated audit responses.
+A committee member $C_k$ active in epoch $e$ uses its registered pair
+$(pk_{e,k},sk_{e,k})$.
+
+The consortium additionally samples
+\begin{equation}
+K_{\mathrm{idx}},K_A
+\stackrel{\$}{\leftarrow}\{0,1\}^{\lambda}
+\end{equation}
+where $K_{\mathrm{idx}}$ derives SA-RLI lookup tokens and is available
+to the PBN and VPS, whereas $K_A$ derives RAI audit tokens and is held
+by the PBN audit service. The parameter $\lambda$ is selected according
+to the target post-quantum security level.
+
+\textbf{Step 3: Redaction Policy Registration.}
+For each supported transaction or data class, the consortium defines a
+redaction policy $P_j$ specifying eligible requester roles, permitted
+operations, applicable conditions, and validity period. Its authenticated
+state is committed as
+\begin{equation}
+C_{P_j}
+=
+H(PID_j\parallel P_j\parallel v_j\parallel e_P)
+\label{eq:policy_commit}
+\end{equation}
+where $PID_j$, $v_j$, and $e_P$ denote the policy identifier, version,
+and commitment epoch, respectively. The tuple
+$(PID_j,C_{P_j},v_j,e_P)$ is registered on-chain and subsequently binds
+request validation and redaction authorization to an authenticated
+policy state.
+
+\textbf{Step 4: Epoch Committee Formation.}
+At the beginning of epoch $e$, the consortium establishes an
+$n$-member redaction committee
+\begin{equation}
+\mathcal{C}_e=(C_1,C_2,\ldots,C_n)\qquad t\leq n
+\end{equation}
+where at least $t$ members are required to authorize and exercise the
+distributed redaction capability. The configuration
+$(e,\mathcal{C}_e,t)$ is recorded on-chain, binding subsequent
+authorization and PQCH adaptation to the committee active in epoch $e$.
+
+\textbf{Step 5: Distributed PQCH Trapdoor Setup.}
+At system initialization, the initial committee
+$\mathcal{C}_{e_0}$ jointly executes
+\begin{equation}
+(pk_{\mathrm{CH}},\{td_{e_0,k}\}_{k=1}^{n})
+\leftarrow
+\mathsf{PQCH.DKeyGen}(PP,\mathcal{C}_{e_0},t)
+\end{equation}
+where $pk_{\mathrm{CH}}$ is the public chameleon-hash key and
+$td_{e_0,k}$ is the trapdoor share of member $C_k$.
+The public key $pk_{\mathrm{CH}}$ is recorded on the PBN and remains
+fixed across authorization epochs.
+
+At each transition $e-1\rightarrow e$, the trapdoor is proactively
+reshared to the incoming committee:
+\begin{equation}
+\{td_{e,k}\}_{k=1}^{n}
+\leftarrow
+\mathsf{PQCH.Reshare}
+(\{td_{e-1,k}\},\mathcal{C}_e,t)
+\end{equation}
+The resharing protocol is executed over authenticated confidential
+channels, and previous-epoch shares are securely erased after successful
+resharing. Hence, the active committee can adapt existing batch
+commitments without reconstructing the complete trapdoor at any single
+member. Security against cross-epoch share accumulation assumes secure
+erasure and that fewer than $t$ valid shares are compromised within
+each resharing interval.
+
+Threshold adaptation is specified as a functionality
+$\mathcal{F}_{\mathrm{TA}}$: on input at least $t$ shares and an
+authorized transition $(MR_b,r_b,MR_b')$, it outputs a valid collision
+randomness $r_b'$ and nothing else. For an SIS-based PQCH with a gadget
+trapdoor $R$~\cite{ref10,ref17}, where a collision is sampled as
+\begin{equation}
+r_b'=p+[R;I]\,z
+\end{equation}
+for a perturbation $p$ and a gadget preimage $z$,
+$\mathcal{F}_{\mathrm{TA}}$ is realized by evaluating the
+trapdoor-dependent terms, $Rz$ and the perturbation, by secure
+multi-party computation over the shares. No party, including the share
+combiner, therefore learns $Rz$ or any other function of $R$ beyond the
+output $r_b'$.
+
+\textbf{Step 6: Post-Quantum ZK Parameter Setup.}
+For the policy-compliance relation $\mathcal{R}_P$, the consortium
+initializes
+\begin{equation}
+(pp_{\mathrm{PQZK}},pk_{\mathrm{PQZK}},vk_{\mathrm{PQZK}})
+\leftarrow
+\mathsf{PQZK.Setup}(1^\lambda,\mathcal{R}_P)
+\end{equation}
+The setup is transparent, so its parameters are published on the PBN
+without trusted setup secrets. All initialization records are submitted
+as transactions signed with the registering members' PQ keys, so the
+redaction control plane does not rely on the PBN's platform credentials
+alone.
+    
+    
+    
+   \subsubsection*{\textbf{Phase 2: Redaction-Aware Transaction Commitment}}
+
+This phase, performed by the PBN, turns each accepted transaction into
+a redaction-aware authenticated state.
+
+\medskip
+\noindent\textbf{Step 1: Transaction Authentication and Immutable
+Provenance.}
+A registered data owner $DO_i$ submits content $m_i$ with transaction
+identifier $TID_i$, data type $DT_i$, redaction policy $PID_i$, and
+timestamp $ts_i$. The owner samples
+$\rho_i\stackrel{\$}{\leftarrow}\{0,1\}^{\lambda}$ and computes
+\begin{equation}
+D_i=H(m_i\parallel\rho_i)
+\end{equation}
+followed by
+\begin{equation}
+\begin{aligned}
+\sigma_i\leftarrow
+\mathsf{PQSIG.Sign}\big(
+sk_{DO_i},
+H(&TID_i\parallel D_i\parallel DT_i\\
+&\parallel PID_i\parallel ts_i)\big)
+\end{aligned}
+\end{equation}
+The submitted transaction is
+\begin{equation}
+TX_i=(TID_i,m_i,\rho_i,DT_i,PID_i,ts_i,\sigma_i)
+\end{equation}
+The PBN recomputes $D_i$ and verifies transaction uniqueness, the
+registered owner key, $\sigma_i$, and the referenced policy before
+acceptance. The verified key determines $ID_{DO_i}$.
+
+To preserve the authenticated origin independently of later content
+states, the PBN derives
+\begin{equation}
+C_i^{\mathrm{orig}}
+=
+H(TID_i\parallel D_i\parallel\sigma_i)
+\end{equation}
+and anchors the non-redactable provenance tuple
+\begin{equation}
+\mathcal{P}_i^{\mathrm{orig}}
+=
+(TID_i,DT_i,PID_i,ts_i,D_i,\sigma_i,C_i^{\mathrm{orig}})
+\end{equation}
+Hence, $\sigma_i$ continues to authenticate the originally submitted
+content commitment after an authorized redaction; subsequent content
+states are authenticated by the redaction evidence generated in
+Phases~4--6 rather than by re-signing them as original owner content.
+
+\medskip
+\noindent\textbf{Step 2: Redaction-Aware Dual Commitment.}
+For each accepted transaction, the PBN samples a fresh nonce $n_i$ and
+computes
+\begin{equation}
+Tag_i=H(TID_i\parallel n_i\parallel ts_i)
+\end{equation}
+The Redaction-Aware Dual Commitment (RADC) separates immutable context
+from mutable content through
+\begin{equation}
+\begin{aligned}
+I_i=H(&TID_i\parallel ID_{DO_i}\parallel DT_i
+\parallel PID_i\\
+&\parallel ts_i\parallel Tag_i)
+\end{aligned}
+\end{equation}
+and the content commitment $D_i$ from Step~1. The corresponding
+authenticated leaf is
+\begin{equation}
+L_i=H(I_i\parallel D_i
+\end{equation}
+
+An authorized transition from $(m_i,\rho_i)$ to
+$(m_i',\rho_i')$ therefore changes only
+\begin{equation}
+D_i\rightarrow D_i'=H(m_i'\parallel\rho_i')
+\end{equation}
+while $I_i$ remains invariant. This separation prevents a content
+redaction from altering the transaction identity, ownership context,
+data type, policy binding, or original provenance. The current content
+and opening randomness are maintained in the transaction state, whereas
+the immutable provenance record remains unchanged.
+
+\medskip
+\noindent\textbf{Step 3: Redaction-Locality Batch Commitment.}
+Authenticated leaves are placed at deterministic positions in a
+transaction batch with root
+\begin{equation}
+\mathcal{T}_b=(L_{b,1},\ldots,L_{b,N_b})\qquad
+MR_b=\mathsf{Merkle.Root}(\mathcal{T}_b)
+\end{equation}
+The batch is then committed (Fig.~\ref{fig:merkle}) using
+\begin{equation}
+CH_b=
+\mathsf{PQCH.Hash}(pk_{\mathrm{CH}},MR_b,r_b)
+\qquad
+r_b\stackrel{\$}{\leftarrow}\mathcal{R}_{\mathrm{CH}}
+\end{equation}
+where $\mathcal{R}_{\mathrm{CH}}$ denotes the randomness space of the
+selected PQCH scheme. The initial batch version is $v_b=0$.
+
+The Merkle topology is retained as authenticated update state. For any
+future set of leaves $\mathcal{L}_b^{*}$ selected for redaction, define
+its minimal external authentication frontier as
+\begin{equation}
+\mathcal{F}_b(\mathcal{L}_b^{*})
+=
+\left\{
+u:
+u\notin\mathsf{Anc}(\mathcal{L}_b^{*}),
+\;
+\mathsf{parent}(u)\in
+\mathsf{Anc}(\mathcal{L}_b^{*})
+\right\}
+\end{equation}
+where $\mathsf{Anc}(\mathcal{L}_b^{*})$ is the union of Merkle nodes on
+paths from the selected leaves to $MR_b$. The frontier is not computed
+during initial commitment; rather, the stored topology permits it to be
+derived when multiple authorized redactions are coalesced in Phase~5.
+Consequently, overlapping authentication paths can later be represented
+once instead of independently for every modified leaf.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.55\linewidth]{Merkle.PNG}
+\caption{Redaction-aware Merkle batch and PQCH commitment structure.}
+\label{fig:merkle}
+\end{figure}
+
+\medskip
+\noindent\textbf{Step 4: Authenticated Redaction-State Indexing.}
+To resolve redaction targets without scanning blockchain transactions,
+VeRedact-PQ constructs the Sharded Authenticated Redaction Lookup Index
+(SA-RLI). For each transaction, the token and authenticated state entry
+are
+\begin{equation}
+\begin{aligned}
+\tau_i&=\mathsf{PRF}_{K_{\mathrm{idx}}}(TID_i)\\
+E_i&=(\tau_i,Tag_i,b,pos_i,PID_i,e_i,I_i,D_i,ptr_i)
+\end{aligned}
+\end{equation}
+where $b$ and $pos_i$ identify the transaction's batch and leaf
+position, $e_i$ identifies the epoch of the indexed state, and $ptr_i$
+references the authenticated transaction state required to resolve the
+leaf. The batch version $v_b$ is obtained from the finalized checkpoint
+rather than duplicated in every entry.
+
+Each entry is deterministically assigned to a shard and logical bucket:
+\begin{equation}
+sid_i=H_1(\tau_i)\bmod S
+\qquad
+bid_i=H_2(\tau_i)\bmod B
+\end{equation}
+where $S$ and $B$ are the numbers of index shards and logical buckets.
+Within each shard, entries are canonically ordered by
+$(bid_i,\tau_i)$ and committed, with global authenticated index state
+$R_{\mathrm{RLI}}$, as
+\begin{equation}
+\begin{aligned}
+R_s&=\mathsf{Merkle.Root}(E_{s,1},\ldots,E_{s,n_s})\\
+R_{\mathrm{RLI}}&=\mathsf{Merkle.Root}(R_1,\ldots,R_S)
+\end{aligned}
+\end{equation}
+
+The explicit $(b,pos_i)$ mapping is also used by the later
+cost- and overlap-aware redaction protocol to identify requests that
+share a transaction batch or overlapping Merkle paths without exposing
+or modifying their authenticated content state.
+
+\medskip
+\noindent\textbf{Step 5: Atomic State Checkpointing.}
+After the transaction batch and its SA-RLI updates are finalized, the
+PBN assigns a monotonically increasing snapshot identifier
+$v_{\mathrm{RLI}}$ and constructs
+\begin{equation}
+\begin{aligned}
+A_b=\big(&b,CH_b,MR_b,r_b,R_{\mathrm{RLI}},
+v_{\mathrm{RLI}},\\
+& e,v_b,ts_b,\sigma_b\big)
+\end{aligned}
+\end{equation}
+where $e$ is the checkpoint-finalization epoch. The checkpoint authority
+computes
+\begin{equation}
+\begin{aligned}
+\sigma_b=
+\mathsf{PQSIG.Sign}\big(
+sk_{\mathrm{CP}},
+H(&b\parallel CH_b\parallel MR_b\parallel r_b\\
+&\parallel R_{\mathrm{RLI}}\parallel v_{\mathrm{RLI}}
+\parallel e\\
+&\parallel v_b\parallel ts_b)\big)
+\end{aligned}
+\end{equation}
+The signed checkpoint is anchored to the PBN, atomically binding the
+PQCH-protected transaction-batch state to the corresponding finalized
+SA-RLI snapshot. Thus, later authorization and redaction operate against
+a uniquely identified tuple
+\begin{equation}
+\mathsf{State}_b=
+(b,MR_b,CH_b,v_b,R_{\mathrm{RLI}},v_{\mathrm{RLI}},e)
+\end{equation}
+which prevents evidence from different batch or index versions from
+being silently combined.
+
+Each shard may keep a Cuckoo filter $CF_s$ over its tokens as a
+screen only: a negative result is trusted only when $CF_s$ matches the
+finalized snapshot, and every positive result is verified against
+SA-RLI.    
+    
+   \subsubsection*{\textbf{Phase 3: Redaction Request Authentication and
+PQZK-Based Policy Verification}}
+
+This phase turns a redaction request into an authenticated,
+policy-compliant, and state-bound validated request.
+
+\medskip
+\noindent\textbf{Step 1: Request Admission and Authenticated State
+Resolution.}
+A requester $U_r$ prepares
+\begin{equation}
+R_i=(ID_r,TID_i,op_i,D_i',e,ts_r,n_r)
+\end{equation}
+where $op_i$ is the requested redaction operation, $e$ is the
+authorization epoch, and $(ts_r,n_r)$ provides freshness. The
+corresponding redaction payload is
+\begin{equation}
+X_i^{\mathrm{red}}=(m_i',\rho_i')
+\qquad
+D_i'=H(m_i'\parallel\rho_i')
+\end{equation}
+so that $R_i$ commits to the proposed content state without exposing
+$m_i'$ in the authorization record. The payload is retained for
+execution in Phase~5, where its opening against $D_i'$ is verified
+before any state transition.
+
+After basic format, timestamp, nonce, and epoch screening, the VPS
+derives $\tau_i$, $sid_i$, and $bid_i$ as in Phase~2, Step~4. A
+synchronized Cuckoo filter may reject an absent token; otherwise, the
+VPS performs authenticated SA-RLI lookup, retrieves $E_i$, verifies it
+against the corresponding shard root and
+$R_{\mathrm{RLI}}$, retrieves the signed checkpoint $A_b$, and verifies
+the leaf $L_i$ of Phase~2, Step~2 at position $pos_i$ against $MR_b$. It also verifies the checkpoint
+signature and consistency between the batch state and finalized index
+snapshot. The resolved state is $\mathsf{State}_b$ of Phase~2, Step~5,
+where $e_b$ denotes the checkpoint-finalization epoch, distinguished
+from the current authorization epoch $e$. The indexed epoch $e_i$
+remains transaction-state metadata and need not equal either $e_b$ or
+$e$.
+
+The pair $(b,pos_i)$ is retained as authenticated locality metadata.
+It is used only after validation to estimate common-batch and
+Merkle-path overlap in Phase~4 and does not affect request eligibility
+or policy satisfaction.
+
+\medskip
+\noindent\textbf{Step 2: Post-Quantum Requester Authentication.}
+The requester signs the complete request:
+\begin{equation}
+\sigma_i^R\leftarrow
+\mathsf{PQSIG.Sign}(sk_r,H(R_i))
+\end{equation}
+and submits $(R_i,\sigma_i^R)$. Using the registered key $pk_r$, the
+VPS verifies
+\begin{equation}
+\mathsf{PQSIG.Verify}
+(pk_r,H(R_i),\sigma_i^R)=1
+\label{eq:req_sig}
+\end{equation}
+together with the binding between $ID_r$ and $pk_r$, requester
+registration, and eligibility to submit requests in epoch $e$.
+The nonce $n_r$ is consumed in the authenticated requester's replay
+domain only after successful authentication.
+
+Only after authentication does the VPS release to the requester the
+authenticated policy and state information required to construct the
+PQZK statement.
+
+\medskip
+\noindent\textbf{Step 3: Public Policy and State Validation.}
+Using the authenticated $PID_i$, the VPS retrieves policy $P_i$, its
+version $v_i$, commitment epoch $e_P$, and on-chain commitment
+$C_{P_i}$, and recomputes it as in Eq.~\eqref{eq:policy_commit}.
+The VPS applies the registered policy-version and epoch-transition rules
+to confirm that $P_i$ governs the resolved transaction state and is
+valid for authorization epoch $e$. It then verifies $op_i$, all public
+policy predicates, request freshness, and the validity of the resolved
+state $\mathsf{State}_b$.
+
+Requests failing these checks are rejected before PQZK verification.
+This staged validation avoids invoking the comparatively expensive
+PQZK verifier for requests that already fail authenticated public
+conditions.
+
+\medskip
+\noindent\textbf{Step 4: State-Bound PQZK Policy Verification.}
+For requests that pass the public checks, the requester proves
+satisfaction of the private policy predicates without revealing its
+credentials or sensitive authorization attributes. To bind the proof
+to the exact authenticated state, define
+\begin{equation}
+\begin{aligned}
+h_i^{\mathrm{leaf}} &= H\big(TID_i\parallel I_i\parallel D_i\parallel pos_i\big)\\
+h_i^{\mathrm{snap}} &= H\big(\mathsf{enc}(\mathsf{State}_b)\big)
+\end{aligned}
+\label{eq:hleaf_hsnap}
+\end{equation}
+\begin{equation}
+h_i^{\mathrm{st}}
+=
+H\big(h_i^{\mathrm{leaf}}\parallel h_i^{\mathrm{snap}}\big)
+\end{equation}
+where $\mathsf{enc}(\cdot)$ denotes an unambiguous canonical encoding.
+The leaf part $h_i^{\mathrm{leaf}}$ fixes what the request
+is about (transaction, immutable context, current content commitment and
+position); the snapshot part $h_i^{\mathrm{snap}}$ records the finalized
+checkpoint of batch $b$ against which the request is validated. The
+requester submits $(h_i^{\mathrm{leaf}},h_i^{\mathrm{snap}})$ together
+with $R_i$.
+The public statement is
+\begin{equation}
+\begin{aligned}
+x_i=\big(&ID_r,TID_i,op_i,D_i',
+C_{P_i},h_i^{\mathrm{st}},\\
+& e_i,e,ts_r,n_r\big)
+\end{aligned}
+\label{eq:pqzk_stmt}
+\end{equation}
+and the witness $w_i$ contains the private credentials,
+authorization attributes, and policy evidence.
+
+The policy relation is
+\begin{equation}
+\begin{aligned}
+\mathcal{R}_{P}(x_i,w_i)=1
+\iff{}&
+\mathsf{ValidCred}(w_i,C_{P_i},e)\\
+&\land
+\mathsf{RequesterBound}(w_i,ID_r)\\
+&\land
+\mathsf{PrivatePolicy}(x_i,w_i)
+\end{aligned}
+\end{equation}
+where credential validity includes the applicable expiry and revocation
+conditions, and requester binding proves credential ownership or valid
+delegation.
+
+The requester computes
+\begin{equation}
+\pi_i^{PQ}\leftarrow
+\mathsf{PQZK.Prove}
+(pk_{\mathrm{PQZK}},x_i,w_i)
+\end{equation}
+and the VPS accepts only if
+\begin{equation}
+\mathsf{PQZK.Verify}
+(vk_{\mathrm{PQZK}},x_i,\pi_i^{PQ})=1
+\label{eq:pqzk_verify}
+\end{equation}
+The state digest $h_i^{\mathrm{st}}$ prevents a valid proof from being
+transplanted to a different transaction position, content state, batch
+version, or finalized SA-RLI snapshot.
+
+Freshness is decided per target leaf rather than per
+batch. Let $v_b^{cur}$ denote the current version of batch $b$ and $k$ a
+system-wide snapshot window. A request is fresh if
+\begin{equation}
+\begin{aligned}
+\mathsf{FreshLeaf}_i=1
+\iff{}&
+H(h_i^{\mathrm{leaf}}\parallel h_i^{\mathrm{snap}})=h_i^{\mathrm{st}}\\
+&\land\
+h_i^{\mathrm{leaf}}=H(TID_i\parallel I_i\parallel D_i^{cur}\parallel pos_i)\\
+&\land\
+h_i^{\mathrm{snap}}=H\big(\mathsf{enc}(\mathsf{State}_b^{(v)})\big)\\
+&\phantom{\land\ }
+v_b^{cur}-k\le v\le v_b^{cur}
+\end{aligned}
+\label{eq:freshleaf}
+\end{equation}
+where $\mathsf{State}_b^{(v)}$ is the state of the
+anchored checkpoint $A_b$ of version $v$. The VPS accepts the request only
+if $\mathsf{FreshLeaf}_i=1$, in addition to the epoch and policy-version
+checks of Step~3. A redaction of another leaf of batch $b$ changes
+$\mathsf{State}_b$ but not $h_i^{\mathrm{leaf}}$, and therefore no longer
+invalidates pending requests on the same batch; a redaction of the target
+leaf itself changes $D_i^{cur}$ and still does. Hence a fresh request is
+executed only while its target leaf holds the content commitment against
+which it was validated.
+
+\medskip
+\noindent\textbf{Step 5: Validated-Request Attestation and Queue
+Admission.}
+For each accepted request, the VPS assigns a unique $RID_i$ and derives
+the proof digest
+\begin{equation}
+h_i^{PQ}=H(\pi_i^{PQ})
+\end{equation}
+It then constructs the validated-request commitment
+\begin{equation}
+\begin{aligned}
+C_i^{VR}
+=
+H\big(&RID_i\parallel H(R_i)
+\parallel h_i^{\mathrm{st}}
+\parallel C_{P_i}\\
+&\parallel h_i^{PQ}
+\parallel e\big)
+\end{aligned}
+\label{eq:cvr}
+\end{equation}
+and admits it to the current admission window $w$ at time
+$ts_i^{\mathrm{adm}}$ with the leaf
+\begin{equation}
+\nu_i=
+H_V\big(\texttt{VR-LEAF}\parallel RID_i\parallel C_i^{VR}
+\parallel ts_i^{\mathrm{adm}}\parallel e\big)
+\end{equation}
+A window closes after $W$ admissions or $T_{\mathrm{vps}}$
+time units, whichever comes first. The VPS then commits its leaves as
+\begin{equation}
+R_w^{V}=\mathsf{Merkle.Root}(\nu_1,\ldots,\nu_{|w|})
+\end{equation}
+and signs once per window:
+\begin{equation}
+\sigma_w^{V}=
+\mathsf{PQSIG.Sign}
+\left(
+sk_V,
+H_V(\texttt{VPS-WIN}\parallel w\parallel R_w^{V}\parallel e)
+\right)
+\end{equation}
+The attestation of request $i$ is
+\begin{equation}
+\alpha_i=(w,R_w^{V},MP_i^{V},\sigma_w^{V},ts_i^{\mathrm{adm}})
+\end{equation}
+where $MP_i^{V}$ is the membership proof of $\nu_i$ under
+$R_w^{V}$. It is accepted iff
+\begin{equation}
+\begin{aligned}
+&\mathsf{AttVerify}(\alpha_i)=1 \iff\\
+&\quad \mathsf{PQSIG.Verify}\big(pk_V,\\
+&\qquad H_V(\texttt{VPS-WIN}\parallel w\parallel R_w^{V}\parallel e),\,
+\sigma_w^{V}\big)=1\\
+&\quad \land\ \mathsf{Merkle.Verify}(\nu_i,MP_i^{V},R_w^{V})=1
+\end{aligned}
+\label{eq:attverify}
+\end{equation}
+A verifier checks $\sigma_w^{V}$ once per distinct
+$(w,R_w^{V})$ and $\lceil\log_2 W\rceil$ hashes per request, instead of
+one PQ signature per request.
+
+The compact validated request is
+\begin{equation}
+\begin{aligned}
+VR_i=\big(&RID_i,C_i^{VR},b,pos_i,PID_i,
+v_b,v_{\mathrm{RLI}},\\
+&e_i,e,h_i^{\mathrm{st}},h_i^{PQ},
+\sigma_i^R,\alpha_i\big)
+\end{aligned}
+\end{equation}
+The explicit $(b,pos_i)$ fields provide the authenticated locality
+metadata required by Phase~4, whereas
+$(v_b,v_{\mathrm{RLI}},h_i^{\mathrm{st}})$ bind that metadata to the
+validated state. The complete request $R_i$, statement $x_i$, proof
+$\pi_i^{PQ}$, policy evidence, and authenticated transaction evidence
+remain available for independent or challenged verification.
+
+The validated request is admitted to the pending queue
+$\mathcal{Q}_e$ at time $ts_i^{\mathrm{adm}}$. The VPS returns
+the receipt $rc_i=\alpha_i$: because $\nu_i$ binds
+$ts_i^{\mathrm{adm}}$, the window signature and membership proof
+provide verifiable evidence of admission. A request that reaches
+the maximum waiting bound $T_{\max}$ becomes mandatory for the next
+eligible authorization round, subject to state and policy revalidation.    
+    
+  \subsubsection*{\textbf{Phase 4: Cost- and Overlap-Aware Redaction
+Aggregation and Multi-Party Authorization}}
+
+This phase groups validated requests with \emph{Cost- and Overlap-Aware
+Redaction Aggregation (CORA)} and authorizes each group by $t$-of-$n$
+committee approval.
+
+\medskip
+\noindent\textbf{Step 1: CORA Candidate Selection.}
+Let $\mathcal{Q}_e$ denote the queue of Phase~3 validated requests for
+authorization epoch $e$. For each $VR_i\in\mathcal{Q}_e$, the authenticated
+pair $(b_i,pos_i)$ identifies its target transaction batch and Merkle
+position. For a candidate set $\mathcal{S}\subseteq\mathcal{Q}_e$ and
+each $b\in\Omega(\mathcal{S})$, define
+\begin{equation}
+\begin{aligned}
+\Omega(\mathcal{S})&=\{b_i:VR_i\in\mathcal{S}\}\\
+\mathcal{L}_b(\mathcal{S})&=\{pos_i:VR_i\in\mathcal{S},\,b_i=b\}
+\end{aligned}
+\end{equation}
+Using the fixed Merkle topology from Phase~2, the VPS derives the
+corresponding external frontier
+$\mathcal{F}_b(\mathcal{L}_b(\mathcal{S}))$. CORA estimates the
+redaction cost as
+\begin{equation}
+\mathcal{C}_{\mathrm{CORA}}(\mathcal{S})
+=
+w_{\mathrm{CH}}|\Omega(\mathcal{S})|
++
+w_{\mathrm{F}}
+\sum_{b\in\Omega(\mathcal{S})}
+|\mathcal{F}_b(\mathcal{L}_b(\mathcal{S}))|
+\end{equation}
+where $w_{\mathrm{CH}}$ and $w_{\mathrm{F}}$ reflect the relative cost
+of a distributed PQCH adaptation and an authenticated frontier node,
+respectively.
+
+Given a workload-dependent target size
+\begin{equation}
+\widehat{B}_e
+=
+\min\!\left\{
+B_{\max},
+\max\!\left\{
+B_{\min},
+\left\lceil
+f(\Lambda_e,|\mathcal{Q}_e|)
+\right\rceil
+\right\}
+\right\}
+\end{equation}
+CORA selects
+\begin{equation}
+\mathcal{B}_e^{\mathrm{cand}}
+=
+\arg\min_{\substack{
+\mathcal{S}\subseteq\mathcal{Q}_e\\
+|\mathcal{S}|\leq\widehat{B}_e\\
+\mathcal{M}_e\subseteq\mathcal{S}
+}}
+\mathcal{C}_{\mathrm{CORA}}(\mathcal{S})
+\end{equation}
+where
+\begin{equation}
+\mathcal{M}_e=
+\{VR_i\in\mathcal{Q}_e:
+t_{\mathrm{now}}-ts_i^{\mathrm{adm}}\geq T_{\max}\}
+\end{equation}
+is the mandatory set of requests reaching the waiting bound. If
+$|\mathcal{M}_e|>\widehat{B}_e$, the oldest mandatory requests are
+processed first and the target expands up to $B_{\max}$ when capacity
+permits. Thus, locality can improve execution efficiency but cannot
+indefinitely postpone an admitted request.
+
+The combinatorial objective need not be solved exhaustively. The
+implementation uses a deterministic greedy realization that admits
+mandatory requests first and then repeatedly selects the request with
+the smallest marginal cost
+\begin{equation}
+\Delta_i(\mathcal{S})
+=
+\mathcal{C}_{\mathrm{CORA}}
+(\mathcal{S}\cup\{VR_i\})
+-
+\mathcal{C}_{\mathrm{CORA}}(\mathcal{S})
+\end{equation}
+with admission time and $RID_i$ used as deterministic tie-breakers.
+
+\medskip
+\noindent\textbf{Step 2: Attestation and Current-State Revalidation.}
+Before authorization, each selected request is independently
+revalidated. The committee verifies
+$\mathsf{AttVerify}(\alpha_i)=1$
+(Eq.~\eqref{eq:attverify}), verifying each distinct window signature
+$\sigma_w^{V}$ once for the selected set,
+and reconstructs $C_i^{VR}$ from the retained Phase~3 evidence.
+Routine authorization verifies the VPS attestation , which
+binds the proof digest $h_i^{PQ}$ through $C_i^{VR}$,
+rather than repeating the underlying PQZK verification.
+
+The committee then resolves the latest authenticated state
+$\mathsf{State}_b^{cur}$ and re-evaluates
+Eq.~\eqref{eq:freshleaf} against it.
+The request remains eligible only if
+$\mathsf{FreshLeaf}_i=1$,
+epoch $e$ remains active, and the attested policy version remains
+applicable. Requests that fail revalidation are removed and returned
+for Phase~3 revalidation. CORA is not rerun merely to replace removed
+requests; this prevents post-selection state changes from altering the
+meaning of the candidate authorization round.
+
+Let the remaining eligible requests, canonically ordered by
+$(b_i,pos_i,RID_i)$, be
+\begin{equation}
+\mathcal{B}_e=(VR_1,\ldots,VR_m)
+\end{equation}
+
+\medskip
+\noindent\textbf{Step 3: State-Bound Authorization Batch Commitment.}
+For each $VR_i\in\mathcal{B}_e$, define
+\begin{equation}
+\eta_i
+=
+H_V\big(
+\texttt{AUTH-LEAF}\parallel
+RID_i\parallel C_i^{VR}\parallel
+\alpha_i
+\big)
+\label{eq:eta}
+\end{equation}
+where the domain-separated $H_V$ from Phase~1 prevents
+cross-context reuse. The leaves are committed as
+\begin{equation}
+R_e^{VR}
+=
+\mathsf{Merkle.Root}
+(\eta_1,\ldots,\eta_m)
+\end{equation}
+Because $C_i^{VR}$ already binds the request, policy commitment,
+PQZK-proof digest, authorization epoch, and authenticated state digest,
+$\eta_i$ need not duplicate these fields.
+
+To bind authorization to the execution structure selected by CORA,
+define
+\begin{equation}
+\Gamma_e=
+H_V\!\left(
+\texttt{CORA-PLAN}\parallel
+\mathsf{enc}
+\left(
+\{(b_i,pos_i)\}_{i=1}^{m}
+\right)
+\right)
+\label{eq:cora_plan}
+\end{equation}
+and construct
+\begin{equation}
+C_e^{B}
+=
+H_V\big(
+\texttt{AUTH-BATCH}\parallel
+BID_e\parallel e\parallel m\parallel
+R_e^{VR}\parallel\Gamma_e\parallel ts_e
+\big)
+\label{eq:auth_batch}
+\end{equation}
+where $BID_e$ uniquely identifies the authorization batch.
+The plan commitment $\Gamma_e$ fixes the authorized batch/leaf
+locality without committing to a particular execution implementation.
+
+\medskip
+\noindent\textbf{Step 4: Multi-Party Committee Authorization.}
+Each approving member $C_k\in\mathcal{C}_e$ independently verifies the
+finalized request set, current-state checks, $R_e^{VR}$, and
+$\Gamma_e$, and signs
+\begin{equation}
+\sigma_{e,k}^{B}
+\leftarrow
+\mathsf{PQSIG.Sign}
+\left(
+sk_{e,k},C_e^{B}
+\right)
+\end{equation}
+The valid approval set is
+\begin{equation}
+\begin{aligned}
+\mathcal{A}_e=\big\{&
+(k,\sigma_{e,k}^{B}):
+C_k\in\mathcal{C}_e,\\
+&
+\mathsf{PQSIG.Verify}
+(pk_{e,k},C_e^{B},\sigma_{e,k}^{B})=1
+\big\}
+\end{aligned}
+\end{equation}
+Authorization succeeds only when approvals from at least $t$ distinct
+registered committee members are present:
+\begin{equation}
+|\mathcal{A}_e|\geq t
+\end{equation}
+The resulting shared authorization evidence is
+\begin{equation}
+Auth_e^{B}
+=
+(BID_e,C_e^{B},R_e^{VR},\Gamma_e,
+\mathcal{A}_e,e,ts_e)
+\end{equation}
+This construction uses independent post-quantum signatures and does not
+require a native threshold-signature scheme.
+
+\medskip
+\noindent\textbf{Step 5: Policy-Bound Authorization Evidence.}
+For each authorized request, the system derives a Merkle membership
+proof $MP_i^{B}$ for $\eta_i$ under $R_e^{VR}$ and constructs
+\begin{equation}
+PBRP_i^{auth}
+=
+(RID_i,\eta_i,MP_i^{B},Auth_e^{B})
+\end{equation}
+Since $Auth_e^{B}$ already contains $C_e^{B}$ and $R_e^{VR}$, they are
+not duplicated in each authorization component. Shared committee
+evidence can therefore be verified once per authorization batch, while
+$MP_i^{B}$ binds each request to that evidence.    
+ \subsubsection*{\textbf{Phase 5: Shared-Frontier Redaction and
+Verifiable State Transition}}
+
+This phase executes the authorized requests with \emph{Shared-Frontier
+Merkle Redaction (SFMR)} and one threshold PQCH adaptation per affected
+batch.
+
+\medskip
+\noindent\textbf{Step 1: Authorization-Bound Execution Validation.}
+Given the authorized request set $\mathcal{B}_e$, the PBN verifies
+$Auth_e^B$, the threshold approval set $\mathcal{A}_e$, and each
+$PBRP_i^{auth}$. It reconstructs the authorized position set and
+verifies that it reproduces $\Gamma_e$ of Eq.~\eqref{eq:cora_plan}.
+The requests are then partitioned by target batch:
+\begin{equation}
+\mathcal{B}_e
+=
+\bigcup_{b\in\Omega_e}\mathcal{B}_{e,b}
+\qquad
+\mathcal{B}_{e,b}
+=
+\{VR_i\in\mathcal{B}_e:b_i=b\}
+\end{equation}
+where $\Omega_e$ is the set of affected transaction batches.
+
+Immediately before execution, the PBN resolves the latest authenticated
+state for every request and re-evaluates
+Eq.~\eqref{eq:freshleaf}.
+Execution requires
+$\mathsf{FreshLeaf}_i=1$,
+together with a still-valid authorization epoch, policy, and approved
+operation. Execution always starts from the latest
+finalized state of batch $b$, i.e., the current $MR_b$, $r_b$ and $v_b$
+used in Steps~3--5, not from the snapshot bound by $h_i^{\mathrm{snap}}$;
+the snapshot only certifies that validation used an authentic, recent
+checkpoint. Requests targeting the same transaction are conflict-checked;
+at most one resulting content state is executed for a transaction in
+one authorization round. Any stale, conflicting, or otherwise invalid
+request causes the corresponding transition to be withheld rather than
+silently replaced by an unauthorized request.
+
+\medskip
+\noindent\textbf{Step 2: RADC Transition Construction.}
+For each executable $VR_i$, the PBN retrieves the payload
+$X_i^{\mathrm{red}}$ of Phase~3, Step~1 and verifies its opening against
+$D_i'$. A valid request induces the RADC transition
+\begin{equation}
+\begin{aligned}
+&(I_i,D_i)\longrightarrow(I_i,D_i')\\
+&L_i=H(I_i\parallel D_i)\qquad L_i'=H(I_i\parallel D_i')
+\end{aligned}
+\end{equation}
+Thus, execution modifies only the authorized content commitment while
+preserving the immutable transaction-policy binding $I_i$ and the
+original provenance established in Phase~2.
+
+For batch $b$, let
+\begin{equation}
+\mathcal{P}_b=
+\{pos_i:VR_i\in\mathcal{B}_{e,b}\}
+\end{equation}
+denote the authorized executable positions, and let
+$\mathcal{L}_b$ and $\mathcal{L}_b'$ denote their old and replacement
+leaves, respectively.
+
+\medskip
+\noindent\textbf{Step 3: Shared-Frontier Merkle Redaction.}
+Rather than verifying and updating one authentication path per
+redaction, SFMR derives the minimal external frontier introduced in
+Phase~2:
+\begin{equation}
+\mathcal{F}_b
+=
+\mathcal{F}_b(\mathcal{P}_b)
+\end{equation}
+The frontier contains only unaffected sibling nodes required to
+reconstruct the paths from all modified leaves to $MR_b$. The PBN first
+verifies
+\begin{equation}
+\mathsf{SFMR.Verify}
+(MR_b,\mathcal{P}_b,\mathcal{L}_b,\mathcal{F}_b)=1
+\end{equation}
+and then computes
+\begin{equation}
+MR_b'
+=
+\mathsf{SFMR.Update}
+(\mathcal{P}_b,\mathcal{L}_b',
+\mathcal{F}_b)
+\end{equation}
+Internal nodes shared by multiple modified paths are recomputed once.
+Hence, the authentication material is proportional to the unique
+frontier induced by the selected positions rather than to the sum of
+independent Merkle paths. In particular, for $q_b=|\mathcal{P}_b|$,
+the independent-path upper cost $O(q_b\log N_b)$ is replaced by work
+proportional to the size of the induced authentication subtree and its
+frontier, with the largest savings when CORA selects structurally
+overlapping positions.
+
+To bind the resulting root to the authorized execution, define
+\begin{equation}
+\begin{aligned}
+\Theta_b
+=
+H_V\big(&\texttt{SFMR-TRANS}\parallel BID_e\parallel b
+\parallel v_b\\
+&\parallel MR_b\parallel MR_b'
+\parallel \mathsf{enc}(\mathcal{P}_b)
+\parallel \Gamma_e\big)
+\end{aligned}
+\label{eq:theta}
+\end{equation}
+
+\medskip
+\noindent\textbf{Step 4: Authorization-Gated PQCH Adaptation.}
+Before releasing a PQCH adaptation share, each participating committee
+member $C_k$ independently verifies $Auth_e^B$, $\Gamma_e$, the
+authorized membership of every request affecting batch $b$, and the
+SFMR transition committed by $\Theta_b$. A share is generated only if
+$\mathcal{P}_b$ is a subset of the positions authorized by
+$\Gamma_e$ and $MR_b'$ is the deterministic SFMR result for the
+corresponding authorized RADC transitions.
+
+Member $C_k$ then contributes
+\begin{equation}
+\delta_{b,k}
+\leftarrow
+\mathsf{PQCH.PartAdapt}
+(td_{e,k},MR_b,r_b,MR_b',\Theta_b)
+\end{equation}
+and at least $t$ validated contributions are combined into
+\begin{equation}
+r_b'
+\leftarrow
+\mathsf{PQCH.Combine}
+(\{\delta_{b,k}\}_{k\in\mathcal{T}_b})
+\qquad
+|\mathcal{T}_b|\geq t
+\end{equation}
+Both steps run inside $\mathcal{F}_{\mathrm{TA}}$ (Phase~1, Step~5), so
+the combination reveals only $r_b'$. The adaptation is accepted only if
+\begin{equation}
+\begin{aligned}
+\mathsf{PQCH.Hash}(pk_{\mathrm{CH}},MR_b,r_b)
+&=
+\mathsf{PQCH.Hash}(pk_{\mathrm{CH}},MR_b',r_b')\\
+&=CH_b
+\end{aligned}
+\label{eq:pqch_cont}
+\end{equation}
+
+Thus, all authorized modifications within batch $b$ produce one SFMR
+root transition and one distributed PQCH adaptation. Distinct affected
+batches can be prepared in parallel.
+
+\medskip
+\noindent\textbf{Step 5: Atomic Authenticated State Finalization.}
+For every successfully prepared batch transition, the version becomes
+$v_b'=v_b+1$ and each executed transaction updates its SA-RLI entry to
+\begin{equation}
+E_i'=(\tau_i,Tag_i,b,pos_i,PID_i,e,I_i,D_i',ptr_i')
+\end{equation}
+where $ptr_i'$ resolves the current authenticated state under $MR_b'$.
+Unmodified transaction states remain unchanged.
+
+Let $\Omega_S$ denote the SA-RLI shards containing modified entries.
+Only these shards are recomputed:
+\begin{equation}
+R_s^{*}=
+\begin{cases}
+R_s', & s\in\Omega_S\\
+R_s,  & s\notin\Omega_S
+\end{cases}
+\end{equation}
+yielding
+\begin{equation}
+R_{\mathrm{RLI}}'
+=
+\mathsf{Merkle.Root}(R_1^{*},\ldots,R_S^{*})
+\qquad
+v_{\mathrm{RLI}}'=v_{\mathrm{RLI}}+1
+\end{equation}
+
+For each affected batch, the checkpoint authority constructs
+\begin{equation}
+\begin{aligned}
+A_b'=\big(&b,CH_b,MR_b',r_b',
+R_{\mathrm{RLI}}',v_{\mathrm{RLI}}'\\
+&e,v_b',ts_b'\big)
+\end{aligned}
+\end{equation}
+with checkpoint digest
+\begin{equation}
+\begin{aligned}
+h_b^{\mathrm{CP}}=
+H_V\big(&\texttt{CP}\parallel b\parallel CH_b\parallel MR_b'
+\parallel H(r_b')\\
+&\parallel R_{\mathrm{RLI}}'\parallel v_{\mathrm{RLI}}'
+\parallel e\parallel v_b'\parallel ts_b'\big)
+\end{aligned}
+\end{equation}
+Because the PBN finalizes the affected batches of a round
+atomically, the checkpoint authority signs the round rather than each
+batch: it commits the digests as
+\begin{equation}
+R_e^{\mathrm{CP}}=\mathsf{Merkle.Root}(\{h_b^{\mathrm{CP}}\}_{b\in\Omega_e})
+\end{equation}
+and computes
+\begin{equation}
+\begin{aligned}
+\sigma_e^{\mathrm{CP}}={}&
+\mathsf{PQSIG.Sign}\big(sk_{\mathrm{CP}},\\
+&\quad H_V(\texttt{CP-ROUND}\parallel BID_e\parallel R_e^{\mathrm{CP}}
+\parallel v_{\mathrm{RLI}}')\big)
+\end{aligned}
+\end{equation}
+Let $\Pi_b^{\mathrm{CP}}$ denote the membership proof of
+$h_b^{\mathrm{CP}}$ under $R_e^{\mathrm{CP}}$. The finalization
+transaction carries the $|\Omega_e|$ checkpoints, $R_e^{\mathrm{CP}}$, and
+the single signature $\sigma_e^{\mathrm{CP}}$; validators verify
+$\sigma_e^{\mathrm{CP}}$ once and recompute $R_e^{\mathrm{CP}}$ before
+anchoring, and the PBN stores $h_b^{\mathrm{CP}}$ for each $(b,v_b')$. The PQCH randomness $r_b'$ enters the digest through $H(r_b')$; it remains
+bound to $CH_b$ and $MR_b'$ by the PQCH equation.
+All affected checkpoints reference the same finalized SA-RLI snapshot.
+The PBN atomically commits the prepared batch and index transitions
+only if their base states remain current; otherwise, the prepared
+transitions are discarded and no new finalized state is published.
+
+\medskip
+\noindent\textbf{Step 6: Transition-Bound PBRP Generation.}
+For each successfully executed request, define the shared batch
+execution commitment
+\begin{equation}
+\begin{aligned}
+\Xi_b=
+H_V\big(&\texttt{EXEC-EVIDENCE}\parallel
+\Theta_b\parallel CH_b\\
+&\parallel v_b'\parallel
+R_{\mathrm{RLI}}'\parallel v_{\mathrm{RLI}}'\big)
+\end{aligned}
+\label{eq:xi}
+\end{equation}
+The final Policy-Bound Batch Redaction Proof is
+\begin{equation}
+\begin{aligned}
+PBRP_i=\big(
+&PBRP_i^{auth},I_i,D_i,D_i',
+b,pos_i,v_b,v_b',v_i^{\mathrm{snap}},\\
+&\Theta_b,\Xi_b,A_b',\Pi_b^{\mathrm{CP}},\Pi_i^{\mathrm{SF}}\big)
+\end{aligned}
+\label{eq:pbrp}
+\end{equation}
+where $\Pi_i^{\mathrm{SF}}$ is the request-specific membership evidence
+linking $(pos_i,L_i,L_i')$ to the shared SFMR transition,
+and $v_i^{\mathrm{snap}}$ is the version of the checkpoint bound by
+$h_i^{\mathrm{snap}}$, with $v_b-k\le v_i^{\mathrm{snap}}\le v_b$; here
+$v_b$ is the version at execution, which may be newer than
+$v_i^{\mathrm{snap}}$. The frontier,
+PQCH adaptation evidence, and finalized checkpoint are batch-shared
+objects and need not be duplicated across PBRPs.
+
+The corresponding compact redaction record is
+\begin{equation}
+\begin{aligned}
+RR_i=\big(
+&RID_i,TID_i,BID_e,PID_i,D_i,D_i',\\
+&v_b,v_b',H_V(\texttt{PBRP}\parallel
+\mathsf{enc}(PBRP_i)),ts_i^{red}\big)
+\end{aligned}
+\end{equation}
+Only successfully finalized transitions produce $RR_i$. The complete
+PBRP and its referenced shared evidence are retained for Phase~6
+verification and auditing.
+
+
+\subsubsection*{\textbf{Phase 6: SAVER-Based State-Aware
+Verifiable Redaction Auditing}}
+
+This phase audits finalized redactions with \emph{State-Aware
+Verification Evidence Reuse (SAVER)}, which verifies shared evidence once
+per authenticated state context.
+
+\medskip
+\noindent\textbf{Step 1: Authenticated Redaction Audit Index.}
+For each finalized redaction record $RR_i$, the audit service derives
+\begin{equation}
+\tau_i^A=\mathsf{PRF}_{K_A}(TID_i)
+\end{equation}
+and constructs
+\begin{equation}
+E_i^A=
+(\tau_i^A,RID_i,BID_e,PID_i,e,v_b,v_b',
+h_i^{PBRP},ts_i^{red},ptr_i^A)
+\end{equation}
+where
+\begin{equation}
+h_i^{PBRP}
+=
+H_V(\texttt{PBRP}\parallel\mathsf{enc}(PBRP_i))
+\end{equation}
+and $ptr_i^A$ references its supporting evidence. RAI is append-only
+with respect to finalized redactions.
+
+Entries are partitioned into $S_A$ authenticated shards whose roots
+form $R_{\mathrm{RAI}}$:
+\begin{equation}
+\begin{aligned}
+sid_i^A&=H_A(\tau_i^A)\bmod S_A\\
+R_{\mathrm{RAI}}&=\mathsf{Merkle.Root}(R_1^A,\ldots,R_{S_A}^A)
+\end{aligned}
+\end{equation}
+A monotonically increasing $v_A$ identifies each snapshot. For audit
+epoch $e_A$, the service constructs
+\begin{equation}
+CP_{e_A}^A
+=
+H_V(
+\texttt{RAI-CP}\parallel e_A\parallel
+R_{\mathrm{RAI}}\parallel v_A\parallel ts_A)
+\label{eq:rai_cp}
+\end{equation}
+which is anchored to the PBN. Here, $e_A$ is distinct from the
+authorization epoch $e$.
+
+\medskip
+\noindent\textbf{Step 2: PQ-Authenticated Audit Query Resolution.}
+An authorized auditor $AU_j$ submits a signed query
+\begin{equation}
+\begin{aligned}
+Q_j^A&=(QID_j,qtype_j,\phi_j,scope_j,e_A,[t_s,t_e],n_j,ts_j)\\
+\sigma_j^A&\leftarrow\mathsf{PQSIG.Sign}(sk_{AU_j},H(Q_j^A))
+\end{aligned}
+\end{equation}
+After verifying the auditor, signature, freshness, and scope, the
+service resolves
+\begin{equation}
+\mathcal{R}_{Q_j}
+=
+\{E_i^A:E_i^A\models Q_j^A\}
+\end{equation}
+against the selected RAI snapshot. Completeness is claimed only when
+the index supports authenticated coverage of the requested predicate
+and scope; otherwise, only the returned records are authenticated.
+
+\medskip
+\noindent\textbf{Step 3: Authenticated Verification-Dependency DAG.}
+For the selected records, SAVER constructs
+\begin{equation}
+G_{Q_j}^{V}=(V_{Q_j},E_{Q_j})
+\qquad
+V_{Q_j}
+=
+V_{\mathrm{req}}\cup V_{\mathrm{auth}}
+\cup V_{\mathrm{trans}}\cup V_{\mathrm{cp}}
+\end{equation}
+representing request validation, committee authorization, SFMR/PQCH
+transitions, and finalized checkpoints, respectively.
+
+Each node $v$ is content-addressed as
+\begin{equation}
+id(v)=
+H_V(
+\mathsf{type}(v)\parallel
+\mathsf{enc}(\mathsf{payload}(v))\parallel
+\mathsf{enc}(\mathsf{parents}(v)))
+\label{eq:node_id}
+\end{equation}
+Request nodes contain $C_i^{VR}$, $\eta_i$, and
+$PBRP_i^{auth}$; authorization nodes contain $Auth_e^B$ and
+$\Gamma_e$; transition nodes contain $\Theta_b$ and $\Xi_b$; and
+checkpoint nodes contain the corresponding $A_b'$ and RAI checkpoint.
+Shared evidence therefore appears as a single dependency node.
+The response carries each node once, and each record
+references its request, authorization, transition, and checkpoint nodes
+by $id(v)$; the auditor computes $id(v)$ once per node when the node is
+received, not once per dependent record. Request nodes admitted in the
+same VPS window share the window signature $\sigma_w^{V}$.
+
+The service additionally constructs
+\begin{equation}
+MP_{Q_j}^A
+\leftarrow
+\mathsf{Merkle.MultiProof}
+(\mathcal{R}_{Q_j},R_{\mathrm{RAI}})
+\end{equation}
+together with authenticated coverage evidence $\Psi_{Q_j}^A$ when
+required and supported. The response is
+\begin{equation}
+Resp_j^A=(Body_j^A,\sigma_{\mathrm{Resp}}^A)
+\end{equation}
+where
+\begin{equation}
+\begin{aligned}
+Body_j^A=\big(
+&QID_j,H(Q_j^A),Ans_j,\mathcal{R}_{Q_j},MP_{Q_j}^A,\\
+&G_{Q_j}^{V},\Psi_{Q_j}^{A},
+R_{\mathrm{RAI}},v_A,CP_{e_A}^A\big)
+\end{aligned}
+\end{equation}
+and
+\begin{equation}
+\sigma_{\mathrm{Resp}}^A
+\leftarrow
+\mathsf{PQSIG.Sign}
+(sk_A,H(\mathsf{enc}(Body_j^A)))
+\end{equation}
+
+\medskip
+\noindent\textbf{Step 4: State-Bound Verification Reuse.}
+The auditor first verifies the response signature, query binding,
+anchored RAI checkpoint, multiproof, and any required coverage
+evidence, and then traverses $G_{Q_j}^{V}$ in dependency order.
+
+Each node is associated with a typed state context
+\begin{equation}
+\kappa(v)=
+\begin{cases}
+(RID_i,h_i^{\mathrm{st}},e),
+&v\in V_{\mathrm{req}}\\
+(BID_e,\Gamma_e,e),
+&v\in V_{\mathrm{auth}}\\
+(b,v_b,v_b',\Theta_b),
+&v\in V_{\mathrm{trans}}\\
+(v_{\mathrm{RLI}}',v_A,CP_{e_A}^A),
+&v\in V_{\mathrm{cp}}
+\end{cases}
+\end{equation}
+and verification identifier
+\begin{equation}
+\chi(v)=
+H_V(
+\texttt{VERIFY-CTX}\parallel
+id(v)\parallel\mathsf{enc}(\kappa(v)))
+\label{eq:chi}
+\end{equation}
+After successful verification, the auditor records
+\begin{equation}
+\mathsf{VCS}[\chi(v)]=\mathsf{valid}
+\end{equation}
+where VCS denotes the \emph{Verified-Context Store}. Reuse is permitted
+only when
+\begin{equation}
+\mathsf{Reuse}(v,\chi')
+=1
+\Longleftrightarrow
+\chi'=\chi(v)
+\land
+\mathsf{VCS}[\chi(v)]=\mathsf{valid}
+\label{eq:saver_reuse}
+\end{equation}
+Thus, any change to the evidence, dependencies, authorization context,
+transition state, or checkpoint requires fresh verification.
+
+For each distinct authorization node, the auditor verifies $C_e^B$,
+$\Gamma_e$, and at least $t$ committee approvals. For each transition
+node, it verifies the subset relation of Eq.~\eqref{eq:subset}, the
+bindings to $\Theta_b$ and $\Xi_b$, and the finalized checkpoint.
+Request-specific verification recomputes the RADC leaves $L_i$ and
+$L_i'$ of Phase~5, Step~2, checks $\Pi_i^{SF}$ linking
+$(pos_i,L_i,L_i')$ to the shared transition, and checks that
+$h_i^{\mathrm{snap}}$ is the anchored checkpoint of batch $b$ at version
+$v_i^{\mathrm{snap}}$ with $v_b-k\le v_i^{\mathrm{snap}}\le v_b$ and that
+\begin{equation}
+h_i^{\mathrm{leaf}}=H(TID_i\parallel I_i\parallel D_i\parallel pos_i)
+\end{equation}
+for the old leaf $L_i$ of the executed transition;
+together these show that the target leaf was unchanged between validation
+and execution. PQCH preservation, Eq.~\eqref{eq:pqch_cont}, is
+verified once per distinct batch transition.
+The $z_Q$ distinct checks are independent and are
+evaluated jointly as one matrix product over the query's transitions; a
+failing transition still rejects only the records that depend on it. At
+each distinct checkpoint node, the auditor recomputes $h_b^{\mathrm{CP}}$
+from $A_b'$ and compares it with the digest anchored on the PBN for
+$(b,v_b')$ (Phase~5, Step~5), so the response carries no checkpoint
+signature.
+
+\medskip
+\noindent\textbf{Step 5: Dependency-Selective Verification Escalation.}
+Routine verification of request $i$ uses
+\begin{equation}
+\mathcal{D}_i^{\mathrm{routine}}
+=
+\{
+v_i^{\mathrm{req}},
+v_e^{\mathrm{auth}},
+v_b^{\mathrm{trans}},
+v_b^{\mathrm{cp}},
+v_A^{\mathrm{cp}}
+\}
+\end{equation}
+At the request node, the auditor verifies
+$\mathsf{AttVerify}(\alpha_i)=1$
+(Eq.~\eqref{eq:attverify}), checking each distinct window signature
+once,
+and confirms $h_i^{PQ}=H(\pi_i^{PQ})$. This authenticates the VPS
+validation decision but does not independently establish PQZK validity.
+
+For a challenged or forensic request, SAVER expands only the
+corresponding request dependency:
+\begin{equation}
+\mathcal{D}_i^{\mathrm{deep}}
+=
+\mathcal{D}_i^{\mathrm{routine}}
+\cup
+\{x_i,\pi_i^{PQ}\}
+\end{equation}
+and independently verifies the proof by
+Eq.~\eqref{eq:pqzk_verify} together with $H(\pi_i^{PQ})=h_i^{PQ}$.
+Unchanged shared dependencies remain reusable according to
+Eq.~\eqref{eq:saver_reuse}.
+
+\medskip
+\noindent\textbf{Step 6: Query-Specific Audit Decision.}
+Finally,
+\begin{equation}
+\mathsf{AuditVerify}
+(PP,Q_j^A,Resp_j^A)
+\rightarrow
+(ans_j,\beta_j,\{\beta_{j,i}\}_{i\in\mathcal{R}_{Q_j}},\ell_j)
+\end{equation}
+where $\beta_{j,i}\in\{0,1\}$ is the decision for returned
+record $i$, computed from $\mathcal{D}_i^{\mathrm{routine}}$ (or
+$\mathcal{D}_i^{\mathrm{deep}}$) only, so an invalid record does not
+invalidate records whose dependencies remain valid;
+$\beta_j\in\{0,1\}$ indicates whether the verification conditions
+required by $qtype_j$ are satisfied for the whole result
+($\beta_j=1$ only if every $\beta_{j,i}=1$) and
+$\ell_j\in\{\mathsf{routine},\mathsf{deep}\}$ records the applied
+verification level. For exhaustive queries, $\beta_j=1$ additionally
+requires authenticated coverage; otherwise, only the authenticity of
+the returned records is certified.
+
+For $n_Q$ returned redactions spanning $a_Q$ authorization nodes,
+$z_Q$ transition nodes, and $c_Q$ checkpoint contexts, with $d_Q$
+requests requiring deep verification, the resulting verification cost is
+\begin{equation}
+\begin{aligned}
+C_{\mathrm{SAVER}}
+\approx{}&
+n_QC_{\mathrm{req}}
++a_QC_{\mathrm{auth}}
++z_QC_{\mathrm{trans}}\\
+&+c_QC_{\mathrm{cp}}
++d_QT_{ZV}
+\end{aligned}
+\label{eq:saver_cost}
+\end{equation}
+where typically $a_Q,z_Q,c_Q\ll n_Q$ when redactions share
+authorization and execution evidence. SAVER thereby converts the sharing established by
+CORA and SFMR into state-bound verification reuse while retaining
+request-level escalation when independent policy verification is
+required.
+
+    
+    
+    % =====================================================================
+    
+
+\section{Security Analysis}
+\label{sec:security}
+
+We analyze VeRedact-PQ against the threat model of Section~\ref{subsec:threat}.
+Let $\mathcal{A}$ be a quantum-polynomial-time (QPT) adversary.
+The analysis focuses on the security-critical redaction path; compromise
+of the underlying permissioned consensus beyond its prescribed fault
+threshold, VPS compromise, endpoint compromise, denial-of-service,
+traffic-analysis leakage, and implementation-level side channels are
+outside the primary model.
+
+\subsection{Security Model and Assumptions}
+
+VeRedact-PQ relies on six assumptions.
+\textbf{A1:} PQSIG is existentially unforgeable under quantum
+chosen-message attacks (EUF-qCMA).
+\textbf{A2:} PQZK satisfies quantum computational soundness and zero
+knowledge for $\mathcal{R}_P$.
+\textbf{A3:} PQCH is collision resistant against QPT adversaries, and
+threshold adaptation is realized as $\mathcal{F}_{\mathrm{TA}}$
+(Phase~1, Step~5), which reveals only $r_b'$ and requires at least $t$
+shares; fewer than $t$ contemporaneously valid shares are compromised in
+each resharing interval, and previous shares are securely erased.
+\textbf{A4:} The domain-separated hash functions are collision resistant
+at the required post-quantum level, the PRFs are quantum secure, and the
+Merkle structures are binding.
+\textbf{A5:} Fewer than $t$ members of $\mathcal{C}_e$ are compromised,
+and the PBN satisfies its consensus fault-tolerance condition.
+\textbf{A6:} The VPS correctly authenticates requesters, evaluates public
+policy conditions, and verifies PQZK proofs before issuing $\alpha_i$, so
+routine auditing authenticates the VPS decision and deep auditing can
+reverify the committed proof. A corrupt VPS could admit an ineligible
+request, delay eligible ones, or misstate admission times; the first is
+detected by deep auditing of the escalated requests, while the latter
+affect liveness and fairness but not the authorization guarantees of
+Phases~4--6.
+
+\subsection{State-Bound Request Admission}
+
+\begin{theorem}[Authenticated and State-Bound Admission]
+An adversary cannot obtain a valid Phase~3 validation attestation for
+an unauthorized requester, policy, operation, or authenticated
+transaction state except with negligible probability.
+\end{theorem}
+
+\emph{Proof:} Admission passes four checks, and bypassing any of them
+breaks one assumption.
+\begin{itemize}[leftmargin=*,nosep]
+\item \emph{Requester.} The VPS accepts $R_i$ only with a valid PQ
+signature $\sigma_i^R$ under the registered key $pk_r$
+(Eq.~\eqref{eq:req_sig}); signing a new request without $sk_r$ breaks
+A1.
+\item \emph{Policy and state.} $R_i$ is tied to the committed policy
+$C_{P_i}$ (Eq.~\eqref{eq:policy_commit}) and to the digest $h_i^{st}$ of
+its target leaf and snapshot (Eq.~\eqref{eq:hleaf_hsnap}); changing
+either while keeping these hashes breaks A4.
+\item \emph{Private eligibility.} The PQZK proof $\pi_i^{PQ}$ is verified
+on a statement $x_i$ that contains $C_{P_i}$ and $h_i^{st}$
+(Eq.~\eqref{eq:pqzk_stmt}); an accepting proof without a valid witness
+breaks A2.
+\item \emph{Attestation.} The VPS signs the window root $R_w^V$ whose
+leaf $\nu_i$ contains $C_i^{VR}$ (Eq.~\eqref{eq:attverify}); accepting an
+attestation for a request the VPS did not admit requires forging
+$\sigma_w^V$ (A1) or a false Merkle membership proof (A4).
+\end{itemize}
+Under A6, the VPS issues the attestation only after these checks, so
+unauthorized admission succeeds only with negligible probability.
+
+\subsection{Threshold Authorization and CORA Preservation}
+
+\begin{theorem}[Threshold Authorization Security]
+A coalition controlling fewer than $t$ members of
+$\mathcal{C}_e$ cannot independently authorize and execute a valid
+redaction except with negligible probability.
+\end{theorem}
+
+\emph{Proof:} Both authorization and execution need $t$ members.
+\begin{itemize}[leftmargin=*,nosep]
+\item \emph{Authorization.} Phase~4 accepts a batch only with $t$ PQ
+signatures on the same batch commitment $C_e^B$
+(Eq.~\eqref{eq:auth_batch}); a coalition of $c<t$ members obtains the
+missing approvals only by forging an honest member's signature (A1).
+\item \emph{Execution.} An adaptation needs $t$ trapdoor shares combined
+inside $\mathcal{F}_{\mathrm{TA}}$; fewer than $t$ contemporaneously
+valid shares cannot produce one (A3), and resharing with secure erasure
+prevents collecting shares across intervals.
+\end{itemize}
+
+\begin{lemma}[CORA Authorization Preservation]
+CORA cannot make an unvalidated request eligible for committee
+authorization or enlarge the authority of a validated request.
+\end{lemma}
+
+\emph{Proof:} CORA only chooses which validated requests are processed
+together.
+\begin{itemize}[leftmargin=*,nosep]
+\item \emph{Input.} It selects only from the validated queue
+$\mathcal{Q}_e$, and every selected request must still pass the
+leaf-freshness check $\mathsf{FreshLeaf}_i$ (Eq.~\eqref{eq:freshleaf})
+before authorization; stale requests are excluded.
+\item \emph{Binding.} The selected requests enter the authorization root
+$R_e^{VR}$ through their leaves $\eta_i$ (Eq.~\eqref{eq:eta}), and their
+positions enter the plan $\Gamma_e$ (Eq.~\eqref{eq:cora_plan}); both are
+signed in $C_e^B$. Inserting, replacing, or relocating a request
+afterwards changes $R_e^{VR}$ or $\Gamma_e$ and invalidates the
+approvals (A1, A4).
+\end{itemize}
+
+\subsection{Authorized-Subset State Transition}
+
+\begin{theorem}[SFMR Authorized-Subset Integrity]
+Except with negligible probability, a finalized Phase~5 transition
+cannot modify a position outside the committee-authorized execution
+plan.
+\end{theorem}
+
+\emph{Proof:} Let $\mathcal{P}_b^{auth}$ be the positions of batch $b$
+authorized by $\Gamma_e$ and $\mathcal{P}_b^{exec}$ those executed.
+\begin{itemize}[leftmargin=*,nosep]
+\item \emph{Positions.} Phase~5 executes only a subset of the authorized
+positions (Eq.~\eqref{eq:subset}), so a stale request may be withheld
+but no unauthorized position added.
+\item \emph{Content.} RADC changes only $D_i$ and keeps the immutable
+context $I_i$, so altering identifier, owner, type, policy, or timestamp
+breaks A4.
+\item \emph{Transition.} The SFMR commitment $\Theta_b$
+(Eq.~\eqref{eq:theta}) binds the executed positions, both roots, and
+$\Gamma_e$; substituting any of them breaks A4.
+\item \emph{Adaptation.} Members contribute shares only after checking
+the above, and the result must keep the chameleon hash unchanged
+(Eq.~\eqref{eq:pqch_cont}); otherwise A3 or A5 is violated.
+\item \emph{Checkpoint.} Each batch checkpoint digest is recovered from
+the signed round root $R_e^{\mathrm{CP}}$ by its membership proof, so an
+altered checkpoint breaks A1, A4, or A5.
+\end{itemize}
+
+\subsection{Freshness and Replay Resistance}
+
+\begin{theorem}[State and Epoch Freshness]
+Validation or authorization evidence generated for one authenticated
+state or authorization epoch cannot be reused after its
+target leaf has changed, with a snapshot that is not an anchored
+checkpoint within the last $k$ versions of its batch, or for an expired
+epoch except with negligible probability.
+\end{theorem}
+
+\emph{Proof:} The request is bound to its state digest, which is part
+of the PQZK statement $x_i$ and of $C_i^{VR}$:
+\begin{equation}
+h_i^{st}=H(h_i^{leaf}\parallel h_i^{snap})
+\end{equation}
+so presenting a different leaf or snapshot part requires an $H$
+collision (A4). Phases~3--5 then require
+$\mathsf{FreshLeaf}_i=1$ (Eq.~\eqref{eq:freshleaf}):
+\begin{itemize}[leftmargin=*,nosep]
+\item \emph{Changed leaf.} If the leaf now holds $D_i^{cur}\neq D_i$,
+matching
+\begin{equation}
+H(TID_i\parallel I_i\parallel D_i^{cur}\parallel pos_i)=h_i^{leaf}
+\end{equation}
+requires a collision, so the request is rejected. If a later redaction
+restores $D_i$, the leaf again holds exactly the validated content.
+\item \emph{Old snapshot.} A snapshot that was never finalized, or is
+more than $k$ versions old, has no anchored checkpoint; producing one
+requires forging the round signature (A1), a false membership proof
+(A4), or breaking A5.
+\item \emph{Expired epoch.} $\alpha_i$, $C_e^B$, and $\Gamma_e$ carry the
+authorization epoch, which is checked before execution; rewriting them
+requires a collision or a signature forgery.
+\end{itemize}
+Redactions of other leaves of batch $b$ affect neither condition.
+
+\subsection{End-to-End Redaction Accountability}
+
+\begin{theorem}[Policy-Bound Redaction Accountability]
+Every finalized VeRedact-PQ redaction can be cryptographically linked
+to its validated request, threshold authorization, authorized execution
+plan, executed state transition, and finalized checkpoint.
+\end{theorem}
+
+\emph{Proof:} The final proof $PBRP_i$ (Eq.~\eqref{eq:pbrp}) links each
+step:
+\begin{itemize}[leftmargin=*,nosep]
+\item \emph{Request to authorization:} $PBRP_i^{auth}$ proves that the
+request leaf $\eta_i$ is in the committee-signed root $R_e^{VR}$, whose
+batch also commits to the plan $\Gamma_e$.
+\item \emph{Authorization to transition:} the SFMR commitment $\Theta_b$
+and the execution evidence $\Xi_b$ (Eq.~\eqref{eq:xi}) bind the executed
+transition, and $\Pi_i^{SF}$ links the request's old and new leaves to
+it.
+\item \emph{Transition to record:} the redaction record commits to
+\begin{equation}
+h_i^{PBRP}=H_V(\texttt{PBRP}\parallel\mathsf{enc}(PBRP_i))
+\end{equation}
+which RAI and its anchored checkpoint authenticate.
+\end{itemize}
+Altering any link without changing its commitment breaks A4; forging an
+authorization or checkpoint breaks A1 or A5.
+
+\subsection{SAVER State-Bound Verification Reuse}
+
+\begin{theorem}[State-Bound Verification-Reuse Soundness]
+Assume that $\mathsf{VCS}[\chi(v)]=\mathsf{valid}$ is recorded only
+after successful verification of evidence node $v$ under context
+$\chi(v)$. A valid result cannot be reused for different evidence or a
+different authenticated state context except with negligible
+probability.
+\end{theorem}
+
+\emph{Proof:} A node's identifier $id(v)$ hashes its type, payload, and
+parents (Eq.~\eqref{eq:node_id}), and its verification context
+$\chi(v)$ hashes $id(v)$ with its state context $\kappa(v)$
+(Eq.~\eqref{eq:chi}). A result is reused only when the contexts match
+exactly (Eq.~\eqref{eq:saver_reuse}). Any change to the payload,
+dependencies, authorization, transition, version, or checkpoint changes
+$id(v)$ or $\kappa(v)$, so reuse under the same $\chi(v)$ requires an
+$H_V$ collision (A4).
+
+\begin{corollary}[Dependency-Selective Escalation]
+Independent verification of a challenged request does not require
+reverification of unchanged shared dependencies.
+\end{corollary}
+
+Routine auditing checks only the VPS attestation $\alpha_i$; deep
+auditing additionally verifies the PQZK proof of the challenged request
+(Eq.~\eqref{eq:pqzk_verify}), while its unchanged shared dependencies
+remain reusable by Theorem~6.
+
+\subsection{Audit Integrity, Completeness, and Privacy}
+
+\begin{theorem}[Authenticated and Privacy-Preserving Audit]
+Under A1, A2, and A4, an authorized auditor can verify authenticated
+redaction evidence without learning the private policy witness, while
+modification, substitution, or stale reuse of authenticated audit
+evidence is detectable except with negligible probability.
+\end{theorem}
+
+\emph{Proof:}
+\begin{itemize}[leftmargin=*,nosep]
+\item \emph{Privacy.} Private credentials occur only in the witness
+$w_i$; by zero knowledge, $\pi_i^{PQ}$ reveals nothing beyond the
+validity of $\mathcal{R}_P(x_i,w_i)$ (A2). Routine audits never process
+$w_i$, and deep audits see the proof, not the witness.
+\item \emph{Integrity.} RAI entries are addressed by
+\begin{equation}
+\tau_i^A=\mathsf{PRF}_{K_A}(TID_i)
+\end{equation}
+authenticated under $R_{\mathrm{RAI}}$, bound to the anchored checkpoint
+$CP_{e_A}^A$ (Eq.~\eqref{eq:rai_cp}), and returned in a PQ-signed
+response, so modifying an entry, proof, root, version, or checkpoint
+breaks A1, A4, or the ledger assumption.
+\end{itemize}
+The privacy claim is limited: query and access patterns and metadata
+revealed by authorized results are not hidden.
+
+\medskip
+\noindent\textbf{Remark on Audit Completeness.}
+Result-set completeness is claimed only with authenticated coverage
+evidence $\Psi_{Q_j}^{A}$; otherwise only the integrity and freshness of
+the returned records are certified.
+
+\subsection{Post-Quantum Security Boundary}
+
+\begin{theorem}[Post-Quantum Redaction Security]
+Under A1--A6 and the stated committee and PBN thresholds, a QPT
+adversary cannot cause an unauthorized VeRedact-PQ redaction to be
+accepted except with negligible probability.
+\end{theorem}
+
+\emph{Proof:} An accepted redaction must pass every link of the chain,
+each covered by an earlier result:
+\begin{itemize}[leftmargin=*,nosep]
+\item PQ requester authentication and state-bound PQZK validation
+(Theorem~1);
+\item $t$-of-$n$ PQ committee authorization (Theorem~2, Lemma~1);
+\item authorized SFMR transition and threshold PQCH adaptation
+(Theorems~2 and~3) on a fresh state and epoch (Theorem~4);
+\item authenticated PQ audit evidence (Theorems~5--7).
+\end{itemize}
+Bypassing any link breaks one of A1--A6. Native consensus credentials may
+remain classical: compromising one yields no requester signature, VPS
+attestation, or $t$ approvals or PQCH shares, although violating the PBN
+consensus assumption itself would affect ledger integrity independently
+of VeRedact-PQ.
+
+    % =====================================================================
+    
+    \section{Evaluation}
+    \label{sec:evaluation}
+    
+    This section compares VeRedact-PQ analytically and experimentally with
+    Schemes~\cite{ref1} (decentralized threshold redaction),
+    \cite{ref13} (auditable redaction), \cite{ref27} (robust threshold
+    redaction), and~\cite{ref34} (policy-hiding redaction)
+    (Table~\ref{tab:comparison}), and with the lattice-based batch
+    authentication Scheme~\cite{ref39}, which enters only Experiment~2.
+    Each baseline enters only the experiments whose stage its paper
+    defines.
+    % ---------------------------------------------------------------------
+
+\subsection{Computation Cost Analysis}
+\label{subsec:computation-cost}
+
+This subsection compares the dominant computation costs of VeRedact-PQ
+with the primary baselines across request validation, authorization,
+redaction execution, and audit verification, with the notation of
+Table~\ref{tab:cost-notation}, where
+\begin{equation}
+f_b=|\mathcal{F}_b(\mathcal{P}_b^{exec})|\qquad
+F_e=\sum_{b\in\Omega_e}f_b
+\end{equation}
+Table~\ref{tab:comp-cost} compares the dominant costs; N/A denotes a
+stage not supported by the scheme.
+
+\begin{table}[t]
+\centering
+\caption{Notation Used in the Cost Analysis}
+\label{tab:cost-notation}
+\scriptsize
+\renewcommand{\arraystretch}{1.08}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{ll}
+\hline
+\textbf{Notation} & \textbf{Description} \\
+\hline
+$m$ & Requests selected by CORA \\
+$|\Omega_e|$ & Transaction batches affected by CORA selection \\
+$N$ & Leaves per transaction batch \\
+$N_I$, $N_A$ & SA-RLI and RAI entries \\
+$n$, $t$ & Committee size and authorization threshold \\
+$f_b$, $F_e$ & SFMR frontier size for batch $b$, total frontier size \\
+$n_Q$ & Redaction records returned by an audit query \\
+$a_Q$ & Distinct authorization dependencies in audit result \\
+$z_Q$ & Distinct transition dependencies in audit result \\
+$c_Q$ & Distinct checkpoint contexts in audit result \\
+$d_Q$ & Requests escalated to deep PQZK verification \\
+$W$ & VPS admission-window size \\
+$w_e$, $w_Q$ & Distinct VPS windows among the $m$ selected / $n_Q$ returned requests \\
+$c$ & Challenged blocks in~\cite{ref13}, $c\le n_Q$ \\
+\hline
+$T_H$, $T_{\mathrm{PRF}}$ & Hash and PRF evaluation \\
+$T_S$, $T_V$ & PQ signature generation and verification \\
+$T_{ZP}$, $T_{ZV}$ & PQZK proof generation and verification \\
+$T_{CH}$ & PQCH hash evaluation \\
+$T_{PA}$, $T_{CB}$ & PQCH partial adaptation, share combination \\
+$T_V^{c}$ & Classical signature verification \\
+$T_{AD}^{c}$, $T_{CV}^{c}$ & Classical CH adaptation, verification \\
+$T_{PA}^{c}$, $T_{CB}^{c}$ & Classical CH partial adaptation, combination \\
+$T_{Pol}$ & Policy-based CH authorization operation \\
+$T_{Acc}$ & RSA-accumulator membership/update operation \\
+$T_{Tag}$ & Identity-based RSA tag operation~\cite{ref13} \\
+$T_E^{c}$ & Classical modular exponentiation \\
+\hline
+\end{tabular}
+\end{table}
+
+
+\begin{table*}[t]
+\centering
+\caption{Computation-Cost Comparison of the Redaction Lifecycle}
+\label{tab:comp-cost}
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\renewcommand{\cellset}{\renewcommand{\arraystretch}{1.45}}
+\setlength{\tabcolsep}{3.2pt}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Scheme} &
+\makecell{\textbf{Request Validation}\\\textbf{(per request)}} &
+\makecell{\textbf{Authorization}\\\textbf{(per $m$ requests)}} &
+\makecell{\textbf{Redaction Execution}\\\textbf{(per $m$ requests)}} &
+\makecell{\textbf{Audit Verification}\\\textbf{(per $n_Q$ records)}} \\
+\midrule
+
+Scheme~\cite{ref1}
+& $T_{Acc}+2T_V^{c}$
+& $m\,t(T_{Acc}+2T_V^{c})$
+& \makecell{$m(tT_{PA}^{c}+T_{CB}^{c}+T_{CV}^{c}+T_{Acc})$\\
+$+O(m\log N)T_H$}
+& $n_Q(T_{CV}^{c}+T_{Acc})$ \\
+
+Scheme~\cite{ref13}
+& N/A
+& N/A
+& \makecell{$m(T_{AD}^{c}+T_{CV}^{c}+3T_{Tag}+T_{Acc})$\\
+$+O(mN)T_H$}
+& $O(c)T_E^{c}$ \\
+
+Scheme~\cite{ref27}
+& N/A
+& N/A
+& $m(tT_{PA}^{c}+T_{CB}^{c}+T_{CV}^{c}+T_V^{c})$
+& N/A \\
+
+Scheme~\cite{ref34}
+& N/A
+& $mT_{Pol}$
+& $m(T_{AD}^{c}+2T_{CV}^{c})$
+& N/A \\
+
+\midrule
+\textbf{VeRedact-PQ}
+& \makecell{$T_V+T_{ZV}+T_S/W+T_{\mathrm{PRF}}$\\
+$+O(\log N_I+\log N+\log W)T_H$}
+& \makecell{$w_eT_V+t(T_S+T_V)$\\
+$+O(m\log W)T_H$}
+& \makecell{$|\Omega_e|(tT_{PA}+T_{CB}+2T_{CH})+T_S$\\
+$+O(m+F_e+\Delta_I+|\Omega_e|)T_H$}
+& \makecell{$(w_Q+a_Qt+1)T_V+2z_QT_{CH}+d_QT_{ZV}$\\
+$+O(n_Q\log W+a_Q+z_Q$\\
+$+c_Q+\log N_A)T_H$} \\
+
+\bottomrule
+\multicolumn{5}{p{0.96\textwidth}}{\footnotesize
+Requester-side proof/signature generation ($T_{ZP}+T_S$) is excluded
+from server-side request validation. $F_e$ is the total SFMR frontier
+size and $\Delta_I$ denotes the authenticated SA-RLI update work
+($O(m\log N_I)$ without shared index-update paths). Routine SAVER
+verification has $d_Q=0$; deep auditing adds $d_QT_{ZV}$.
+Authorization, transition, and checkpoint evidence is verified once
+per distinct SAVER dependency. The additional $T_V$ in audit
+verification authenticates the audit-service response. In~\cite{ref1},
+a block can be redacted only once and approvals carry no signature;
+in~\cite{ref27}, the threshold is enforced inside adaptation but no
+separate request-validation or audit stage is defined; the audit
+in~\cite{ref13} produces an aggregate decision for the challenged
+blocks; one-off attribute-key issuance in~\cite{ref34} is excluded.
+For VeRedact-PQ, the VPS signs once per admission window
+of $W$ requests and the checkpoint authority once per round; a checkpoint
+context costs one digest recomputation against its anchored value. The
+$2z_QT_{CH}$ term is evaluated as one batched matrix product. Scheme~\cite{ref39} defines authentication only and is compared in
+Experiment~2.}
+\end{tabular}
+\end{adjustbox}
+\end{table*}
+
+As Table~\ref{tab:comp-cost} shows, every baseline repeats its
+chameleon-hash work per redaction. VeRedact-PQ incurs a higher admission cost because each request
+undergoes state-bound PQZK verification once before CORA selection.
+Subsequent authorization uses the compact VPS attestation, while the
+$t$ committee approvals are shared across the selected set:
+\begin{equation}
+C_{\mathrm{auth}}
+=
+w_eT_V+t(T_S+T_V)+O(m\log W)T_H
+\label{eq:cauth}
+\end{equation}
+Thus, the threshold component amortizes to
+$t(T_S+T_V)/m$ per request, and the VPS attestations to
+$w_eT_V/m$.
+
+CORA and SFMR reduce execution cost by exploiting batch and Merkle-path
+locality. SFMR processes shared authentication structure according to
+the total frontier size $F_e$, while threshold PQCH adaptation is
+performed once per affected batch:
+\begin{equation}
+C_{\mathrm{PQCH}}
+=
+|\Omega_e|(tT_{PA}+T_{CB}+2T_{CH})
+\qquad |\Omega_e|\leq m
+\end{equation}
+Hence, clustered requests reduce both $|\Omega_e|$ and $F_e$ relative
+to independent processing; since $T_{PA}\gg T_H$, the reduction of
+$|\Omega_e|$ dominates the saving.
+
+SAVER similarly avoids repeated audit verification by sharing
+state-bound dependencies, with cost $C_{\mathrm{SAVER}}$ of
+Eq.~\eqref{eq:saver_cost}. Routine auditing has $d_Q=0$;
+only challenged requests require independent PQZK verification.
+
+VeRedact-PQ thus does not assume cheaper PQ primitives; it invokes them
+less often.
+
+
+\subsection{Communication and Storage Cost Analysis}
+\label{subsec:communication-cost}
+
+Let $|R|$, $|\sigma|$, $|\pi|$, and $|h|$ denote the sizes of a
+redaction request, PQ signature, PQZK proof, and hash digest,
+respectively. Let $|\sigma^{c}|$, $|r^{c}|$, $|ID|$, $|BH|$, and
+$|\mathbb{Z}_N|$ denote a classical signature, classical
+chameleon-hash randomness, node identity, block header, and RSA-group
+element. We use the same workload notation as in
+Section~\ref{subsec:computation-cost}. Table~\ref{tab:comm-cost}
+compares the dominant communication and persistent-state costs;
+redacted payloads common to all schemes are omitted.
+
+\begin{table*}[t]
+\centering
+\caption{Communication and Storage Cost Comparison}
+\label{tab:comm-cost}
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\renewcommand{\cellset}{\renewcommand{\arraystretch}{1.45}}
+\setlength{\tabcolsep}{3.2pt}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Scheme} &
+\makecell{\textbf{Request Submission}\\\textbf{(per request)}} &
+\makecell{\textbf{Authorization Evidence}\\\textbf{(per $m$ requests)}} &
+\makecell{\textbf{On-Chain Redaction State}\\\textbf{(per $m$ requests)}} &
+\makecell{\textbf{Audit Response}\\\textbf{(per $n_Q$ records)}} \\
+\midrule
+
+Scheme~\cite{ref1}
+& $|R|+|\sigma^{c}|$
+& $mt|ID|$
+& $m(O(1)|h|+|r^{c}|)$
+& $n_Q(|BH|+|\mathbb{Z}_N|)$ \\
+
+Scheme~\cite{ref13}
+& $|R|$
+& N/A
+& $m(|BH|+3|\mathbb{Z}_N|)$
+& $c|BH|+(c+10)|\mathbb{Z}_N|$ \\
+
+Scheme~\cite{ref27}
+& N/A
+& N/A
+& $m|r^{c}|$
+& N/A \\
+
+Scheme~\cite{ref34}
+& N/A
+& N/A
+& $m|r^{c}|$
+& N/A \\
+
+\midrule
+\textbf{VeRedact-PQ}
+& $|R|+|\sigma|+|\pi|$
+& \makecell{$t|\sigma|+O(m)|h|$\\
+$+O(F_e)|h|$}
+& $|\sigma|+|\Omega_e|\,O(\log|\Omega_e|)|h|$
+& \makecell{$(w_Q+a_Qt)|\sigma|+d_Q|\pi|$\\
+$+O(n_Q\log W+a_Q+z_Q$\\
+$+c_Q+\log N_A)|h|$} \\
+
+\bottomrule
+\multicolumn{5}{p{0.96\textwidth}}{\footnotesize
+For VeRedact-PQ, complete PQZK proofs, PBRP objects, and detailed SFMR
+evidence may be retained in the off-ledger evidence store, while their
+digests or authenticated roots are anchored on-chain. Routine SAVER
+auditing has $d_Q=0$; deep auditing transfers the PQZK proofs only for
+the $d_Q$ challenged requests. Redacted payloads common to all schemes
+are omitted. The $|QR_N|$ elements in~\cite{ref13} are represented by
+$|\mathbb{Z}_N|$. The on-chain state of VeRedact-PQ is one
+round checkpoint signature plus, per affected batch, its checkpoint
+fields and a membership proof under $R_e^{\mathrm{CP}}$.}
+\end{tabular}
+\end{adjustbox}
+\end{table*}
+
+
+Table~\ref{tab:comm-cost} shows that VeRedact-PQ sends larger
+per-request objects, a PQ signature and a PQZK proof, but only once at
+validation; later phases reference the request through compact
+commitments and $\alpha_i$, and committee authorization adds $t|\sigma|$
+once per CORA-selected set.
+
+On-chain transition state grows with the number of affected batches
+rather than with $m$: one checkpoint per affected batch, one round
+signature, and a short membership proof per batch, while PBRP, PQZK, and
+SFMR objects stay off-ledger, bound by anchored digests. For audits,
+SAVER sends each shared dependency once, so the dominant response size is
+\begin{equation}
+\begin{aligned}
+S_{\mathrm{SAVER}}
+={}&O(n_Q\log W)|h|
++w_Q|\sigma|
++a_Q\,O(t|\sigma|)
++z_Q\,O(|h|)\\
+&+c_Q\,O(|h|)
++d_Q|\pi|
++S_{\mathrm{RAI}}
+\end{aligned}
+\label{eq:saver_comm}
+\end{equation}
+where $S_{\mathrm{RAI}}$ is the query-scoped RAI evidence and typically
+$a_Q,z_Q,c_Q\ll n_Q$. VeRedact-PQ thus does not shrink individual
+post-quantum objects; it limits their replication.
+
+    % ---------------------------------------------------------------------
+
+\subsection{Performance Analysis}
+\label{subsec:performance-analysis}
+
+\subsubsection*{\textbf{Experimental Setup}}
+All results come from executing the implemented systems; no timing is
+simulated or extrapolated. Each experiment ran all its systems on one
+AWS EC2 m7i.4xlarge instance (16 vCPUs, Intel Xeon Platinum 8488C,
+64\,GiB RAM, Ubuntu~24.04); in Experiment~1, VeRedact-PQ's requesters
+generated their proofs on a separate c8g.48xlarge instance (192
+Graviton4 cores). The PBN is a 7-validator Hyperledger Besu QBFT network
+with 2-s blocks and a 10-ms inter-node delay (Linux \texttt{tc netem}).
+PQSIG is ML-DSA-65 (\texttt{liboqs}); $H$, $H_1$, $H_2$, $H_A$, $H_V$,
+and all Merkle trees use domain-separated SHA3-256, and the PRFs use
+HMAC-SHA3-256. PQZK is a winterfell STARK with at least 128-bit
+conjectured soundness. PQCH is an SIS-based chameleon hash with a
+Micciancio--Peikert trapdoor~\cite{ref10,ref17}, made $t$-of-$n$ by
+Shamir-sharing each member's trapdoor component; since our threshold
+mode samples the Gaussian perturbation spherically, we do not claim its
+statistical security. PQ signatures are anchored as calldata, so they
+count in transaction size and gas, but the testbed does not run their
+validator-side verification, so finalization latencies exclude it.
+
+The ledger holds $10^5$ transactions (256\,B--4\,KB) in 391 batches of
+$N=256$ leaves; arrivals are Poisson, and targets follow a Zipf
+distribution with skew $s$. Unless otherwise specified, $n=7$, $t=5$,
+$B_{\min}=8$, $B_{\max}=256$, $T_{\max}=500$\,ms, $k=8$, $W=256$,
+$T_{\mathrm{vps}}=500$\,ms, $S=S_A=16$, and $s=0.8$.
+Schemes~\cite{ref1}, \cite{ref13}, \cite{ref27}, \cite{ref34},
+and~\cite{ref39} were reimplemented in the same environment with their
+own constructions (classical at about 128-bit security, and
+lattice-based at NIST level~3 for Scheme~\cite{ref39}); stages a scheme
+does not define are reported as unsupported. The committee members of
+VeRedact-PQ and Schemes~\cite{ref1} and~\cite{ref27} share one process
+but are timed as separate parties: a step costs its slowest member, and
+each message round adds 10\,ms of network time. In Experiment~1,
+Schemes~\cite{ref1} and~\cite{ref27} keep up to 16 redactions in flight
+while their messages travel. Experiments~2--5 use three runs of 10
+samples per point (2 for Scheme~\cite{ref13} at $n_Q=10^4$ in
+Experiment~3), reported as the mean of the per-run medians with a 95\%
+Student's $t$ interval and the pooled p95; Experiment~1 is one 60-s run
+per point, with intervals from six 10-s sub-windows (throughput) and by
+bootstrap (p95).
+    % ------------------------------------
+
+
+\subsubsection*{\textbf{Experiment 1: End-to-End Redaction Performance}}
+
+This experiment tests whether CORA rounds and early validation sustain
+more valid redactions while keeping invalid requests out. VeRedact-PQ
+and Schemes~\cite{ref1}, \cite{ref13}, \cite{ref27}, and~\cite{ref34}
+receive the same trace at 25--1,000 requests/s, of which 20\% are
+invalid: 10\% \emph{stale} (referring to a content commitment that an
+earlier redaction replaced) and 10\% \emph{absent} (targeting a
+nonexistent transaction). We measure finalized valid redactions per
+second, invalid requests accepted, and p95 latency from arrival to
+finalization.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.65\linewidth]{exp1_redaction_throughput.pdf}
+\caption{End-to-End Redaction Performance}
+\label{fig:exp1_redaction}
+\end{figure}
+
+As shown in Fig.~\ref{fig:exp1_redaction}, VeRedact-PQ peaks at 500
+requests/s and leads every baseline from 250 requests/s; beyond the
+peak, its throughput declines but stays above every baseline, as proofs age in the VPS queue and are re-proved
+after failing $\mathsf{FreshLeaf}_i$. Scheme~\cite{ref27} levels off
+near the confirmation capacity of the Besu network, since it anchors
+every redaction, Scheme~\cite{ref1} levels off lower, and
+Schemes~\cite{ref13} and~\cite{ref34} stay at a few redactions per
+second. Up to 100 requests/s, however, Scheme~\cite{ref27} matches
+VeRedact-PQ within the confidence intervals. VeRedact-PQ accepted no
+invalid request, since Phase~3 rejects them before any committee, PQCH,
+or ledger work, whereas Schemes~\cite{ref27} and~\cite{ref1} executed
+many of them, and Schemes~\cite{ref13} and~\cite{ref34} some at the
+lowest rate. Its p95 latency stays at about one block period plus
+$T_{\max}$ up to 250 requests/s, slightly above Scheme~\cite{ref27}'s at
+25 and 50 requests/s; higher p95 values are censored lower bounds.
+Locality also reduces PQCH work: adaptations per finalized redaction
+fall as the skew $s$ increases, whereas every baseline adapts once per
+redaction. These are throughputs of a Python implementation on one
+host, and our requesters see each checkpoint about one block period
+before it is anchored, which can only lower VeRedact-PQ's
+revalidations.
+
+    % ---------------------------------------------------------------------
+
+\subsubsection*{\textbf{Experiment 2: Multi-Party Authorization Performance}}
+
+This experiment tests whether amortizing committee approval over a
+round makes authorization cost independent of the committee size. We
+measure the complete cost per request (Phase~3 validation plus the
+round's Phase~4 authorization divided by $m$, including message rounds)
+for $n\in\{4,\dots,64\}$, $t=\lfloor2n/3\rfloor+1$, and $m=64$, against
+Schemes~\cite{ref1} (distributed authorization), \cite{ref34}
+(policy-based), and~\cite{ref39} (lattice-based aggregate
+authentication without committee, policy, or freshness check).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.65\linewidth]{exp2_authorization_latency.pdf}
+\caption{Multi-Party Authorization Performance}
+\label{fig:exp2_auth}
+\end{figure}
+
+As shown in Fig.~\ref{fig:exp2_auth}, VeRedact-PQ's cost stays nearly
+constant across $n$, since it pays the
+committee term $t(T_S+T_V)$ of Eq.~\eqref{eq:cauth} and one message
+round once per round. Scheme~\cite{ref1} costs an order of magnitude
+more, dominated by one message round per request, and
+Scheme~\cite{ref34}'s cost grows with its policy size.
+Scheme~\cite{ref39}, however, is cheaper at every $n$, as it lacks the
+private-policy predicate, committee, and freshness check
+(Table~\ref{tab:comparison}), and runs in Python, so an optimized
+version would be faster still. On computation alone, VeRedact-PQ is
+also above Scheme~\cite{ref1}, because Phase~3 verifies one PQZK proof
+per request; its advantage over Scheme~\cite{ref1} therefore relies on
+the 10-ms message round. Requester-side work, including VeRedact-PQ's
+PQZK proving, is excluded for all schemes. Table~\ref{tab:exp2_m} gives
+the computation cost versus the round size $m$.
+
+\begin{table}[t]
+\centering
+\caption{Complete Authorization Cost per Request (ms, Computation
+Only) versus Round Size $m$ at $n=7$}
+\label{tab:exp2_m}
+\scriptsize
+\renewcommand{\arraystretch}{1.08}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{rcccc}
+\hline
+$m$ & VeRedact-PQ & Scheme~\cite{ref1} & Scheme~\cite{ref34} & Scheme~\cite{ref39} \\
+\hline
+1    & 1.697 & 0.335 & 7.857 & 1.704 \\
+8    & 0.930 & 0.343 & 7.817 & 0.730 \\
+32   & 0.835 & 0.332 & 7.739 & 0.628 \\
+64   & 0.818 & 0.343 & 7.741 & 0.619 \\
+128  & 0.808 & 0.343 & 7.722 & 0.624 \\
+256  & 0.790 & 0.342 & 7.730 & 0.625 \\
+\hline
+\end{tabular}
+\end{table}
+
+    % ---------------------------------------------------------------------
+\subsubsection*{\textbf{Experiment 3: Audit and Verification Efficiency}}
+
+This experiment tests whether SAVER lowers the routine audit cost
+($d_Q=0$) as the result size $n_Q$ grows from 10 to $10^4$. We measure
+response generation plus verification per query against
+Schemes~\cite{ref1} and~\cite{ref13} and two variants:
+\textbf{Per-Record}, which sends and verifies complete evidence for
+every record, and \textbf{Shared-Evidence}, which sends shared evidence
+once but re-verifies it for each record.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.65\linewidth]{exp3_audit_efficiency.pdf}
+\caption{Audit and Verification Efficiency}
+\label{fig:exp3_audit}
+\end{figure}
+
+As shown in Fig.~\ref{fig:exp3_audit}, VeRedact-PQ is the cheapest at
+every $n_Q$: below both variants and
+Scheme~\cite{ref1}, and orders of magnitude below Scheme~\cite{ref13},
+whose cost is spent building an RSA-3072 witness for every challenged
+block. The saving grows with the number of records per authorization
+batch, as more records share evidence. VeRedact-PQ loses to
+Scheme~\cite{ref13} on verification time and response size, since
+Scheme~\cite{ref13} returns one constant-size aggregate proof; that
+single decision, however, shows neither who authorized a redaction,
+under which policy, or whether the transition was correct, nor which
+record is invalid (Experiment~4). Its response is also larger than
+Scheme~\cite{ref1}'s, though far smaller than Per-Record's
+(Table~\ref{tab:exp3_split}).
+
+\begin{table}[t]
+\centering
+\caption{Audit Cost Terms at $n_Q=10^4$ (Routine, $d_Q=0$)}
+\label{tab:exp3_split}
+\scriptsize
+\renewcommand{\arraystretch}{1.08}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lccccc}
+\hline
+ & VeRedact-PQ & Shared-Ev. & Per-Record & \cite{ref1} & \cite{ref13} \\
+\hline
+Generation (ms)   & 60.7 & 55.9 & 62.2 & 2{,}496 & $2.79\times10^6$ \\
+Verification (ms) & 5{,}701 & 8{,}925 & 9{,}793 & 34{,}750 & 61.4 \\
+Response (MB)     & 12.5 & 12.5 & 214.2 & 4.96 & 0.021 \\
+Decisions         & $n_Q$ & $n_Q$ & $n_Q$ & $n_Q$ & 1 \\
+\hline
+\end{tabular}
+\end{table}
+
+    % ---------------------------------------------------------------------
+ \subsubsection*{\textbf{Experiment 4: Selective Verification and Evidence Integrity}}
+
+This experiment tests whether VeRedact-PQ identifies invalid records
+faster than the baselines. In 1--10\% of the returned records
+($n_Q=10$ to $10^4$), we inject modified, substituted, or stale
+evidence, plus two faults specific to VeRedact-PQ: forged committee
+approvals and forged PQZK proofs. Routine verification checks
+$\alpha_i$ and the shared dependencies; deep verification also checks
+the PQZK proof, so forged proofs are evaluated at escalation fractions
+$d_Q/n_Q$ from 0 to 100\%. The baselines are Scheme~\cite{ref1} and
+Scheme~\cite{ref13}, whose Audit returns one decision per query, so a
+failed Audit is followed by its per-block Query to locate the invalid
+records. We report verification time without reads of anchored values
+from the PBN, invalid-record rejection, and valid-record acceptance.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.65\linewidth]{exp4_verification_time.pdf}
+\caption{Selective Verification and Evidence Integrity}
+\label{fig:exp4_verify}
+\end{figure}
+
+As shown in Fig.~\ref{fig:exp4_verify}, with 1\% modified records,
+VeRedact-PQ verifies faster than Schemes~\cite{ref13} and~\cite{ref1}
+at every $n_Q$, and it is the
+fastest in all 36 fault settings, because SAVER verifies each shared
+node once whereas Scheme~\cite{ref1} performs an RSA accumulator
+exponentiation per record and Scheme~\cite{ref13} a Query per block.
+VeRedact-PQ and Scheme~\cite{ref1} reject every invalid record and
+accept every valid one; Scheme~\cite{ref13}'s Audit rejects every valid
+record of a faulty query, and its Query, deciding per block, also
+rejects valid records that share a block with an invalid one. Forged
+proofs are found in proportion to the escalation fraction, so
+$d_Q/n_Q$ sets both the deep-verification cost and the detection rate.
+Without faults, however, Scheme~\cite{ref13}'s Audit is the fastest for
+$n_Q\geq10^2$, as its cost does not depend on $n_Q$, whereas
+VeRedact-PQ's routine verification grows with $n_Q$
+(Table~\ref{tab:exp4_nofault}), mostly in PQCH transition checks:
+at $n_Q=10^4$, they take 4{,}763 of 5{,}508~ms ($z_Q=7{,}568$ transitions,
+$a_Q=157$ authorization nodes). Reads of anchored values, excluded
+from the figure, add to the times of VeRedact-PQ and
+Scheme~\cite{ref1} but not of Scheme~\cite{ref13}, which reads none.
+
+\begin{table}[t]
+\centering
+\caption{Verification Time Without Faults (ms)}
+\label{tab:exp4_nofault}
+\scriptsize
+\renewcommand{\arraystretch}{1.08}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{rccccc}
+\hline
+$n_Q$ & \multicolumn{2}{c}{VeRedact-PQ} & Scheme~\cite{ref1} & \multicolumn{2}{c}{Scheme~\cite{ref13}} \\
+ & routine & deep & & Audit & Query/block \\
+\hline
+$10$   & 9.1       & 17.4       & 34.8       & 57.8 & 635.0      \\
+$10^2$ & 62.5      & 122.9      & 339.3      & 58.4 & 4{,}216.1  \\
+$10^3$ & 522.9     & 1{,}039.8  & 3{,}363.7  & 58.5 & 17{,}998.9 \\
+$10^4$ & 5{,}262.3 & 10{,}556.0 & 33{,}557.6 & 60.2 & 25{,}313.3 \\
+\hline
+\end{tabular}
+
+\smallskip
+\parbox{0.95\linewidth}{\tiny Reads of anchored values excluded; mean of
+the per-run medians over three runs. Without faults, Scheme~\cite{ref13}'s
+Audit passes and no Query follows; the Query column runs it on every
+block.}
+\end{table}
+
+% ---------------------------------------------------------------------
+ \subsubsection*{\textbf{Experiment 5: Permissioned Blockchain Finalization Overhead}}
+
+This experiment measures the PBN anchoring load per finalized redaction
+(transactions, bytes, and gas) under the workload of Experiment~1, and
+the size, gas, and latency of VeRedact-PQ's finalization transaction for
+$|\Omega_e|$ from 1 to 128 affected batches.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.65\linewidth]{exp5_blockchain_overhead.pdf}
+\caption{Permissioned Blockchain Finalization Overhead}
+\label{fig:exp5_blockchain}
+\end{figure}
+ 
+As shown in Fig.~\ref{fig:exp5_blockchain}, each baseline anchors one
+transaction per redaction, whereas VeRedact-PQ anchors two per round, so its transactions per redaction
+fall as $2/m$ as rounds grow with the load. Its transactions carry
+post-quantum objects and are larger, so when its rounds are small, it
+anchors more bytes per redaction than Scheme~\cite{ref27} up to 100
+requests/s and than Scheme~\cite{ref13} at 25 requests/s; from 250
+requests/s, it anchors fewer than every baseline. Its gas is below every
+baseline at every rate. The finalization transaction (7 validators)
+grows linearly with the number of affected batches, from 4{,}014~B and
+138{,}919 gas at $|\Omega_e|=1$ to 44{,}654~B and 4{,}583{,}527 gas at
+$|\Omega_e|=128$, and finalized within one 2-s block period at every
+size (0.93--1.93~s); since all validators share one
+host, the testbed cannot resolve consensus overhead across validator
+counts.
+
+
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper presented VeRedact-PQ, a scalable post-quantum framework
+for policy-bound redaction and verifiable auditing in permissioned
+blockchains. VeRedact-PQ combines state-bound PQZK validation,
+threshold committee authorization, and distributed PQCH adaptation
+with RADC and authenticated indexing. CORA identifies sharing across
+validated redaction requests, while SFMR exploits this locality through
+shared Merkle processing and batch-level PQCH adaptation. PBRP binds
+authorization to the resulting state transition, and SAVER extends
+these dependencies to state-bound audit verification with selective
+PQZK escalation. The evaluation demonstrates the trade-offs among post-quantum
+validation, multi-party authorization, shared redaction execution,
+audit verification, and permissioned-blockchain finalization.
+VeRedact-PQ achieves scalability by reducing how often expensive
+operations are repeated rather than assuming cheaper post-quantum
+primitives. Future work will investigate deployment-scale workloads,
+adaptive committee management, stronger privacy against access-pattern
+leakage, and integration with additional post-quantum redaction
+constructions.
+    
+ \section{Acknowledgement}
+    This research has been supported by the Thammasat University Research Unit in Cyber Security.
+    
+     \begin{thebibliography}{99}
+    
+    \bibitem{ref1}
+    C. Li, Q. Shen and Z. Wu, "Redactable Blockchain From Decentralized Chameleon Hash Functions, Revisited," in IEEE Transactions on Computers, vol. 74, no. 6, pp. 1911-1920, June 2025, doi: 10.1109/TC.2025.3544878.
+    
+    
+    
+    
+    \bibitem{ref2}
+    K. Huang, X. Zhang, Y. Mu, X. Wang, G. Yang, X. Du, F. Rezaeibagha, Q. Xia, and M. Guizani,
+    ``Building Redactable Consortium Blockchain for Industrial Internet-of-Things,''
+    \textit{IEEE Trans. Ind. Informat.}, vol. 15, no. 6, pp. 3670--3679, Jun. 2019,
+    doi: 10.1109/TII.2019.2901011.
+    
+    \bibitem{ref3}
+    W. Wang, L. Wang, J. Duan, X. Tong, and H. Peng,
+    ``Redactable Blockchain Based on Decentralized Trapdoor Verifiable Delay Functions,''
+    \textit{IEEE Trans. Inf. Forensics Security}, vol. 19, pp. 7492--7507, 2024,
+    doi: 10.1109/TIFS.2024.3431917.
+    
+    \bibitem{ref4}
+    H. Guo, W. Gan, M. Zhao, C. Zhang, T. Wu, L. Zhu, and J. Xue,
+    ``PriChain: Efficient Privacy-Preserving Fine-Grained Redactable Blockchains in Decentralized Settings,''
+    \textit{Chinese Journal of Electronics}, vol. 34, no. 1, pp. 82--97, 2025,
+    doi: 10.23919/cje.2023.00.305.
+    
+    \bibitem{ref5}
+    D. Zhang, J. Le, X. Lei, T. Xiang, and X. Liao,
+    ``Secure Redactable Blockchain With Dynamic Support,''
+    \textit{IEEE Trans. Dependable Secure Comput.}, vol. 21, no. 2, pp. 717--731, 2024,
+    doi: 10.1109/TDSC.2023.3261343.
+    
+    \bibitem{ref6}
+    X. Wu, X. Du, Q. Yang, N. Wang, and W. Wang,
+    ``Redactable consortium blockchain based on verifiable distributed chameleon hash functions,''
+    \textit{J. Parallel Distrib. Comput.}, vol. 183, Art. no. 104777, 2024,
+    doi: 10.1016/j.jpdc.2023.104777.
+    
+    \bibitem{ref7}
+    S. Aguincha, E. Nunes, S. Eisa, and M. L. Pardal,
+    ``ChainGuards: Verification of Sensed Data using Permissioned Blockchain Technology,''
+    arXiv preprint arXiv:2603.20769, 2026.
+    
+    \bibitem{ref8}
+    D. Derler, K. Samelin, D. Slamanig, and C. Striecks,
+    ``Fine-Grained and Controlled Rewriting in Blockchains: Chameleon-Hashing Gone Attribute-Based,''
+    in \textit{Proc. 26th Annu. Netw. Distrib. Syst. Security Symp. (NDSS)}, 2019,
+    doi: 10.14722/ndss.2019.23066.
+    
+    \bibitem{ref9}
+    G. Ateniese, B. Magri, D. Venturi, and E. R. Andrade,
+    ``Redactable Blockchain -- or -- Rewriting History in Bitcoin and Friends,''
+    in \textit{Proc. 2nd IEEE Eur. Symp. Security Privacy (EuroS\&P)},
+    Paris, France, pp. 111--126, 2017,
+    doi: 10.1109/EuroSP.2017.37.
+    
+    \bibitem{ref10}
+    C. Peng, H. Xu, and P. Li,
+    ``Redactable Blockchain Using Lattice-based Chameleon Hash Function,''
+    in \textit{Proc. 2022 Int. Conf. Blockchain Technology Information Security (ICBCTIS)},
+    pp. 94--98, 2022,
+    doi: 10.1109/ICBCTIS55569.2022.00032.
+    
+    \bibitem{ref11}
+    C. Wu, L. Ke, and Y. Du,
+    ``Quantum resistant key-exposure free chameleon hash and applications in redactable blockchain,''
+    \textit{Information Sciences}, vol. 548, pp. 438--449, 2021,
+    doi: 10.1016/j.ins.2020.10.008.
+    
+    \bibitem{ref12}
+    K. Y. Chan, L. Chen, Y. Tian, and T. H. Yuen,
+    ``Reconstructing Chameleon Hash: Full Security and the Multi-Party Setting,''
+    in \textit{Proc. 19th ACM Asia Conf. Computer and Communications Security (AsiaCCS)},
+    pp. 1076--1091, 2024,
+    doi: 10.1145/3634737.3656291.
+    
+    \bibitem{ref13}
+    X. Zhang, Z. Cai, K. Chen, G. Ha and C. Jia, "Efficient Auditing and Querying in Verifiable Redactable Blockchain: A Lightweight VDS Protocol with Integrity Verification," 2025 IEEE 24th International Conference on Trust, Security and Privacy in Computing and Communications (TrustCom), Guiyang, China, 2025, pp. 504-511, doi: 10.1109/Trustcom66490.2025.00062.
+    
+    \bibitem{ref14}
+    K. Huang, X. Zhang, Y. Mu, F. Rezaeibagha, and X. Du,
+    ``Scalable and redactable blockchain with update and anonymity,''
+    \textit{Information Sciences}, vol. 546, pp. 25--41, 2021,
+    doi: 10.1016/j.ins.2020.07.016.
+    
+    \bibitem{ref15}
+    Y. Dong, Y. Li, Y. Cheng, and D. Yu,
+    ``Redactable consortium blockchain with access control: Leveraging chameleon hash and multi-authority attribute-based encryption,''
+    \textit{High-Confidence Computing}, vol. 4, no. 1, Art. no. 100168, 2024,
+    doi: 10.1016/j.hcc.2023.100168.
+    
+    \bibitem{ref16}
+    Y. Zhang, Z. Ma, S. Luo, and P. Duan,
+    ``Dynamic Trust-Based Redactable Blockchain Supporting Update and Traceability,''
+    \textit{IEEE Trans. Inf. Forensics Security}, vol. 19, pp. 821--834, 2024,
+    doi: 10.1109/TIFS.2023.3326379.
+    
+    \bibitem{ref17}
+    X. Wang, Y. Chen, X. Zhu, C. Li, and K. Fang,
+    ``A Redactable Blockchain Scheme Supporting Quantum-Resistance and Trapdoor Updates,''
+    \textit{Applied Sciences}, vol. 14, no. 2, Art. no. 832, 2024,
+    doi: 10.3390/app14020832.
+    
+    \bibitem{ref18}
+    J. B. Klamti and M. A. Hasan,
+    ``Revocable policy-based chameleon hash using lattices,''
+    \textit{Journal of Mathematical Cryptology}, vol. 18, no. 1, Art. no. 20230012,
+    pp. 152--182, 2024,
+    doi: 10.1515/jmc-2023-0012.
+    
+    \bibitem{ref19}
+    X. Huang, Y. Wang, Y. Ding, Q. Wu, C. Yang, and H. Liang,
+    ``Dynamically redactable Blockchain based on decentralized Chameleon hash,''
+    \textit{Digital Communications and Networks}, vol. 11, no. 3, pp. 757--767, 2025,
+    doi: 10.1016/j.dcan.2024.10.013.
+    
+    \bibitem{ref20}
+    M. Miao, X. Yang, J. Wei, G. Tian, and W. Susilo,
+    ``A Verifiable and Redactable Blockchain with Lightweight Storage and Permission Supervision,''
+    \textit{Information}, vol. 17, no. 2, Art. no. 176, 2026,
+    doi: 10.3390/info17020176.
+    
+    \bibitem{ref21}
+    S. Fugkeaw, S. Sungchai, S. Nakprame, and P. Sreekongpan,
+    ``Enabling Secure and Scalable GDPR-Compliant Blockchain-Based e-KYC With Efficient Redaction,''
+    \textit{IEEE Access}, vol. 13, pp. 136834--136853, 2025,
+    doi: 10.1109/ACCESS.2025.3594656.
+    
+    
+    \bibitem{ref22}
+    C. G. Harris, "A Redactable Blockchain Architecture for Regulatory Compliance," 2025 IEEE International Conference on Blockchain (Blockchain), Zhengzhou, China, 2025, pp. 1-6, doi: 10.1109/Blockchain67634.2025.00010.
+    
+    \bibitem{ref23}
+    Z. Wu, L. Wang, X. Zhang and X. Feng, "EMT: Extended Merkle Tree Structure for Inserted Data Redaction in Permissioned Blockchain," in IEEE Transactions on Network Science and Engineering, vol. 12, no. 4, pp. 3025-3038, July-Aug. 2025, doi: 10.1109/TNSE.2025.3555979.
+    
+    \bibitem{ref24}
+    J. W. Heo, G. Ramachandran and R. Jurdak, "Decentralised Redactable Blockchain: A Privacy-Preserving Approach to Addressing Identity Tracing Challenges," 2024 IEEE International Conference on Blockchain and Cryptocurrency (ICBC), Dublin, Ireland, 2024, pp. 215-219, doi: 10.1109/ICBC59979.2024.10634438.
+    
+    
+    \bibitem{ref25}
+    T. Sengupta, S. Chakraborty, and S. Sural,
+    ``ReAcct: Redaction control for interoperable blockchains,''
+    in \textit{Proc. 7th Conf. Blockchain Research Appl. Innovative
+    Networks Services (BRAINS)}, Zurich, Switzerland, 2025,
+    pp. 1--10, doi: 10.1109/BRAINS67003.2025.11302947.
+    
+    \bibitem{ref26}
+    L. Yin, J. Shi, B. Xie and Y. Liu, "Rchain: A Universal and Efficient Redactable Blockchain Scheme," 2025 IEEE International Conference on Blockchain (Blockchain), Zhengzhou, China, 2025, pp. 235-240, doi: 10.1109/Blockchain67634.2025.00038.
+    
+    \bibitem{ref27}
+    Z. Liu, B. Zhou and Y. Zhao, "Enhancing Redactable Blockchain With Robust and Efficient Threshold Redaction," in IEEE Transactions on Dependable and Secure Computing, vol. 23, no. 2, pp. 3238-3251, March-April 2026, doi: 10.1109/TDSC.2025.3634512.
+    
+    \bibitem{ref28}
+    F. Wang, R. Dong, J. Cui, Q. Zhang and H. Zhong, "Blockchain-Based Anonymous and Accountable Data Redaction for the Industrial Internet of Things," in IEEE Transactions on Cloud Computing, doi: 10.1109/TCC.2026.3725253.
+    
+    \bibitem{ref29}
+    S. Biswas, S. Chakraborty, and R. S. Chakraborty,
+    ``Redacting without regret: A dual-layer framework for
+    policy-compliant blockchains,''
+    in \textit{Proc. 7th Conf. Blockchain Research Appl. Innovative
+    Networks Services (BRAINS)}, Zurich, Switzerland, 2025,
+    pp. 1--9, doi: 10.1109/BRAINS67003.2025.11302930.
+    
+    \bibitem{ref39}
+    Q. Li, Y. Xia, X. Liu, X. Chen, Z. Liu, Z. Guo, Z. Liu, and L. Fang, ``LETA: A Lattice-Based Efficient and Traceable Privacy-Preserving Batch Authentication Scheme for Vehicle Platoon in VANETs,'' \textit{IEEE J. Sel. Areas Commun.}, vol. 44, 2026, doi: 10.1109/JSAC.2025.3636982.    
+    \bibitem{ref31}
+    Z. Yuqi, "Policy-Hiding Chameleon Hash with Traceability for Redactable Blockchains," 2025 22nd International Computer Conference on Wavelet Active Media Technology and Information Processing (ICCWAMTIP), Chengdu, China, 2025, pp. 1-4, doi: 10.1109/ICCWAMTIP68645.2025.11352637.
+    
+    \bibitem{ref32}
+    S. Hu, M. Li, J. Weng, J. -N. Liu, J. Weng and Z. Li, "IvyRedaction: Enabling Atomic, Consistent and Accountable Cross-Chain Rewriting," in IEEE Transactions on Dependable and Secure Computing, vol. 21, no. 4, pp. 3883-3900, July-Aug. 2024, doi: 10.1109/TDSC.2023.3339675.
+    
+    \bibitem{ref33}
+    L. Xue, H. Huang, F. Xiao, Q. Li and W. Wang, "A Controllable, Publicly Auditable, and Redactable Blockchain With a Main–Auxiliary Architecture," in IEEE Transactions on Dependable and Secure Computing, vol. 23, no. 2, pp. 1847-1864, March-April 2026, doi: 10.1109/TDSC.2025.3620854.
+    
+    \bibitem{ref34}
+    J. Xue et al., "Attribute-Based Policy-Hiding Redactable Blockchain With Authorizable Verification for Energy Internet," in IEEE Internet of Things Journal, vol. 12, no. 15, pp. 29570-29583, 1 Aug.1, 2025, doi: 10.1109/JIOT.2025.3569699.
+    
+    
+    \bibitem{ref35}
+    K. Huang, X. Li, F. Rezaeibagha, L. Zhang and X. Zhang, "Time Updatable Policy-Based Chameleon Hash for Traceable and Accountable Redactable Blockchain," in IEEE Transactions on Information Forensics and Security, vol. 21, pp. 1470-1483, 2026, doi: 10.1109/TIFS.2026.3655919.
+    
+    \bibitem{ref36}
+    J. Duan, W. Wang, L. Wang and L. Gu, "Controlled Redactable Blockchain Based on T-Times Chameleon Hash and Signature," in IEEE Transactions on Information Forensics and Security, vol. 19, pp. 7560-7572, 2024, doi: 10.1109/TIFS.2024.3436925. 
+    
+    \bibitem{ref37}
+    W. -C. Kuo, D. -R. Lin and S. -X. Chen, "Identity-Based Chameleon Hashing from the SIS Assumption in a Central Authority Model," 2025 IEEE Conference on Dependable and Secure Computing (DSC), Taipei, Taiwan, 2025, pp. 1-6, doi: 10.1109/DSC65356.2025.11260874.
+    
+    \bibitem{ref38}
+    M. Shirmohammadi, A. Islam and H. Karimipour, "An Intent-Based Networking Framework for Secure and Privacy-Compliant Machine Unlearning Using Meta-Learning and Redactable Blockchain," in IEEE Internet of Things Journal, vol. 13, no. 9, pp. 18167-18181, 1 May1, 2026, doi: 10.1109/JIOT.2025.3638966. 
+    \end{thebibliography}
+    
+    \end{document}
