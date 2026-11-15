@@ -35,7 +35,7 @@ The experiment tier refuses to run without Besu and the liboqs ML-DSA-65 backend
 **The paper's full run** is split over AWS workers in us-east-2, one machine per experiment and run (hybrid plan:
 Exp. 2–5 in 3 runs, Exp. 0 and 1 once); see [Results](#results-full-run-of-12-nov-2026) and `Other/docs/aws-runbook.md`.
 Every AWS action needs a yes for that action, from the agent's owner in chat or a team member on its issue, and
-is logged on its issue (`CLAUDE.md`):
+is logged on its issue:
 
 ```bash
 Benchmark/deploy/aws/build_image.sh                       # prebuilt worker image of the committed code
@@ -57,10 +57,10 @@ Benchmark/deploy/aws/teardown_workers.sh                  # workers, provers and
 
 ```
 VeRedact/
-├── README.md  CLAUDE.md  AUDIT_LOG.md    overview + results, team/agent rules, audit findings
+├── README.md                             overview + results
 ├── .github/                              issue/PR templates, CI (pytest + ruff), CODEOWNERS, setup-repo.sh
 ├── Overleaf/                             the manuscript
-│   ├── VeRedact-optimize.tex             manuscript (changes via PR)
+│   ├── VeRedact.tex                      manuscript (submission version)
 │   └── tables/                           generated table: tab_primitives.tex (after the run)
 ├── Result/                               generated figures only (after the run)
 │   ├── Pdf/                              exp1..exp5_*.pdf (vector, for the paper)
@@ -77,9 +77,6 @@ VeRedact/
 │   ├── deploy/                           aws/ (laptop side: server, workers, provers, split run), server/
 │   │                                     (bootstrap, watchdogs), besu/ (QBFT network), experiments/ (runners)
 │   └── results/                          raw runs <experiment>/<method>/<tier>/ (gitignored)
-├── Reference/                            papers: PDF, Markdown full text, summary, figures
-│   ├── S1_Li2025_ImprovedDCH/  S13_Zhang2025_EAQ-VRBC/  S27_Liu2026_ETCH/  S34_Xue2025_REBS/  S99_Li2026_LETA/
-│   └── zkredact/                         ZK-Redact journal version (writing-style reference)
 └── Other/
     ├── docs/                             experiments.md, baselines/*.md, paper-conformance.md,
     │                                     aws-runbook.md, paper-manifest.md
@@ -108,10 +105,14 @@ veredact-bench `/opt/veredact/Benchmark/results/`; aggregates in the GitHub rele
 pooled over runs. Regenerate: `VRPQ_RESULTS_TIER=experiment-reps make tables figures TIER=experiment`.
 
 Caveats a reader must know: Fig. 6 (Exp. 4) plots `verify_noread_ms`, verification without reads of anchored values
-from the PBN, for every system; the totals (`verify_ms`) and the reads (`read_ms`) are in `metrics.json` for the text
+from the PBN, for the systems that identify invalid records (VeRedact-PQ, Ref. [1], and Ref. [13] Audit → Query per
+block, #49); Ref. [13]'s whole-query Audit is reported in the text; the totals (`verify_ms`) and the reads (`read_ms`) are in `metrics.json` for the text
 (Ref. [13] makes no chain read). Exp. 5's code did not change; it was rerun so that every figure comes from one
 commit. Exp. 4's figure was redrawn on the laptop from these `experiment-reps` files after its y-axis label was put
-on two lines (cut off on one), and again for #47: it now shows the 1 %-tampered case (no-fault times in the text). Exp. 1 is one run (within-run error bars); smoke numbers are never results. The
+on two lines (cut off on one), again for #47: it now shows the 1 %-tampered case (no-fault times in the text), and
+for #49: it shows only the systems that identify invalid records. On 15 Nov all five figures were redrawn at one
+fixed size (3.5 × 2.6 in, legend labels wrapped; `4881540`) from the same `experiment-reps` aggregates; no number
+changed. Exp. 1 is one run (within-run error bars); smoke numbers are never results. The
 previous full run is release `run-2026-11-10` (commit `0afabd3`).
 
 Status and open work: GitHub issues, on the board https://github.com/users/Ppdfd/projects/1. Older history: git log (`TASK.md` and `HANDOFF.md` until 6 Nov 2026).
