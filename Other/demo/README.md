@@ -1,66 +1,55 @@
-# Live demo — one redaction, about 2 minutes
+# Live demo — the whole VeRedact-PQ protocol, Phase 1 to 6
 
-Every hash, signature and collision on screen is computed live by the project's own modules, loaded unchanged
-from `Benchmark/src/veredact_bench/methods/veredact/`:
+Not a mock-up and not a re-implementation: `server.py` opens the real system exactly as the tests and the
+benchmark do (`open_system(cfg, "veredact", ds)`, smoke tier) and calls its phases one at a time. Every hash,
+signature, proof, collision and audit decision on screen is produced by `Benchmark/src/veredact_bench/`.
 
-| On screen | Real code |
-|---|---|
-| D_i = H(m, ρ), L_i = H(I_i, D_i), h^PBRP | `crypto/hashing.py` (domain-separated SHA3-256), same formulas as `protocol/ledger.py` / `veredact.py` |
-| Merkle root, proof of the old leaf, leaf update | `ds/merkle.py` |
-| Block ID CH_b = PQCH(MR_b; r_b), 5-of-7 DKG, each member's share, combine | `crypto/pqch_sis.py` (n = 256, q = 2^16, as in `configs/base.yaml`) |
-| owner's request signature, 5 committee approvals, checkpoint signature over H(r_b) | `crypto/pqsig.py`, ML-DSA-65 (pqcrypto backend) |
-| the requester's private-policy proof (attribute ≥ 5, credential valid), ~31 KB | `crypto/pqzk_stark.py` + the Rust winterfell STARK in `native/pqzk_stark` (26 queries, blowup 32, as in `configs/base.yaml`) |
-
-Needs Python 3 + `numpy` + `pqcrypto`, and for the ZK proof the Rust extension:
-
-```bash
-python -m pip install numpy pqcrypto
-python -m pip install Benchmark/native/pqzk_stark      # needs Rust; on Windows the GNU toolchain is enough:
-                                                       #   winget install Rustlang.Rustup
-                                                       #   rustup default stable-x86_64-pc-windows-gnu
-```
-
-Without the extension the demo still runs and the ZK step says "skipped". No AWS, no Besu.
-
-```bash
-python Other/demo/server.py
-```
-
-then open **http://localhost:8765**. The first start runs the committee key generation (~15 s) and caches it
-in `Other/demo/.cache/`; after that it starts instantly. **Start it once before class** so the cache exists.
-
-## The script (≈ 2 min)
-
-| # | Do | Say |
+| Phase | Entities (system model) | Real code that runs |
 |---|---|---|
-| 1 | Point at the chain strip on top | "Block #17's ID is a **chameleon hash** of its transactions — a lattice hash, safe against quantum computers. Block #18 points to that ID." |
-| 2 | Point at tx 2 (orange *personal data*) | "Row 2 holds a phone number and a national ID. Under PDPA/GDPR the owner can ask us to erase it — a normal blockchain can't, without breaking every later block." |
-| 2b | **Attribute too low** → Redact, then **Replays an old proof** → Redact, then back to **Valid ✓** | "Before any committee: the requester proves in zero knowledge that their *hidden* attribute meets the policy. Too low: no proof can even be built. A stolen proof from another request: rejected, because it is bound to that request. Valid: a 31 KB STARK, checked in half a millisecond — and the VPS never learns the attribute (blurred side)." |
-| 3 | **only 4** → **Redact with committee** | "7 members, each holding only a *share* of the secret trapdoor. With 4: rejected, nothing written." |
-| 4 | **5 approve** → **Redact with committee** | Keys light up. Watch the table fill: "content, commitment, leaf, Merkle root, randomness — **all changed**. Block ID: 🔒 **same**. The new randomness absorbs the change, so #18 still links." |
-| 5 | **Attacker edit** | Block #17 shakes, the link to #18 breaks: "No trapdoor, so the randomness can't be adapted — the ID changes and everyone sees it. Forging it means solving SIS, which quantum computers don't break." |
-| 6 | Open **Details** (only if asked) | Every check that ran (ML-DSA signatures, leaf proof, 5 shares), per-member timings, and the audit record. |
+| 1 Setup | all | `Ledger.__init__`: ML-DSA-65 keys, dealerless 5-of-7 PQCH DKG, policies C_P, STARK credential registry |
+| 2 Commit | Data Owner → PBN | `commit_transactions`: D = H(m‖ρ) signed by the owner, I, L = H(I‖D), Merkle trees, CH_b, SA-RLI, signed checkpoints |
+| 3 Request | Requester → VPS | `prepare` (ML-DSA-65 + PQZK STARK proof) and `authorize` → `validate`: SA-RLI, signature, policy, FreshLeaf, PQZK, BatchAttest |
+| 4 Authorize | VPS → Committee → PBN | `select_round` (CORA) + `authorize_batch`: t ML-DSA approvals on C_B, R_VR, Γ, anchored |
+| 5 Execute | Committee → PBN | `redact`: SFMR, distributed PQCH adaptation (one per batch), RoundCheckpoint, finalization anchored |
+| 6 Audit | PBN (audit service) → Auditor | `index_records` (RAI + CP_A) and `audit`: signed query, response, SAVER per-record verification |
 
-Close with the footer: the AWS-measured numbers from release `run-2026-11-12`.
+Attacks are the system's own fault injection — the request faults of Exp. 1 (`sig`, `zk`, `policy`, `stale`,
+`replay`, `absent`) and the audit tampering of Exp. 4 (`modified`, `substituted`, `stale`, `forged_approval`,
+`forged_proof`) — plus, in Phase 5, 4 of 7 members using their real trapdoor shares, and an outsider editing a
+record without them.
 
-## What the demo leaves out (say it if asked)
+## Run
 
-One block of 8 transactions. Not here: the SA-RLI/RAI indexes, CORA/SFMR batching across many blocks, BatchAttest and RoundCheckpoint
-(the demo signs per request and per checkpoint, the pre-optimisation form), the Besu chain and SAVER auditing.
-With 4 approvals the real system stops at Phase 4; the demo still runs the 4-share adaptation once, only to
-show that it gives no valid collision. Timings on screen are this laptop; the paper's numbers are AWS.
+```bash
+python -m pip install numpy omegaconf pqcrypto cryptography
+python -m pip install Benchmark/native/pqzk_stark     # the STARK; needs Rust. On Windows the GNU toolchain works:
+                                                      #   winget install Rustlang.Rustup
+                                                      #   rustup default stable-x86_64-pc-windows-gnu
+python Other/demo/server.py                           # then open http://localhost:8765
+```
 
-## Likely questions
+Setup (Phases 1–2) takes ~10–30 s at start and on **Reset system**. **Start it before class.**
 
-- **"Isn't a redactable blockchain just a mutable database?"** No: only a 5-of-7 committee can redact, every
-  redaction is recorded and auditable, and anyone else's edit is detected immediately.
-- **"Why post-quantum?"** The classical schemes we compare against (RSA, pairings, ECDSA) fall to Shor's
-  algorithm; a ledger is meant to last decades.
-- **"What does it cost?"** On AWS, one member's share of a redaction is 15.1 ms and the lattice hash 1.07 ms;
-  batching (CORA/SFMR) shares that cost across every request in a round.
+## The script (≈ 3 min — one click per phase)
+
+| Click | Point at | Say |
+|---|---|---|
+| **Phase 1** | everything lights up | "Six roles from our system model. Everyone gets post-quantum keys; the committee creates the redaction trapdoor *in shares* — nobody ever holds it whole." |
+| **Phase 2** | the 16 batch chips | "4,096 transactions in 16 batches. Each batch's ID is a lattice chameleon hash. Our record, batch 3, holds a phone number and a national ID." |
+| **Phase 3**, set *who is asking* to **no valid credential** | the VPS checklist | "An attacker without a valid credential: the zero-knowledge check fails, the committee never sees it." Switch back to **Honest owner**, **Run this phase again**: "The owner proves in ~15 ms, with a ~29 KB STARK, that a *hidden* attribute meets the policy. The VPS learns yes or no, never the attribute." |
+| **Phase 4** | the 7 member boxes | "CORA picks the round — 4 requests in 3 batches. Five of seven members sign it." |
+| **Phase 5** | batch table + chips | "Merkle root changed, randomness changed, **batch ID the same** — for all three batches. Four redactions, only **three** chameleon-hash adaptations: two requests in batch 3 shared one. That sharing is SFMR." Then **⚔ Attack this phase**: "Four members alone, or an outsider: no valid collision, the ID would change." |
+| **Phase 6**, set *auditor gets* to **Evidence of another redaction swapped in** | the audit table | "The auditor rejects exactly the forged record and keeps the others — it can say *which* one. Authorization evidence was checked once for all four records: that is SAVER." Try **Forged committee approval**: all four fail, because they share that approval. |
+
+## What is smaller than the paper (say it if asked)
+
+Smoke tier sizes: 4,096 transactions instead of 10^5, a 128-slot credential registry instead of 2^15, and the
+in-process ledger instead of the 7-validator Besu QBFT network. The security parameters are the paper's:
+ML-DSA-65, STARK with 26 queries / blowup 32, PQCH n = 256, q = 2^16, 5-of-7 committee. Timings on screen are
+this laptop; the paper's numbers come from AWS (footer: release `run-2026-11-12`).
 
 ## If something breaks in class
 
-- Port busy: `python Other/demo/server.py 8766` and open that port.
-- `ModuleNotFoundError`: `python -m pip install numpy pqcrypto`.
-- Start over at any time with **Reset** (new random r, same committee).
+- Port busy: `python Other/demo/server.py 8766`.
+- `ModuleNotFoundError`: re-run the two `pip install` lines.
+- Any phase can be re-run from the step bar; **Reset system** rebuilds everything (~10–30 s).
