@@ -30,6 +30,12 @@ python Other/demo/server.py                           # then open http://localho
 
 Setup (Phases 1–2) takes ~10–30 s at start and on **Reset system**. **Start it before class.**
 
+- Wait for `demo on http://localhost:8765`, then open that address in any browser (Chrome, Edge). F11 = full screen.
+- **Keep the server window open** while presenting; closing it stops the demo.
+- `localhost` only works on the machine running the server: run it on the laptop connected to the projector.
+- Several Pythons installed? Use the one you installed the packages into, by full path, e.g.
+  `& "C:\Users\User\AppData\Local\Python\pythoncore-3.14-64\python.exe" Other/demo/server.py` (PowerShell).
+
 ## The script (≈ 3 min — one click per phase)
 
 | Click | Point at | Say |
