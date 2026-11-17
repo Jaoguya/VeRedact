@@ -95,7 +95,11 @@ button:active{transform:scale(.98)}
 .ghost.attack{color:var(--bad)}
 .quiet{background:none;color:var(--mute);padding-left:4px;padding-right:4px}
 .quiet:hover{color:var(--ink)}
+.ghost.go{border-color:var(--brand);color:var(--brand)}
 button:disabled{opacity:.5;cursor:wait}
+.primary.blocked,.primary.blocked:disabled{background:var(--soft);color:var(--mute);border-color:var(--line);opacity:1;cursor:not-allowed;font-size:15px}
+.st.fail .n{background:var(--badbg);border-color:transparent;color:var(--bad)}
+select.attn{border-color:var(--bad);background-color:var(--badbg)}
 .row{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:10px}
 
 /* ---------- phase output ---------- */
@@ -205,8 +209,8 @@ footer{padding:2px 0 18px;color:var(--faint);font-size:12.5px}
       <textarea id="newtext"></textarea>
       <label for="fault">Requester</label>
       <select id="fault">
-        <option value="">Honest owner</option>
-        <optgroup label="Attacker">
+        <option value="">Authorized Requester</option>
+        <optgroup label="Malicious Requester">
           <option value="sig">Forged signature</option>
           <option value="zk">No valid credential</option>
           <option value="policy">Breaks the policy</option>
@@ -217,7 +221,7 @@ footer{padding:2px 0 18px;color:var(--faint);font-size:12.5px}
       </select>
     </div>
     <div class="ctx" id="ctl6" hidden>
-      <label for="tamper">Auditor receives</label>
+      <label for="tamper">Auditor</label>
       <select id="tamper">
         <option value="">Honest response</option>
         <optgroup label="Tampered">
@@ -293,17 +297,36 @@ function render(){
   $("tb").textContent = S.target.b;
   $("rec").textContent = S.target.m; $("rec").classList.toggle("done", /REDACTED/.test(S.target.m));
   $("chips").innerHTML = S.batches.map(b=>`<div class="chip ${b.b===S.target.b?"tg":""} ${hot.has(b.b)?"hot":""}" title="batch ${b.b} · version ${b.v} · ID ${b.CH.slice(0,12)}…">${b.b}${b.v?`<span class="v">v${b.v}</span>`:""}<div class="fp" style="background:${fpc(b.CH)}"></div></div>`).join("");
-  const nxt = done >= 6 ? 3 : done + 1;
-  $("steps").innerHTML = PH.map(([t],i)=>{const n=i+1, d=n<=done; return `<button class="st ${d?"done":""} ${n===nxt?"next":""} ${n===view?"view":""}" onclick="show(${n})" ${d?"":"tabindex=-1"} aria-current="${n===view?"step":"false"}"><span class="n">${d&&n!==nxt?ic("check"):n}</span>${t}</button>`}).join("");
-  $("next").innerHTML = ic("play") + (done >= 6 ? "New round · Phase 3" : `Run Phase ${nxt} · ${PH[nxt-1][0]}`);
+  const nxt = done >= 6 ? 3 : done + 1, stop = blocked();
+  $("steps").innerHTML = PH.map(([t],i)=>{const n=i+1, d=n<=done, f=d&&failed(n,results[n]); return `<button class="st ${d?"done":""} ${f?"fail":""} ${n===nxt&&!stop?"next":""} ${n===view?"view":""}" onclick="show(${n})" ${d?"":"tabindex=-1"} aria-current="${n===view?"step":"false"}"><span class="n">${f?ic("x"):d&&(n!==nxt||stop)?ic("check"):n}</span>${t}</button>`}).join("");
+  $("next").classList.toggle("blocked", stop);
+  const fixed = (done===3 && !$("fault").value) || (done===6 && !$("tamper").value);
+  $("next").innerHTML = stop ? ic("lock") + (fixed ? "Run again to continue" : BLOCK[done])
+    : ic("play") + (done >= 6 ? "New round · Phase 3" : `Run Phase ${nxt} · ${PH[nxt-1][0]}`);
+  $("next").disabled = stop;
   $("ctl3").hidden = !(nxt===3 || view===3);
   $("ctl6").hidden = !(nxt===6 || view===6);
+  $("fault").classList.toggle("attn", stop && done===3 && !!$("fault").value);
+  $("tamper").classList.toggle("attn", stop && done===6 && !!$("tamper").value);
   const canAgain = [3,5,6].includes(view) && view===done;
   $("again").style.display = canAgain ? "" : "none";
   $("again").classList.toggle("attack", view===5);
+  $("again").classList.toggle("go", stop && view===done);
   $("again").innerHTML = view===5 ? ic("zap")+"Attack this phase" : ic("redo")+"Run again";
 }
-function busy(on){ ["next","again","resetbtn"].forEach(id=>$(id).disabled = on) }
+/* a phase that failed (malicious request rejected, audit tampered, error) blocks the next one until it is re-run honestly */
+function failed(n, r){
+  if(!r) return false;
+  if(r.error) return true;
+  if(n<=2) return r.checks.some(c=>!c.ok);
+  if(n===3) return !(r.requests.find(x=>x.mine) || r.requests.at(-1)).ok;
+  if(n===6) return r.records.some(x=>!x.ok);
+  return !r.ok;
+}
+const blocked = () => done > 0 && failed(done, results[done]);
+const BLOCK = {1:"Setup failed · Reset system", 2:"Commit failed · Reset system", 3:"Run Phase 4 · Authorize",
+  4:"Not authorized · Reset system", 5:"Execution failed · Reset system", 6:"Choose Honest response, then Run again"};
+function busy(on){ ["next","again","resetbtn"].forEach(id=>$(id).disabled = on); if(!on) $("next").disabled = blocked() }
 
 async function api(path, body){
   const r = await fetch(path,{method:body?"POST":"GET",headers:{"Content-Type":"application/json"},body:body&&JSON.stringify(body)});
@@ -398,6 +421,7 @@ async function reset(){
 }
 const empty = () => $("out").innerHTML = `<div class="empty">${ic("play")} Run Phase 1 to start</div>`;
 const suggest = t => t.replace(/phone\s*[\d-]+/i,"phone [REDACTED]").replace(/ID\s*[\d-]+/,"ID [REDACTED]");
+$("fault").onchange = $("tamper").onchange = () => S && render();
 (async()=>{ empty(); S = await api("/api/state"); $("newtext").value = suggest(S.target.m); render() })();
 </script>
 </body>
