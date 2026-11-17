@@ -120,7 +120,8 @@ footer b{color:var(--ink)}
   </div>
   <div class="downs"><div class="down" id="d-DO"></div><div class="down" id="d-AR"></div><div class="down" id="d-VPS"></div><div class="down" id="d-RC"></div><div class="down up" id="d-AU"></div></div>
   <div class="pbn" id="e-PBN">
-    <div class="pbnh"><b>⛓️ Permissioned blockchain (PBN)</b><span>checkpoint authority · audit service (RAI) · <span id="anch">0</span> anchored operations</span></div>
+    <div class="pbnh"><b>⛓️ Permissioned blockchain (PBN) <span id="chainname" style="font-weight:600;color:var(--brand)"></span></b><span>checkpoint authority · audit service (RAI) · <span id="anch">0</span> anchored operations</span></div>
+    <div class="pbnh" style="margin-top:2px"><span id="chaininfo" class="mono"></span></div>
     <div class="chips" id="chips"></div>
   </div>
 </section>
@@ -165,7 +166,7 @@ footer b{color:var(--ink)}
 
 <footer>
   ML-DSA-65 · winterfell STARK (26 queries, blowup 32) · lattice PQCH n = 256 · 5-of-7 committee — same parameters as the paper.
-  Smaller here: 4,096 transactions, a 128-slot credential registry, an in-process ledger (the benchmark: 10<sup>5</sup>, 2<sup>15</sup>, 7-validator Besu).
+  Smaller here: 4,096 transactions, a 128-slot credential registry, a 4-validator Besu chain on this laptop (the benchmark: 10<sup>5</sup>, 2<sup>15</sup>, 7 validators with 10 ms links).
   AWS release <b>run-2026-11-12</b>: STARK prove 12.9 ms / verify 0.36 ms · member share 15.1 ms · PQCH hash 1.07 ms.
 </footer>
 
@@ -201,8 +202,14 @@ function model(p, hit){
   if(a.pbn) $("e-PBN").classList.add("on");
   if(hit) $("e-"+hit).classList.add("hit");
 }
+function chainLine(c){
+  if(!c) return;
+  $("chainname").textContent = c.real ? `· Hyperledger Besu, QBFT, ${c.validators} validators (Docker)` : "· in-process ledger";
+  $("chaininfo").innerHTML = c.real ? `⛏️ block <b>#${c.block}</b> · contract VeRedactRegistry ${c.contract.slice(0,8)}…${c.contract.slice(-4)}` : "start Other/demo/chain.sh up for a real chain";
+}
+setInterval(async()=>{ try{ chainLine(await (await fetch("/api/chain")).json()) }catch(e){} }, 2000);
 function render(){
-  $("anch").textContent = S.anchors;
+  $("anch").textContent = S.anchors; chainLine(S.chain);
   $("tb").textContent = S.target.b;
   $("rec").textContent = S.target.m; $("rec").classList.toggle("done", /REDACTED/.test(S.target.m));
   $("chips").innerHTML = S.batches.map(b=>`<div class="chip ${b.b===S.target.b?"tg":""} ${hot.has(b.b)?"hot":""}" title="batch ${b.b} · v${b.v} · ID ${b.CH.slice(0,12)}…">#${b.b}<br>v${b.v}<div class="fp" style="background:${fpc(b.CH)}"></div></div>`).join("");

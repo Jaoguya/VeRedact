@@ -20,3 +20,6 @@ Benchmark/native/pqzk_stark/target/
 Benchmark/deploy/aws/.workers
 Benchmark/deploy/aws/.image
 Benchmark/deploy/aws/.image_builder
+
+# demo chain (Other/demo/chain.sh): generated keys, genesis, compose file
+Other/demo/.chain/

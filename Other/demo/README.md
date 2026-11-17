@@ -21,14 +21,21 @@ record without them.
 ## Run
 
 ```bash
-python -m pip install numpy omegaconf pqcrypto cryptography
+bash Other/demo/chain.sh up                           # 1. a REAL chain: 4 Besu QBFT validators in Docker
+                                                      #    (Docker Desktop running; first time pulls the image)
+python -m pip install numpy omegaconf pqcrypto cryptography "web3==8.0.0" "py-solc-x==2.0.5"
 python -m pip install Benchmark/native/pqzk_stark     # the STARK; needs Rust. On Windows the GNU toolchain works:
                                                       #   winget install Rustlang.Rustup
                                                       #   rustup default stable-x86_64-pc-windows-gnu
-python Other/demo/server.py                           # then open http://localhost:8765
+python Other/demo/server.py                           # 2. then open http://localhost:8765
 ```
 
-Setup (Phases 1–2) takes ~10–30 s at start and on **Reset system**. **Start it before class.**
+With the chain running, the server uses the project's own Besu backend (`evaluation/anchor.py`): it compiles and
+deploys `contracts/VeRedactRegistry.sol`, and every anchoring step is a real transaction mined in QBFT blocks
+(2 s period); each phase shows its receipts (time to mine, gas). Without the chain it falls back to the
+in-process ledger and says so on the page. Stop the chain afterwards with `bash Other/demo/chain.sh down`.
+
+Setup (Phases 1–2) takes ~45 s on the chain (~30 s without) at start and on **Reset system**. **Start it before class.**
 
 - Wait for `demo on http://localhost:8765`, then open that address in any browser (Chrome, Edge). F11 = full screen.
 - **Keep the server window open** while presenting; closing it stops the demo.
@@ -40,7 +47,7 @@ Setup (Phases 1–2) takes ~10–30 s at start and on **Reset system**. **Start 
 
 | Click | Point at | Say |
 |---|---|---|
-| **Phase 1** | everything lights up | "Six roles from our system model. Everyone gets post-quantum keys; the committee creates the redaction trapdoor *in shares* — nobody ever holds it whole." |
+| **Phase 1** | everything lights up, then the PBN bar | "This is a real blockchain: four Besu validators running QBFT consensus — watch the block number climb — with our smart contract deployed. Six roles from our system model. Everyone gets post-quantum keys; the committee creates the redaction trapdoor *in shares* — nobody ever holds it whole." |
 | **Phase 2** | the 16 batch chips | "4,096 transactions in 16 batches. Each batch's ID is a lattice chameleon hash. Our record, batch 3, holds a phone number and a national ID." |
 | **Phase 3**, set *who is asking* to **no valid credential** | the VPS checklist | "An attacker without a valid credential: the zero-knowledge check fails, the committee never sees it." Switch back to **Honest owner**, **Run this phase again**: "The owner proves in ~15 ms, with a ~29 KB STARK, that a *hidden* attribute meets the policy. The VPS learns yes or no, never the attribute." |
 | **Phase 4** | the 7 member boxes | "CORA picks the round — 4 requests in 3 batches. Five of seven members sign it." |
@@ -49,8 +56,8 @@ Setup (Phases 1–2) takes ~10–30 s at start and on **Reset system**. **Start 
 
 ## What is smaller than the paper (say it if asked)
 
-Smoke tier sizes: 4,096 transactions instead of 10^5, a 128-slot credential registry instead of 2^15, and the
-in-process ledger instead of the 7-validator Besu QBFT network. The security parameters are the paper's:
+Smoke tier sizes: 4,096 transactions instead of 10^5, a 128-slot credential registry instead of 2^15, and a
+4-validator Besu QBFT chain on the laptop instead of the benchmark's 7 validators with 10 ms netem links. The security parameters are the paper's:
 ML-DSA-65, STARK with 26 queries / blowup 32, PQCH n = 256, q = 2^16, 5-of-7 committee. Timings on screen are
 this laptop; the paper's numbers come from AWS (footer: release `run-2026-11-12`).
 

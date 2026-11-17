@@ -23,13 +23,17 @@ STARK extension (see README.md). Setup takes ~10 s.
 import copy
 import dataclasses
 import json
+import os
 import sys
 import time
+import tomllib
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[1] / "Benchmark/src"))
+BENCH = HERE.parents[1] / "Benchmark"
+sys.path.insert(0, str(BENCH / "src"))
 from veredact_bench.data.dataset import build_dataset  # noqa: E402
 from veredact_bench.evaluation.common import open_system  # noqa: E402
 from veredact_bench.methods.scheme import AuditQuery, RedactionRequest  # noqa: E402
@@ -50,6 +54,21 @@ def ms(t0) -> float:
     return round((time.perf_counter() - t0) * 1000, 2)
 
 
+RPC = "http://127.0.0.1:8545"  # Other/demo/chain.sh up: 4 Besu QBFT validators in Docker
+CHAIN_VALIDATORS = 4
+
+
+def chain_up() -> bool:
+    """Is the demo's Besu chain answering? Then the system anchors on it; otherwise the in-process ledger."""
+    body = json.dumps({"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}).encode()
+    req = urllib.request.Request(RPC, body, {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=1.5) as r:
+            return int(json.load(r)["result"], 16) >= 1
+    except Exception:
+        return False
+
+
 class Demo:
     def __init__(self):
         self.reset()
@@ -59,6 +78,12 @@ class Demo:
         print("setting up the real VeRedact-PQ system (smoke tier)...", flush=True)
         t0 = time.perf_counter()
         cfg = copy.deepcopy(load("smoke"))
+        self.real_chain = chain_up()
+        if self.real_chain:  # the project's own Besu backend (evaluation/anchor.py BesuAnchor), as on AWS
+            cfg["ledger"].update(backend="besu", rpc_url=RPC, validators=CHAIN_VALIDATORS)
+            with open(BENCH / "configs/aws.toml", "rb") as f:  # the public Besu dev key, funded in genesis only
+                os.environ.setdefault("VRPQ_BESU_KEY", tomllib.load(f)["besu"]["dev_private_key"])
+        print(f"  ledger: {'Besu QBFT at ' + RPC if self.real_chain else 'in-process (no chain running)'}", flush=True)
         ds = build_dataset(cfg, n_requests=64)
         t = ds.transactions[TARGET]
         ds.transactions[TARGET] = dataclasses.replace(t, payload=PII.encode())  # the record with personal data
@@ -76,6 +101,31 @@ class Demo:
     def ops(self, op=None) -> int:
         return sum(1 for o, _ in self.L.anchor.oplog if op is None or o == op)
 
+    def chain(self) -> dict:
+        a = self.L.anchor
+        if not self.real_chain:
+            return {"real": False}
+        return {"real": True, "validators": CHAIN_VALIDATORS, "block": a.w3.eth.block_number, "contract": a.reg.address}
+
+    def marks(self):
+        """Where the chain stood before a phase: (anchoring futures, receipts) so far."""
+        return len(self.s.p.pending_anchor), len(self.L.anchor.receipts)
+
+    def mined(self, mark) -> list:
+        """Wait until the phase's anchoring transactions are mined; describe each from its receipt."""
+        k0, r0 = mark
+        futs = self.s.p.pending_anchor[k0:]
+        for f in futs:
+            f.result()
+        rec = self.L.anchor.receipts
+        deadline = time.time() + 2  # receipts are recorded by a done-callback, just after result() returns
+        while len(rec) < r0 + len(futs) and time.time() < deadline:
+            time.sleep(0.02)
+        out = []
+        for op, ledger_ms, gas in list(rec)[r0:]:
+            out.append(f"{op} — mined in {ledger_ms / 1000:.1f} s, {gas:,} gas" if gas else op)
+        return out
+
     def batch_view(self, b) -> dict:
         bt = self.L.batches[b]
         return {"b": b, "v": bt.v, "MR": hx(bt.tree.root), "CH": H(bt.ch).hex(), "r": hx(H(bt.r.tobytes()))}
@@ -91,6 +141,7 @@ class Demo:
             "t": self.L.t,
             "records": len(self.s.p.records),
             "anchors": self.ops(),
+            "chain": self.chain(),
         }
 
     def phase1(self) -> dict:
@@ -115,6 +166,13 @@ class Demo:
                     f"commitment C_P = {hx(pol.C_P)}…",
                 ),
                 ("Credential registry", f"STARK Merkle root {c.zk.root[0]:x}"[:44] + "… (attributes stay private)"),
+                (
+                    "PBN",
+                    f"Hyperledger Besu, QBFT consensus, {CHAIN_VALIDATORS} validators in Docker · contract "
+                    f"VeRedactRegistry deployed at {L.anchor.reg.address}"
+                    if self.real_chain
+                    else "in-process ledger (start Other/demo/chain.sh for a real Besu chain)",
+                ),
                 (
                     "Anchored on PBN",
                     f"{self.ops('policy_register')} policy registrations, "
@@ -182,7 +240,7 @@ class Demo:
         chosen = self.s.p.select_round([(a.handle, now) for a in self.pending], now, arrival_rate=4.0)  # CORA
         ids = {v.RID for v in chosen}
         self.batch = [a for a in self.pending if a.handle.RID in ids]
-        before = self.ops()
+        mark = self.marks()
         self.batch_auth, ph4 = self.s.authorize_batch(self.batch)
         ba = self.batch_auth
         self.phase = 4
@@ -198,14 +256,14 @@ class Demo:
             "approvals": [k + 1 for k, _ in ba.approvals] if ba else [],
             "sig_B": self.c.sig.sig_size,
             "ms": round(ph4, 2),
-            "anchored": [o for o, _ in self.L.anchor.oplog[before:]],
+            "anchored": self.mined(mark),
         }
 
     # ------------------------------------------------------------------ Phase 5: SFMR + PQCH + checkpoint
     def phase5(self) -> dict:
         bs = sorted({a.handle.b for a in self.batch})
         before = {b: self.batch_view(b) for b in bs}
-        n_ops = self.ops()
+        mark = self.marks()
         res = self.s.redact(self.batch, self.batch_auth)
         after = {b: self.batch_view(b) for b in bs}
         k = sum(o.ok for o in res.outcomes)
@@ -224,7 +282,7 @@ class Demo:
             "round_root": hx(cp.round_root),
             "round_sig_B": len(cp.round_sigma),
             "round_path": len(cp.round_path),
-            "anchored": [o for o, _ in self.L.anchor.oplog[n_ops:]],
+            "anchored": self.mined(mark),
             "ok": all(after[b]["CH"] == before[b]["CH"] for b in bs),
         }
 
@@ -249,7 +307,7 @@ class Demo:
 
     # ------------------------------------------------------------------ Phase 6: RAI + audit
     def phase6(self, tamper: str) -> dict:
-        n0 = self.ops()
+        mark = self.marks()
         t0 = time.perf_counter()
         self.s.index_records()  # RAI entries for every record + CP_e^A anchored
         idx_ms = ms(t0)
@@ -277,7 +335,7 @@ class Demo:
             "index_ms": idx_ms,
             "nodes": res.verified_nodes,
             "deep": tamper == "forged_proof",
-            "anchored": [o for o, _ in self.L.anchor.oplog[n0:]],
+            "anchored": self.mined(mark),
             "semantics": res.semantics,
         }
 
@@ -299,6 +357,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/state":
             return self._send(json.dumps(DEMO.state()).encode())
+        if self.path == "/api/chain":  # polled by the page: the block height keeps rising while the chain runs
+            return self._send(json.dumps(DEMO.chain()).encode())
         return self._send((HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
 
     def do_POST(self):
