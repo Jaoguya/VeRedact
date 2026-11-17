@@ -9,7 +9,8 @@ and the same formulas as protocol/ledger.py (Phase 2) and protocol/veredact.py (
   D_i = H(m_i, rho_i)   I_i = H(TID, owner, DT, PID, ts, Tag)   L_i = H(I_i, D_i)   CH_b = PQCH(MR_b; r_b)
   A_b signed by the checkpoint authority over H(b, CH_b, MR_b, H(r_b), v_b, ts)
 
-Left out (they run in the AWS benchmark, not here): the STARK policy proof, SA-RLI/RAI indexes, CORA/SFMR across
+and crypto/pqzk_stark.py (winterfell STARK, the PQZK private-policy proof) once its Rust extension is built.
+Left out (they run in the AWS benchmark, not here): SA-RLI/RAI indexes, CORA/SFMR across
 many batches, BatchAttest/RoundCheckpoint, the Besu chain. Timings are this machine; paper numbers are AWS.
 Needs: numpy, pqcrypto. First start runs the DKG (~15 s) and caches it in Other/demo/.cache/.
 """
@@ -25,7 +26,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 VR = HERE.parents[1] / "Benchmark/src/veredact_bench/methods/veredact"
-# Load the real modules without the package __init__ files, which pull in the Rust STARK extension we do not use.
+# Load the real modules without the package __init__ files (they pull in omegaconf and the full Crypto facade).
 for name, sub in (("vr", VR), ("vr.crypto", VR / "crypto"), ("vr.ds", VR / "ds")):
     pkg = types.ModuleType(name)
     pkg.__path__ = [str(sub)]
@@ -35,8 +36,15 @@ from vr.crypto import pqsig  # noqa: E402
 from vr.crypto.hashing import HV, H  # noqa: E402
 from vr.ds.merkle import MerkleTree, verify_proof  # noqa: E402
 
+try:  # the PQZK policy proof needs the Rust extension: pip install Benchmark/native/pqzk_stark
+    from vr.crypto.pqzk_stark import PolicySTARK, ZKParams  # noqa: E402
+except ImportError:
+    PolicySTARK = None
+
 N_MEMBERS, T = 7, 5  # the paper's default committee: t = floor(2n/3) + 1
 B, E, DT, PID = 17, 1, "record", "P0"  # batch id, epoch, data type, policy (as in Phase 2)
+THRESHOLD = 5  # the policy's private-attribute threshold, bound in C_P (attributes are 1..8, configs/base.yaml)
+POLICY = f"attribute>={THRESHOLD}; ops=modify|delete"
 TXS = [
     ("Alice", "Alice -> Bob  1,200 THB  (rent)"),
     ("Carol", "Carol -> Dan  350 THB  (lunch)"),
@@ -67,6 +75,12 @@ class Ledger:
         self.committee = {k: self.sig.keygen() for k in range(1, N_MEMBERS + 1)}  # their ML-DSA approval keys
         self.vps, self.cpa = self.sig.keygen(), self.sig.keygen()  # validation service, checkpoint authority
         self.owners = {o: self.sig.keygen() for o, _ in TXS}  # data owners (they also request redactions)
+        self.req_id = {o: j for j, o in enumerate(self.owners)}  # their slots in the credential registry
+        self.zk = None
+        if PolicySTARK is not None:  # credential registry; same STARK parameters as configs/base.yaml pqzk
+            self.zk = PolicySTARK(ZKParams(26, 32, 16, 15, 8, 365 * 86400), len(self.owners), seed=20261118)
+        self.C_P = H(PID, POLICY, 1, 0)  # policy commitment
+        self.last_proof = None  # the previous request's proof, for the replay case
         print(f"  ready in {time.perf_counter() - t0:.1f} s")
         self.reset()
 
@@ -119,10 +133,13 @@ class Ledger:
             "log": self.log,
             "n": N_MEMBERS,
             "t": T,
+            "zk": self.zk is not None,
+            "threshold": THRESHOLD,
+            "has_old_proof": self.last_proof is not None,
         }
 
     # ------------------------------------------------------------------ Phases 3-5: one redaction
-    def redact(self, i: int, m_new: str, members: list[int]) -> dict:
+    def redact(self, i: int, m_new: str, members: list[int], zk_mode: str = "valid") -> dict:
         tx, steps = self.tx[i], []
         before = {"m": tx["m"], "D": hx(tx["D"]), "leaf": hx(H(tx["I"], tx["D"])), "root": hx(self.tree.root),
                   "r": hx(self.r_digest), "ch": hx(H(self.CH))}  # fmt: skip
@@ -137,6 +154,15 @@ class Ledger:
         ok = self.sig.verify(self.owners[tx["owner"]].pk, hR, sigma_R)
         steps.append({"phase": 3, "what": f"VPS verifies {tx['owner']}'s ML-DSA-65 request signature", "ok": ok,
                       "ms": ms(t0)})  # fmt: skip
+
+        # Phase 3: PQZK private policy. x_i binds THIS request; the STARK proves the requester holds a registered,
+        # unexpired credential with attribute >= threshold, without revealing the attribute
+        zk = self._policy_proof(tx, D_new, ts_r, n_r, zk_mode)
+        steps.append({"phase": 3, "what": zk["what"], "ok": zk["ok"], "ms": zk["verify_ms"]})
+        if not (ok and zk["ok"]):  # rejected at the VPS: nothing reaches the committee
+            return {"kind": "redact", "ok": False, "stage": 3, "zk": zk, "steps": steps, "members": members,
+                    "authorized": False, "collision": False, "member_ms": {}, "before": before,
+                    "after": dict(before)}  # fmt: skip
 
         # Phase 4: committee members sign the batch commitment C_B; t valid approvals are required
         RID, BID = os.urandom(8), os.urandom(16)
@@ -187,7 +213,36 @@ class Ledger:
         after = {"m": tx["m"] if done else m_new, "D": hx(D_new), "leaf": hx(new_leaf), "root": hx(tree.root),
                  "r": hx(H(r_new.tobytes())), "ch": hx(H(self.ch.hash(self.pk_ch, tree.root, r_new)))}  # fmt: skip
         return {"kind": "redact", "ok": done, "authorized": authorized, "collision": collision, "members": members,
-                "steps": steps, "member_ms": member_ms, "before": before, "after": after}  # fmt: skip
+                "steps": steps, "member_ms": member_ms, "before": before, "after": after, "zk": zk}  # fmt: skip
+
+    def _policy_proof(self, tx, D_new, ts_r, n_r, mode: str) -> dict:
+        """The requester proves, the VPS verifies (crypto/pqzk_stark.py). mode: valid | low (the requester's hidden
+        attribute is 3, below the threshold) | replay (re-sends the proof made for the previous request)."""
+        if self.zk is None:
+            return {"ok": True, "what": "PQZK policy proof skipped (STARK extension not built)", "prove_ms": 0,
+                    "verify_ms": 0, "bytes": 0, "mode": "off"}  # fmt: skip
+        j, ts_s = self.req_id[tx["owner"]], ts_r // 1000
+        x = H(tx["owner"], tx["tid"], "modify", D_new, self.C_P, H(tx["I"], tx["D"]), E, ts_r, n_r)  # statement x_i
+        t0 = time.perf_counter()
+        if mode == "replay":  # a genuine proof by the same requester, but made for an EARLIER request's statement
+            proof = self.last_proof or self.zk.prove(j, H(x, "an earlier request"), THRESHOLD, ts_s)
+        else:
+            proof = self.zk.prove(j, x, THRESHOLD, ts_s, attribute_override=3 if mode == "low" else None)
+        prove_ms = ms(t0)
+        if not proof:  # the circuit's range check (attribute - threshold >= 0) fails: no proof exists to send
+            return {"ok": False, "what": f"PQZK: no proof can be built — hidden attribute below {THRESHOLD}",
+                    "prove_ms": prove_ms, "verify_ms": 0, "bytes": 0, "mode": mode}  # fmt: skip
+        t0 = time.perf_counter()
+        ok = self.zk.verify(j, x, proof, THRESHOLD, ts_s)
+        verify_ms = ms(t0)
+        if mode != "replay":
+            self.last_proof = proof
+        what = (
+            f"VPS verifies the PQZK STARK: credential valid, attribute >= {THRESHOLD} ({len(proof):,} B)"
+            if mode != "replay"
+            else "PQZK: an earlier request's proof, checked against THIS request"
+        )
+        return {"ok": ok, "what": what, "prove_ms": prove_ms, "verify_ms": verify_ms, "bytes": len(proof), "mode": mode}
 
     def tamper(self, i: int, m_new: str) -> dict:
         """An attacker rewrites the record WITHOUT the committee: no trapdoor shares, so r cannot be adapted."""
@@ -232,7 +287,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
         if self.path == "/api/redact":
-            res = LEDGER.redact(int(req["i"]), str(req["text"])[:200], sorted({int(k) for k in req["members"]}))
+            mode = req.get("zk") if req.get("zk") in ("valid", "low", "replay") else "valid"
+            members = sorted({int(k) for k in req["members"]})
+            res = LEDGER.redact(int(req["i"]), str(req["text"])[:200], members, mode)
         elif self.path == "/api/tamper":
             res = LEDGER.tamper(int(req["i"]), str(req["text"])[:200])
         elif self.path == "/api/reset":
