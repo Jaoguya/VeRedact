@@ -121,10 +121,7 @@ class Demo:
         deadline = time.time() + 2  # receipts are recorded by a done-callback, just after result() returns
         while len(rec) < r0 + len(futs) and time.time() < deadline:
             time.sleep(0.02)
-        out = []
-        for op, ledger_ms, gas in list(rec)[r0:]:
-            out.append(f"{op} — mined in {ledger_ms / 1000:.1f} s, {gas:,} gas" if gas else op)
-        return out
+        return [{"op": op, "s": round(ledger_ms / 1000, 1), "gas": gas} for op, ledger_ms, gas in list(rec)[r0:]]
 
     def batch_view(self, b) -> dict:
         bt = self.L.batches[b]
@@ -150,36 +147,15 @@ class Demo:
         share = next(iter(L.td.values()))
         return {
             "facts": [
-                (
-                    "ML-DSA-65 keys",
-                    f"VPS, checkpoint authority, audit service, auditor, {len(L.requesters)} "
-                    f"requesters/owners, {L.n} committee members",
-                ),
-                (
-                    "PQCH committee",
-                    f"dealerless DKG, {L.t}-of-{L.n}: each member holds a {share.S.shape[0]}×"
-                    f"{share.S.shape[1]} share of the trapdoor, nobody holds it whole",
-                ),
-                (
-                    "Policies",
-                    f'{len(L.policies)} policies; e.g. {pol.PID}: "{pol.body.split(";")[1].strip()}", '
-                    f"commitment C_P = {hx(pol.C_P)}…",
-                ),
-                ("Credential registry", f"STARK Merkle root {c.zk.root[0]:x}"[:44] + "… (attributes stay private)"),
-                (
-                    "PBN",
-                    f"Hyperledger Besu, QBFT consensus, {CHAIN_VALIDATORS} validators in Docker · contract "
-                    f"VeRedactRegistry deployed at {L.anchor.reg.address}"
-                    if self.real_chain
-                    else "in-process ledger (start Other/demo/chain.sh for a real Besu chain)",
-                ),
-                (
-                    "Anchored on PBN",
-                    f"{self.ops('policy_register')} policy registrations, "
-                    f"{self.ops('committee_register')} committee registration, each PQ-signed",
-                ),
+                ("ML-DSA-65 keys", f"{4 + len(L.requesters) + L.n} parties"),
+                ("Trapdoor", f"{L.t}-of-{L.n} shares ({share.S.shape[0]}×{share.S.shape[1]}), never whole"),
+                ("Policies", f'{len(L.policies)} · e.g. {pol.PID}: {pol.body.split(";")[1].strip()}'),
+                ("Credentials", f"STARK root {c.zk.root[0]:x}"[:22] + "…"),
+                ("Chain", f"Besu QBFT · {CHAIN_VALIDATORS} validators · {L.anchor.reg.address[:10]}…"
+                          if self.real_chain else "in-process ledger"),
+                ("Registered", f"{self.ops('policy_register')} policies + {self.ops('committee_register')} committee"),
             ],  # fmt: skip
-            "checks": [{"ok": True, "what": f"whole setup (Phases 1-2) ran in {self.setup_s} s on this laptop"}],
+            "checks": [{"ok": True, "what": f"Ready in {self.setup_s} s"}],
         }
 
     def phase2(self) -> dict:
@@ -189,17 +165,15 @@ class Demo:
         leaf = H(tx.I, tx.D)
         return {
             "facts": [
-                ("Ledger", f"{len(L.txs):,} transactions in {len(L.batches)} batches of {L.N}"),
-                ("Record", f"{tx.TID.decode()} (batch {tx.b}, position {tx.pos}), owner {tx.owner}"),
-                ("Commitment", f"D = H(m ‖ ρ) = {hx(tx.D)}…   signed by the owner (ML-DSA-65, "
-                 f"{len(tx.sigma):,} B) — the owner signs D, never m"),
-                ("Leaf", f"L = H(I ‖ D) = {hx(leaf)}…  ·  I binds TID, owner, type, policy, time"),
-                ("Batch", f"Merkle root MR = {hx(L.batches[tx.b].tree.root)}…  ·  block ID CH = PQCH(MR ; r)"),
-                ("Indexes + checkpoint", f"SA-RLI root {hx(cp.R_RLI)}…  ·  {self.ops('batch_checkpoint')} "
-                 f"checkpoints signed and anchored"),
+                ("Ledger", f"{len(L.txs):,} transactions · {len(L.batches)} batches"),
+                ("Record", f"{tx.TID.decode()} · batch {tx.b}, position {tx.pos}"),
+                ("D = H(m‖ρ)", f"{hx(tx.D)}… · owner-signed"),
+                ("L = H(I‖D)", f"{hx(leaf)}…"),
+                ("Merkle root", f"{hx(L.batches[tx.b].tree.root)}…"),
+                ("Checkpoints", f"{self.ops('batch_checkpoint')} anchored · SA-RLI {hx(cp.R_RLI)}…"),
             ],  # fmt: skip
             "checks": [{"ok": L.c.ch.verify(L.pk_ch, L.batches[tx.b].ch, L.batches[tx.b].tree.root,
-                                            L.batches[tx.b].r), "what": "PQCH(MR ; r) = CH for the record's batch"}],
+                                            L.batches[tx.b].r), "what": "Batch ID = PQCH(MR ; r)"}],
         }  # fmt: skip
 
     # ------------------------------------------------------------------ Phase 3: requests -> VPS
