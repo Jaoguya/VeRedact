@@ -23,12 +23,12 @@ in `Other/demo/.cache/`; after that it starts instantly. **Start it once before 
 
 | # | Do | Say |
 |---|---|---|
-| 1 | Point at the left card | "This is one block. Its ID is a **chameleon hash** of the transactions — a lattice hash, 1 KB, safe against quantum computers. The next block points to this ID." |
-| 2 | Point at tx 2 (orange *personal data*) | "Row 2 holds a phone number and a national ID. Under PDPA/GDPR the owner can ask us to erase it — but a normal blockchain can't change anything without breaking every later block." |
-| 3 | Click **only 4 approve** → **Redact** | "Our committee has 7 members, each holding only a *share* of the secret trapdoor. With 4, the approval check fails and **nothing is written** — and the screen shows that even forced, 4 shares give no valid collision: the ID would change." |
-| 4 | Click **5 approve** → **Redact** | "With 5 of 7 it goes through." Point at table 3: "content, commitment D, leaf, Merkle root, randomness r — **every hash changed**. The block ID: **same**. The new r absorbs the change, so the chain stays linked." Point at table 4: "each check is real: ML-DSA signatures, the leaf proof, ~11 ms per member's share." |
-| 5 | Click **Attacker: edit without trapdoor** | "An attacker without the trapdoor edits the same block: the ID changes, the link breaks, everyone sees it. Finding a collision without the trapdoor means solving SIS, a lattice problem quantum computers don't break." |
-| 6 | Point at **Audit record** | "Every redaction leaves a record — old and new commitment D, version, who approved, and its PBRP digest — so an auditor can check later that it was authorized." |
+| 1 | Point at the chain strip on top | "Block #17's ID is a **chameleon hash** of its transactions — a lattice hash, safe against quantum computers. Block #18 points to that ID." |
+| 2 | Point at tx 2 (orange *personal data*) | "Row 2 holds a phone number and a national ID. Under PDPA/GDPR the owner can ask us to erase it — a normal blockchain can't, without breaking every later block." |
+| 3 | **only 4** → **Redact with committee** | "7 members, each holding only a *share* of the secret trapdoor. With 4: rejected, nothing written." |
+| 4 | **5 approve** → **Redact with committee** | Keys light up. Watch the table fill: "content, commitment, leaf, Merkle root, randomness — **all changed**. Block ID: 🔒 **same**. The new randomness absorbs the change, so #18 still links." |
+| 5 | **Attacker edit** | Block #17 shakes, the link to #18 breaks: "No trapdoor, so the randomness can't be adapted — the ID changes and everyone sees it. Forging it means solving SIS, which quantum computers don't break." |
+| 6 | Open **Details** (only if asked) | Every check that ran (ML-DSA signatures, leaf proof, 5 shares), per-member timings, and the audit record. |
 
 Close with the footer: the AWS-measured numbers from release `run-2026-11-12`.
 

@@ -6,160 +6,183 @@
 <title>VeRedact-PQ Live Demo</title>
 <style>
 :root{
-  --bg:#f6f7f9; --card:#fff; --ink:#14171c; --mute:#5d6673; --line:#e3e6eb;
-  --brand:#1f5fd6; --ok:#13834a; --okbg:#e7f6ee; --bad:#c62828; --badbg:#fdecec; --warn:#a15c00; --warnbg:#fff4e0;
+  --bg:#f5f6f8; --card:#fff; --ink:#14171c; --mute:#68717e; --line:#e3e6eb;
+  --brand:#1f5fd6; --ok:#13834a; --okbg:#e5f5ec; --bad:#c62828; --badbg:#fdecec; --amber:#b86e00; --amberbg:#fff3df;
   --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-header{padding:16px 26px 4px}
-h1{margin:0;font-size:27px;letter-spacing:-.01em}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:16px 28px 0;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+h1{margin:0;font-size:28px;letter-spacing:-.01em}
 h1 span{color:var(--brand)}
-.sub{color:var(--mute);font-size:14.5px;margin-top:3px}
-main{display:grid;grid-template-columns:5fr 6fr;gap:18px;padding:12px 26px 8px}
+.sub{color:var(--mute);font-size:15px}
+.mono{font-family:var(--mono)}
+.label{font-size:12.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.07em}
+
+/* ---- the chain strip ---- */
+.chain{display:flex;align-items:center;justify-content:center;gap:0;padding:16px 28px 4px}
+.blk{background:var(--card);border:2px solid var(--line);border-radius:14px;padding:10px 16px;min-width:150px;text-align:center}
+.blk .label{font-size:11.5px}
+.blk.main{min-width:330px;border-color:#c8d3e6;transition:border-color .4s,background .4s}
+.blk.main.same{border-color:var(--ok);background:var(--okbg)}
+.blk.main.diff{border-color:var(--bad);background:var(--badbg)}
+.blk .ghost{color:#b9c0ca;font-family:var(--mono);font-size:14px;margin-top:4px}
+.idhex{font-size:22px;font-weight:700;margin-top:2px}
+.bar{display:flex;height:9px;border-radius:5px;overflow:hidden;margin-top:6px}
+.bar i{flex:1;transition:background .5s}
+.link{width:70px;height:4px;background:var(--ok);position:relative;transition:background .3s}
+.link::after{content:"";position:absolute;right:-2px;top:-5px;border:7px solid transparent;border-left:10px solid var(--ok);border-right:0;transition:border-color .3s}
+.link.broken{background:repeating-linear-gradient(90deg,var(--bad) 0 8px,transparent 8px 14px)}
+.link.broken::after{border-left-color:var(--bad)}
+.prev{font-family:var(--mono);font-size:13px;color:var(--mute);margin-top:4px}
+.prev b{color:var(--ink)}
+
+main{display:grid;grid-template-columns:5fr 6fr;gap:18px;padding:12px 28px 8px}
 @media (max-width:1050px){main{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
 .card h2{margin:0 0 10px;font-size:18px}
-.label{font-size:12.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
-.mono{font-family:var(--mono)}
-.idbox{border:2px solid var(--line);border-radius:12px;padding:10px 12px;margin:5px 0 8px;transition:border-color .3s,background .3s}
-.idbox.same{border-color:var(--ok);background:var(--okbg)}
-.idbox.diff{border-color:var(--bad);background:var(--badbg)}
-.idhex{font-size:19px;font-weight:600;word-break:break-all}
-.bar{display:flex;height:11px;border-radius:6px;overflow:hidden;margin-top:7px}
-.bar i{flex:1}
-.kv{font-size:13.5px;color:var(--mute);margin:2px 0}
-.kv .mono{color:var(--ink)}
-.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:13px;font-weight:600;margin-right:4px}
-.pill.ok{background:var(--okbg);color:var(--ok)} .pill.bad{background:var(--badbg);color:var(--bad)}
-ul.txs{list-style:none;margin:10px 0 0;padding:0}
-ul.txs li{padding:6px 9px;border:1px solid var(--line);border-radius:9px;margin-bottom:5px;cursor:pointer;display:grid;grid-template-columns:16px 1fr auto;gap:2px 8px;align-items:center}
+
+ul.txs{list-style:none;margin:0;padding:0}
+ul.txs li{padding:7px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:5px;cursor:pointer;display:flex;gap:9px;align-items:center;font-family:var(--mono);font-size:14px;transition:border-color .2s,background .4s}
 ul.txs li:hover{border-color:#b9c3d3}
 ul.txs li.sel{border-color:var(--brand);box-shadow:0 0 0 2px #1f5fd622}
-ul.txs .n{color:var(--mute);font-size:13px}
-ul.txs .m{font-family:var(--mono);font-size:13.5px}
-ul.txs .h{grid-column:2;font-family:var(--mono);font-size:11.5px;color:var(--mute)}
-.tag{font-size:11.5px;padding:2px 7px;border-radius:99px;background:var(--warnbg);color:var(--warn);white-space:nowrap}
+ul.txs li.just{animation:wash 1.6s ease}
+ul.txs .n{color:var(--mute);font-size:12.5px;width:14px}
+.tag{margin-left:auto;font:600 11.5px system-ui;padding:2px 8px;border-radius:99px;background:var(--amberbg);color:var(--amber);white-space:nowrap}
 .tag.done{background:var(--okbg);color:var(--ok)}
-.step{display:flex;gap:9px;align-items:baseline;margin:12px 0 5px}
-.step b{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;font-size:13px;flex:none}
-textarea{width:100%;font:14px var(--mono);padding:8px 9px;border:1px solid var(--line);border-radius:9px;resize:vertical;min-height:52px}
-.members{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
-.mem{width:54px;padding:6px 0 4px;text-align:center;border:2px solid var(--line);border-radius:11px;cursor:pointer;user-select:none;font-size:12.5px;color:var(--mute)}
-.mem .face{font-size:21px;line-height:1}
-.mem.on{border-color:var(--ok);background:var(--okbg);color:var(--ok);font-weight:600}
-.count{margin-left:6px;font-weight:600}
-.row{display:flex;gap:9px;flex-wrap:wrap;margin-top:10px}
-button{font:600 15px system-ui;border-radius:10px;padding:10px 15px;border:2px solid transparent;cursor:pointer}
+
+textarea{width:100%;font:15px var(--mono);padding:9px 10px;border:1px solid var(--line);border-radius:10px;resize:vertical;min-height:52px}
+.members{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0 2px;align-items:center}
+.mem{width:48px;height:52px;display:grid;place-items:center;border:2px solid var(--line);border-radius:12px;cursor:pointer;user-select:none;font-size:22px;color:#c3c9d2;transition:all .2s}
+.mem small{display:block;font-size:11px;margin-top:-6px}
+.mem.on{border-color:var(--ok);background:var(--okbg);color:var(--ok)}
+.mem.fire{animation:fire .55s ease}
+.count{font-weight:700;margin-left:6px}
+.row{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}
+button{font:600 15.5px system-ui;border-radius:10px;padding:11px 16px;border:2px solid transparent;cursor:pointer;transition:transform .1s}
+button:active{transform:scale(.97)}
 .primary{background:var(--brand);color:#fff}
 .danger{background:#fff;color:var(--bad);border-color:var(--bad)}
-.ghost{background:#fff;color:var(--mute);border-color:var(--line)}
-.small{font-size:12.5px;padding:5px 9px}
+.ghostb{background:#fff;color:var(--mute);border-color:var(--line)}
+.small{font-size:13px;padding:5px 10px}
 button:disabled{opacity:.5;cursor:wait}
-.verdict{margin-top:12px;padding:12px 14px;border-radius:12px;font-size:17px;font-weight:600;display:none}
+
+.verdict{margin-top:14px;padding:13px 16px;border-radius:12px;font-size:19px;font-weight:700;display:none;animation:rise .35s ease}
 .verdict.ok{display:block;background:var(--okbg);color:var(--ok)}
 .verdict.bad{display:block;background:var(--badbg);color:var(--bad)}
-.verdict small{display:block;font-weight:400;color:var(--ink);font-size:14px;margin-top:3px}
-table{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:8px}
-td,th{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-th{font-size:11.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
-td.c{font-weight:600;white-space:nowrap}
-td.c.same{color:var(--ok)} td.c.chg{color:var(--warn)} td.c.bad{color:var(--bad)}
-tr.key td{background:#f2f6ff}
-.checks li{list-style:none;margin:3px 0;font-size:14px;display:grid;grid-template-columns:22px 34px 1fr auto;gap:6px}
-.checks{padding:0;margin:6px 0 0}
-.checks .p{color:var(--mute);font-size:12.5px}
-.checks .t{color:var(--mute);font-size:12.5px;font-family:var(--mono)}
-footer{padding:2px 26px 18px;color:var(--mute);font-size:13.5px}
+
+table.casc{border-collapse:collapse;width:100%;font-size:14.5px;margin-top:10px}
+.casc td{padding:6px 8px;border-bottom:1px solid var(--line)}
+.casc td:first-child{color:var(--mute);width:150px}
+.casc td.v{font-family:var(--mono)}
+.casc td.w{font-weight:700;text-align:right;width:92px}
+.casc tr.chg td.w{color:var(--amber)}
+.casc tr.same td.w{color:var(--ok)}
+.casc tr.bad td.w{color:var(--bad)}
+.casc tr.chg{animation:wash 1s ease both}
+.casc tr.key td{font-size:16px}
+.casc tr.key.same{animation:lock 1s ease both}
+.casc tr.key.bad{animation:alarm 1s ease both}
+
+details{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
+summary{cursor:pointer;color:var(--mute);font-size:14px}
+.checks{list-style:none;padding:0;margin:8px 0 0;font-size:14px}
+.checks li{display:grid;grid-template-columns:22px 1fr auto;gap:6px;margin:3px 0}
+.checks .t{color:var(--mute);font:12.5px var(--mono)}
+table.log{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px}
+.log td,.log th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
+.log th{font-size:11px;color:var(--mute);text-transform:uppercase}
+
+footer{padding:2px 28px 18px;color:var(--mute);font-size:13.5px}
 footer b{color:var(--ink)}
 .hidden{display:none}
+
+@keyframes wash{0%{background:var(--amberbg)}100%{background:transparent}}
+@keyframes lock{0%{background:transparent}30%{background:#c9efd8;transform:scale(1.02)}100%{background:var(--okbg)}}
+@keyframes alarm{0%,100%{background:var(--badbg)}20%,60%{background:#f8c9c9}}
+@keyframes fire{0%{transform:scale(1)}40%{transform:scale(1.18);box-shadow:0 0 0 6px #13834a33}100%{transform:scale(1)}}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes shake{0%,100%{transform:none}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+.shake{animation:shake .45s ease}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 <header>
   <h1>VeRedact-PQ <span>— live redaction</span></h1>
-  <div class="sub">The project's own code: lattice (SIS) chameleon hash · 5-of-7 trapdoor committee · ML-DSA-65 signatures · running on this laptop</div>
+  <div class="sub">post-quantum · the project's own code · running on this laptop</div>
 </header>
+
+<div class="chain">
+  <div class="blk"><div class="label">Block #16</div><div class="ghost">…</div></div>
+  <div class="link" id="l1"></div>
+  <div id="b17" class="blk main">
+    <div class="label">Block #17 · ID = PQCH(Merkle root ; r)</div>
+    <div id="chhex" class="idhex mono">…</div>
+    <div id="chbar" class="bar"></div>
+  </div>
+  <div class="link" id="l2"></div>
+  <div class="blk"><div class="label">Block #18</div><div class="prev">prev = <b id="prev">…</b></div></div>
+</div>
 
 <main>
   <section class="card">
-    <h2>Block #17 on the chain</h2>
-    <div class="label">Block ID — CH<sub>b</sub> = PQCH(MR<sub>b</sub> ; r<sub>b</sub>) — what the next block points to</div>
-    <div id="idbox" class="idbox">
-      <div id="chhex" class="idhex mono">…</div>
-      <div id="chbar" class="bar"></div>
-      <div class="kv" style="margin-top:6px">lattice hash, <span id="chbytes">…</span> bytes (fingerprint shown) · version <b id="ver">0</b></div>
-    </div>
-    <div class="kv">Merkle root MR<sub>b</sub> <span id="root" class="mono"></span></div>
-    <div class="kv">randomness H(r<sub>b</sub>) <span id="rr" class="mono"></span></div>
-    <div style="margin-top:7px"><span id="c1" class="pill"></span><span id="c2" class="pill"></span></div>
+    <h2>Transactions in block #17</h2>
     <ul id="txs" class="txs"></ul>
   </section>
 
   <section class="card">
     <h2>Redact a record</h2>
-    <div class="step"><b>1</b><div><strong>Request</strong> — pick a transaction, write the redacted version (the owner signs it)</div></div>
     <textarea id="newtext"></textarea>
-
-    <div class="step"><b>2</b><div><strong>Committee</strong> — each member signs, and holds only a <em>share</em> of the trapdoor
-      <span class="count" id="count"></span></div></div>
-    <div id="members" class="members"></div>
-    <div class="row" style="margin-top:6px">
-      <button class="ghost small" onclick="pick(5)">5 approve</button>
-      <button class="ghost small" onclick="pick(4)">only 4 approve</button>
+    <div class="members"><span class="label">Committee</span><span id="members" style="display:contents"></span>
+      <span class="count" id="count"></span></div>
+    <div class="row" style="margin-top:4px">
+      <button class="ghostb small" onclick="pick(5)">5 approve</button>
+      <button class="ghostb small" onclick="pick(4)">only 4</button>
     </div>
-
     <div class="row">
-      <button id="go" class="primary" onclick="run('redact')">Redact with the committee</button>
-      <button id="atk" class="danger" onclick="run('tamper')">Attacker: edit without trapdoor</button>
-      <button class="ghost" onclick="reset()">Reset</button>
+      <button id="go" class="primary" onclick="run('redact')">Redact with committee</button>
+      <button id="atk" class="danger" onclick="run('tamper')">Attacker edit</button>
+      <button class="ghostb" onclick="reset()">Reset</button>
     </div>
 
     <div id="verdict" class="verdict"></div>
-    <div id="detail" class="hidden">
-      <div class="step"><b>3</b><div><strong>What changed</strong> — the whole hash chain of this record</div></div>
-      <table id="chain"></table>
-      <div class="step"><b>4</b><div><strong>What the system checked</strong> (live, this laptop)</div></div>
-      <ul id="checks" class="checks"></ul>
-    </div>
+    <table id="casc" class="casc hidden"></table>
 
-    <div id="logwrap" class="hidden">
-      <div class="step"><b>5</b><div><strong>Redaction record</strong> — what an auditor checks later</div></div>
-      <table id="log"></table>
-    </div>
+    <details id="more" class="hidden">
+      <summary>Details — what the system checked, timings, audit record</summary>
+      <ul id="checks" class="checks"></ul>
+      <table id="log" class="log"></table>
+    </details>
   </section>
 </main>
 
 <footer>
-  On AWS m7i.4xlarge (release <b>run-2026-11-12</b>, Exp. 0 medians): PQCH hash <b>1.07 ms</b> · one member's adapt
-  <b>15.1 ms</b> · combine <b>3.64 ms</b> · ML-DSA-65 sign <b>0.066</b> / verify <b>0.031 ms</b> · STARK verify <b>0.36 ms</b>.
-  Not in this demo: STARK policy proof, SA-RLI/RAI indexes, CORA/SFMR across batches, Besu chain — those run in the AWS benchmark.
+  Lattice (SIS) chameleon hash · 5-of-7 trapdoor shares · ML-DSA-65 — loaded unchanged from the repo.
+  AWS, release <b>run-2026-11-12</b>: hash <b>1.07 ms</b> · one member's share <b>15.1 ms</b> · combine <b>3.64 ms</b>.
+  Not shown: STARK proof, indexes, batching, Besu.
 </footer>
 
 <script>
 const $ = id => document.getElementById(id);
-let S = null, sel = 2, on = new Set([1,2,3,4,5]);
-const short = h => h.length > 24 ? h.slice(0,16)+"…"+h.slice(-8) : h;
-function bar(hex){ let s=""; for(let i=0;i<32;i+=2) s+=`<i style="background:hsl(${parseInt(hex.substr(i,2),16)*1.41},65%,55%)"></i>`; return s }
+const wait = ms => new Promise(r => setTimeout(r, ms));
+let S = null, sel = 2, on = new Set([1,2,3,4,5]), justRedacted = -1;
+const short = h => h.slice(0,10) + "…" + h.slice(-4);
+function bar(hex){ let s=""; for(let i=0;i<32;i+=2) s+=`<i style="background:hsl(${parseInt(hex.substr(i,2),16)*1.41},62%,55%)"></i>`; return s }
 const suggest = t => t.replace(/phone\s*[\d-]+/i,"phone [REDACTED]").replace(/ID\s*[\d-]+/,"ID [REDACTED]");
-const pill = (el, ok, txt) => { el.className = "pill " + (ok?"ok":"bad"); el.textContent = txt + (ok?" ✓":" ✗") };
 
+function setId(hex){ $("chhex").textContent = short(hex); $("chbar").innerHTML = bar(hex) }
 function render(){
-  $("chhex").textContent = short(S.ch); $("chbar").innerHTML = bar(S.ch);
-  $("chbytes").textContent = S.ch_bytes.toLocaleString(); $("ver").textContent = S.v;
-  $("root").textContent = S.root.slice(0,16)+"…"; $("rr").textContent = S.r+"…";
-  pill($("c1"), S.checks.pqch, "PQCH(MR; r) = ID"); pill($("c2"), S.checks.checkpoint, "checkpoint signature");
+  setId(S.ch); $("prev").textContent = short(S.ch).slice(0,10) + "…";
   $("txs").innerHTML = S.txs.map((t,i)=>{
     const pii = /\d{3}-\d{3}-\d{4}|ID 1-/.test(t.m);
-    const tag = t.redacted ? '<span class="tag done">redacted</span>' : (pii ? '<span class="tag">personal data</span>' : '<span></span>');
-    return `<li class="${i===sel?"sel":""}" onclick="choose(${i})"><span class="n">${i}</span><span class="m">${t.m}</span>${tag}
-      <span class="h">D ${t.D}… · leaf ${t.leaf}…</span></li>`}).join("");
+    const tag = t.redacted ? '<span class="tag done">redacted</span>' : (pii ? '<span class="tag">personal data</span>' : "");
+    return `<li class="${i===sel?"sel":""} ${i===justRedacted?"just":""}" onclick="choose(${i})"><span class="n">${i}</span><span>${t.m}</span>${tag}</li>`}).join("");
   $("members").innerHTML = Array.from({length:S.n},(_,k)=>k+1).map(k=>
-    `<div class="mem ${on.has(k)?"on":""}" onclick="toggle(${k})"><div class="face">${on.has(k)?"🔑":"·"}</div>member ${k}</div>`).join("");
-  $("count").textContent = `${on.size} / ${S.t} needed`; $("count").style.color = on.size>=S.t ? "var(--ok)" : "var(--bad)";
-  $("logwrap").classList.toggle("hidden", !S.log.length);
-  $("log").innerHTML = "<tr><th>version</th><th>tx</th><th>D old</th><th>D new</th><th>approved by</th><th>h<sup>PBRP</sup></th></tr>" +
-    S.log.map(l=>`<tr><td>${l.v}</td><td>${l.tx}</td><td class="mono">${l.D_old}…</td><td class="mono">${l.D_new}…</td><td>${l.approvers.join(", ")}</td><td class="mono">${l.pbrp}…</td></tr>`).join("");
+    `<div id="mem${k}" class="mem ${on.has(k)?"on":""}" onclick="toggle(${k})"><div>${on.has(k)?"🔑":"·"}<small>${k}</small></div></div>`).join("");
+  $("count").textContent = `${on.size}/${S.t}`; $("count").style.color = on.size>=S.t ? "var(--ok)" : "var(--bad)";
+  $("log").innerHTML = S.log.length ? "<tr><th>version</th><th>tx</th><th>D old → new</th><th>approved by</th><th>h PBRP</th></tr>" +
+    S.log.map(l=>`<tr><td>${l.v}</td><td>${l.tx}</td><td class="mono">${l.D_old.slice(0,8)} → ${l.D_new.slice(0,8)}</td><td>${l.approvers.join(", ")}</td><td class="mono">${l.pbrp.slice(0,10)}</td></tr>`).join("") : "";
 }
 function choose(i){ sel=i; $("newtext").value = suggest(S.txs[i].m); render() }
 function toggle(k){ on.has(k)?on.delete(k):on.add(k); render() }
@@ -170,44 +193,54 @@ async function api(path, body){
   return r.json();
 }
 
-const ROWS = [
-  ["m","content m<sub>i</sub>"], ["D","commitment D<sub>i</sub> = H(m, ρ)"], ["leaf","leaf L<sub>i</sub> = H(I<sub>i</sub>, D<sub>i</sub>)"],
-  ["root","Merkle root MR<sub>b</sub>"], ["r","randomness H(r<sub>b</sub>)"], ["ch","Block ID CH<sub>b</sub>"]];
+const ROWS = [["m","content"],["D","commitment D"],["leaf","leaf L"],["root","Merkle root"],["r","randomness r"],["ch","Block ID"]];
 
-function show(res){
-  const v = $("verdict"), same = res.after.ch === res.before.ch;
-  $("idbox").className = "idbox " + (same ? "same" : "diff");
-  if(res.kind==="redact" && res.ok){
-    v.className="verdict ok"; v.innerHTML=`✓ Redacted. Every hash of the record changed — the block ID did not.
-      <small>${res.members.length} members combined their trapdoor shares: the new randomness r<sub>b</sub>' absorbs the change, so the chain stays linked.</small>`;
-  } else if(res.kind==="redact" && !res.authorized){
-    v.className="verdict bad"; v.innerHTML=`✗ Rejected at Phase 4: only ${res.members.length} of ${S.t} approvals. Nothing was written.
-      <small>Shown anyway: ${res.members.length} trapdoor shares give ${res.collision?"a valid":"<b>no</b> valid"} collision — the block ID would change.</small>`;
-  } else if(res.kind==="redact"){
-    v.className="verdict bad"; v.innerHTML=`✗ Rejected. Nothing was written.`;
-  } else {
-    v.className="verdict bad"; v.innerHTML=`✗ Tampering detected: without the trapdoor r<sub>b</sub> stays the same, so the block ID changes and the checkpoint signature no longer matches.
-      <small>Finding a collision without the committee means solving SIS — a lattice problem believed hard even for quantum computers.</small>`;
-  }
-  $("detail").classList.remove("hidden");
-  $("chain").innerHTML = "<tr><th></th><th>before</th><th>after</th><th></th></tr>" + ROWS.map(([k,name])=>{
+async function cascade(res){
+  const t = $("casc"); t.classList.remove("hidden"); t.innerHTML = "";
+  for(const [k,name] of ROWS){
     const a = res.before[k], b = res.after[k], eq = a===b, key = k==="ch";
-    const cls = key ? (eq?"same":"bad") : (eq?"same":"chg"), word = eq ? "same" : "changed";
-    const cell = x => k==="m" ? x : x+"…";
-    return `<tr class="${key?"key":""}"><td>${name}</td><td class="${k==="m"?"":"mono"}">${cell(a)}</td><td class="${k==="m"?"":"mono"}">${cell(b)}</td><td class="c ${cls}">${word}</td></tr>`}).join("");
-  const mm = res.member_ms ? Object.entries(res.member_ms).map(([k,t])=>`m${k} ${t}`).join(" · ") : "";
-  $("checks").innerHTML = res.steps.map(s=>`<li><span>${s.ok?"✅":"❌"}</span><span class="p">${s.phase==="-"?"":"Ph "+s.phase}</span><span>${s.what}</span><span class="t">${s.ms?s.ms+" ms":""}</span></li>`).join("")
-    + (mm ? `<li><span></span><span></span><span class="p">per-member share time: ${mm} ms</span><span></span></li>` : "");
+    const cls = key ? (eq?"same":"bad") : (eq?"same":"chg");
+    const val = k==="m" ? b : `${a.slice(0,8)} → ${b.slice(0,8)}`;
+    const word = key ? (eq ? "🔒 same" : "✗ changed") : (eq ? "same" : "changed");
+    t.insertAdjacentHTML("beforeend", `<tr class="${cls} ${key?"key":""}"><td>${name}</td><td class="v">${val}</td><td class="w">${word}</td></tr>`);
+    await wait(key ? 0 : 260);
+  }
 }
+function details(res){
+  $("more").classList.remove("hidden");
+  const mm = res.member_ms ? "member shares: " + Object.entries(res.member_ms).map(([k,t])=>`#${k} ${t}`).join(" · ") + " ms" : "";
+  $("checks").innerHTML = res.steps.map(s=>`<li><span>${s.ok?"✅":"❌"}</span><span>${s.phase==="-"?"":"Phase "+s.phase+": "}${s.what}</span><span class="t">${s.ms?s.ms+" ms":""}</span></li>`).join("")
+    + (mm ? `<li><span></span><span class="t">${mm}</span><span></span></li>` : "");
+}
+
 async function run(kind){
   $("go").disabled = $("atk").disabled = true;
-  const res = await api("/api/"+kind, {i:sel, text:$("newtext").value, members:[...on]});
-  S = res.state; render(); show(res);
+  $("verdict").className = "verdict"; $("casc").classList.add("hidden");
+  $("b17").className = "blk main"; $("l2").classList.remove("broken");
+  if(kind === "redact"){                       // keys light up one by one while the server works
+    const keys = [...on].sort((a,b)=>a-b);
+    keys.forEach((k,j)=>setTimeout(()=>$("mem"+k)?.classList.add("fire"), j*120));
+  }
+  const [res] = await Promise.all([api("/api/"+kind, {i:sel, text:$("newtext").value, members:[...on]}), wait(kind==="redact" ? 700 : 150)]);
+  if(kind==="redact" && res.ok) justRedacted = sel;
+  S = res.state; render();
+  const same = res.after.ch === res.before.ch, v = $("verdict");
+  if(kind==="redact" && res.ok){ v.className="verdict ok"; v.textContent = "✓ Redacted — the block ID did not change" }
+  else if(kind==="redact"){ v.className="verdict bad"; v.textContent = `✗ Rejected — ${res.members.length} of ${S.t} approvals, nothing written` }
+  else { v.className="verdict bad"; v.textContent = "✗ Tampering detected — the chain link breaks" }
+  await cascade(res);
+  $("b17").className = "blk main " + (same ? "same" : "diff");
+  if(!same){
+    setId(res.after.ch.repeat(2)); $("l2").classList.add("broken");  // the forged ID: #18 no longer matches
+    $("b17").classList.add("shake");
+  }
+  details(res);
   $("go").disabled = $("atk").disabled = false;
 }
 async function reset(){
-  S = (await api("/api/reset",{})).state; on = new Set([1,2,3,4,5]); sel = 2;
-  $("verdict").className="verdict"; $("detail").classList.add("hidden"); $("idbox").className="idbox";
+  S = (await api("/api/reset",{})).state; on = new Set([1,2,3,4,5]); sel = 2; justRedacted = -1;
+  $("verdict").className="verdict"; $("casc").classList.add("hidden"); $("more").classList.add("hidden");
+  $("b17").className = "blk main"; $("l2").classList.remove("broken");
   choose(2);
 }
 (async()=>{ S = await api("/api/state"); choose(sel) })();
